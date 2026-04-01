@@ -41,8 +41,8 @@ type RecallPage struct {
 	busy      bool
 	statusMsg string
 
-	quotes   []core.Quote
-	respBuf  strings.Builder
+	quotes  []core.Quote
+	respBuf string
 
 	width  int
 	height int
@@ -88,7 +88,7 @@ func (p RecallPage) Update(msg tea.Msg) (RecallPage, tea.Cmd) {
 			}
 			question := strings.TrimSpace(p.input.Value())
 			p.input.SetValue("")
-			p.respBuf.Reset()
+			p.respBuf = ""
 			p.response.SetContent("")
 			p.refPanel.SetContent("")
 			p.quotes = nil
@@ -98,8 +98,8 @@ func (p RecallPage) Update(msg tea.Msg) (RecallPage, tea.Cmd) {
 		}
 
 	case TokenMsg:
-		p.respBuf.WriteString(msg.Token)
-		p.response.SetContent(p.respBuf.String())
+		p.respBuf += msg.Token
+		p.response.SetContent(p.respBuf)
 		p.response.GotoBottom()
 
 	case QuotesReadyMsg:
@@ -116,8 +116,8 @@ func (p RecallPage) Update(msg tea.Msg) (RecallPage, tea.Cmd) {
 		return p.handleQuotesAndStream(msg)
 
 	case tokenWithChannel:
-		p.respBuf.WriteString(msg.token)
-		p.response.SetContent(p.respBuf.String())
+		p.respBuf += msg.token
+		p.response.SetContent(p.respBuf)
 		p.response.GotoBottom()
 		ch := msg.ch
 		cmds = append(cmds, func() tea.Msg {
