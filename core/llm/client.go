@@ -95,25 +95,28 @@ func (c *Client) Chat(ctx context.Context, msgs []Message, tokenCh chan<- string
 		slog.Error("llm: request failed", "error", err, "elapsed", time.Since(start))
 		return "", fmt.Errorf("chat request: %w", err)
 	}
-	defer resp.Body.Close()
 
 	slog.Info("llm: response received", "status", resp.StatusCode, "elapsed", time.Since(start))
 
 	if resp.StatusCode != http.StatusOK {
+		defer resp.Body.Close()
 		b, _ := io.ReadAll(resp.Body)
 		slog.Error("llm: non-OK response", "status", resp.StatusCode, "body", string(b))
 		return "", fmt.Errorf("provider returned %d: %s", resp.StatusCode, string(b))
 	}
 
 	if stream {
+		// Body must NOT be closed here — the goroutine owns it and closes it when done.
 		slog.Debug("llm: starting SSE stream parse")
 		go func() {
+			defer resp.Body.Close()
 			defer close(tokenCh)
 			parseSSE(resp.Body, tokenCh)
 			slog.Debug("llm: SSE stream finished")
 		}()
 		return "", nil
 	}
+	defer resp.Body.Close()
 
 	var result struct {
 		Choices []struct {
