@@ -25,6 +25,9 @@ type RecallDoneMsg struct{ Err error }
 // QuotesReadyMsg carries the retrieved reference quotes.
 type QuotesReadyMsg struct{ Quotes []core.Quote }
 
+// KeywordsReadyMsg carries the extracted search keywords.
+type KeywordsReadyMsg struct{ Keywords []string }
+
 // OpenAddQuoteMsg tells the app router to show the Add Quote overlay.
 type OpenAddQuoteMsg struct{}
 
@@ -41,8 +44,9 @@ type RecallPage struct {
 	busy      bool
 	statusMsg string
 
-	quotes  []core.Quote
-	respBuf string
+	quotes   []core.Quote
+	keywords []string
+	respBuf  string
 
 	width  int
 	height int
@@ -92,6 +96,7 @@ func (p RecallPage) Update(msg tea.Msg) (RecallPage, tea.Cmd) {
 			p.response.SetContent("")
 			p.refPanel.SetContent("")
 			p.quotes = nil
+			p.keywords = nil
 			p.busy = true
 			p.statusMsg = ""
 			cmds = append(cmds, p.spinner.Tick, p.runRecall(question))
@@ -101,6 +106,9 @@ func (p RecallPage) Update(msg tea.Msg) (RecallPage, tea.Cmd) {
 		p.respBuf += msg.Token
 		p.response.SetContent(p.respBuf)
 		p.response.GotoBottom()
+
+	case KeywordsReadyMsg:
+		p.keywords = msg.Keywords
 
 	case QuotesReadyMsg:
 		p.quotes = msg.Quotes
@@ -154,15 +162,22 @@ func (p RecallPage) View() string {
 
 	inputBox := styles.PanelActive.Width(p.width - 4).Render(p.input.View())
 
-	responseHeader := styles.SectionHeader.Render("Response")
-	responseBox := styles.Panel.Width(p.width - 4).
-		Height(p.response.Height + 2).
-		Render(responseHeader + "\n" + p.response.View())
+	var keywordsLine string
+	if len(p.keywords) > 0 {
+		keywordsLine = styles.Muted.Render("Keywords: ") + styles.Accent.Render(strings.Join(p.keywords, "  ·  "))
+	} else {
+		keywordsLine = styles.Muted.Render("Keywords: —")
+	}
 
-	refHeader := styles.SectionHeader.Render("Reference Quotes")
+	responseLabel := styles.Accent.Render("Response")
+	responseBox := styles.Panel.Width(p.width - 4).
+		Height(p.response.Height + 3).
+		Render(responseLabel + "\n" + p.response.View())
+
+	refLabel := styles.Accent.Render("Reference Quotes")
 	refBox := styles.Panel.Width(p.width - 4).
-		Height(p.refPanel.Height + 2).
-		Render(refHeader + "\n" + p.refPanel.View())
+		Height(p.refPanel.Height + 3).
+		Render(refLabel + "\n" + p.refPanel.View())
 
 	var status string
 	if p.statusMsg != "" {
@@ -171,6 +186,7 @@ func (p RecallPage) View() string {
 
 	return lipgloss.JoinVertical(lipgloss.Left,
 		inputBox,
+		keywordsLine,
 		helpLine,
 		responseBox,
 		refBox,
@@ -187,8 +203,8 @@ func (p *RecallPage) SetSize(width, height int) {
 func (p *RecallPage) recalcLayout() {
 	innerW := p.width - 6 // account for panel borders + padding
 	// Divide remaining vertical space between response and ref panels.
-	// Reserve: 3 (input) + 1 (help) + 2 (headers) + 4 (borders) = 10
-	remaining := p.height - 10
+	// Reserve: 3 (input) + 1 (keywords) + 1 (help) + (1 label + 2 borders) * 2 panels = 11
+	remaining := p.height - 11
 	responseH := remaining * 2 / 3
 	refH := remaining - responseH
 	if responseH < 3 {
@@ -222,7 +238,7 @@ func (p *RecallPage) runRecall(question string) tea.Cmd {
 		// and chain streaming via a subsequent Cmd.
 		_ = quotes // passed via closure to streaming goroutine below
 
-		return quotesAndStreamMsg{question: question, quotes: quotes}
+		return quotesAndStreamMsg{question: question, quotes: quotes, keywords: keywords}
 	}
 }
 
@@ -230,11 +246,13 @@ func (p *RecallPage) runRecall(question string) tea.Cmd {
 type quotesAndStreamMsg struct {
 	question string
 	quotes   []core.Quote
+	keywords []string
 }
 
 // We handle this internal message in Update by dispatching two effects.
 func (p RecallPage) handleQuotesAndStream(msg quotesAndStreamMsg) (RecallPage, tea.Cmd) {
 	p.quotes = msg.quotes
+	p.keywords = msg.keywords
 	p.refPanel.SetContent(renderQuotes(msg.quotes))
 
 	engine := p.engine
