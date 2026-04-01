@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -21,6 +22,7 @@ type Engine struct {
 
 // New creates an Engine from an open DB store and current settings.
 func New(store *db.Store, cfg *Settings) *Engine {
+	slog.Info("engine: creating engine", "provider_host", cfg.Provider.Host, "provider_port", cfg.Provider.Port, "model", cfg.Provider.Model)
 	return &Engine{
 		store: store,
 		llm:   llm.NewClient(cfg.Provider),
@@ -29,17 +31,20 @@ func New(store *db.Store, cfg *Settings) *Engine {
 }
 
 func (e *Engine) Close() error {
+	slog.Info("engine: closing")
 	return e.store.Close()
 }
 
 // UpdateProvider rebuilds the LLM client after settings change.
 func (e *Engine) UpdateProvider(cfg ProviderConfig) {
+	slog.Info("engine: updating provider", "host", cfg.Host, "port", cfg.Port, "model", cfg.Model)
 	e.cfg.Provider = cfg
 	e.llm = llm.NewClient(cfg)
 }
 
 // UpdateSettings replaces the engine's in-memory settings.
 func (e *Engine) UpdateSettings(s *Settings) {
+	slog.Info("engine: updating settings", "host", s.Provider.Host, "port", s.Provider.Port, "model", s.Provider.Model, "max_results", s.Search.MaxResults)
 	e.cfg = s
 	e.llm = llm.NewClient(s.Provider)
 }
@@ -54,25 +59,41 @@ func (e *Engine) AddQuote(ctx context.Context, content string) (*Quote, error) {
 		return nil, fmt.Errorf("quote content is empty")
 	}
 
+	slog.Info("engine: adding quote", "content_len", len(content), "content_preview", truncate(content, 100))
+
 	id, err := e.store.InsertQuote(content)
 	if err != nil {
+		slog.Error("engine: failed to insert quote", "error", err)
 		return nil, fmt.Errorf("store quote: %w", err)
 	}
+	slog.Info("engine: quote inserted", "id", id)
 
+	slog.Info("engine: extracting tags via LLM", "quote_id", id)
 	tags, err := e.ExtractTags(ctx, content)
 	if err != nil {
-		// Best-effort: log and continue without tags.
+		slog.Error("engine: tag extraction failed, saving without tags", "quote_id", id, "error", err)
 		tags = []string{}
 	}
+	slog.Info("engine: tags extracted", "quote_id", id, "tags", tags)
 
 	if len(tags) > 0 {
 		tagIDs, err := e.store.UpsertTags(tags)
-		if err == nil {
-			_ = e.store.InsertQuoteTags(id, tagIDs)
-			_ = e.store.UpdateQuoteFTS(id, tags)
+		if err != nil {
+			slog.Error("engine: upsert tags failed", "quote_id", id, "error", err)
+		} else {
+			slog.Debug("engine: tag IDs", "quote_id", id, "tag_ids", tagIDs)
+			if err := e.store.InsertQuoteTags(id, tagIDs); err != nil {
+				slog.Error("engine: insert quote-tags failed", "quote_id", id, "error", err)
+			}
+			if err := e.store.UpdateQuoteFTS(id, tags); err != nil {
+				slog.Error("engine: update FTS failed", "quote_id", id, "error", err)
+			}
 		}
+	} else {
+		slog.Warn("engine: no tags for quote, FTS will only index content", "quote_id", id)
 	}
 
+	slog.Info("engine: add quote complete", "id", id, "tag_count", len(tags))
 	return &Quote{
 		ID:        id,
 		Content:   content,
@@ -84,15 +105,20 @@ func (e *Engine) AddQuote(ctx context.Context, content string) (*Quote, error) {
 
 // ListQuotes returns all quotes, newest first.
 func (e *Engine) ListQuotes(ctx context.Context) ([]Quote, error) {
+	slog.Debug("engine: listing quotes")
 	rows, err := e.store.ListQuotes()
 	if err != nil {
+		slog.Error("engine: list quotes failed", "error", err)
 		return nil, err
 	}
-	return rowsToQuotes(rows), nil
+	quotes := rowsToQuotes(rows)
+	slog.Debug("engine: listed quotes", "count", len(quotes))
+	return quotes, nil
 }
 
 // DeleteQuote removes a quote by ID.
 func (e *Engine) DeleteQuote(ctx context.Context, id int64) error {
+	slog.Info("engine: deleting quote", "id", id)
 	return e.store.DeleteQuote(id)
 }
 
@@ -100,6 +126,7 @@ func (e *Engine) DeleteQuote(ctx context.Context, id int64) error {
 
 // ExtractTags asks the LLM to produce keyword tags for a piece of text.
 func (e *Engine) ExtractTags(ctx context.Context, text string) ([]string, error) {
+	slog.Debug("engine: extracting tags", "text_len", len(text))
 	msgs := []llm.Message{
 		{
 			Role: "system",
@@ -112,13 +139,22 @@ func (e *Engine) ExtractTags(ctx context.Context, text string) ([]string, error)
 	}
 	raw, err := e.llm.Chat(ctx, msgs, nil)
 	if err != nil {
+		slog.Error("engine: extract tags LLM call failed", "error", err)
 		return nil, err
 	}
-	return parseJSONStringArray(raw)
+	slog.Debug("engine: extract tags raw response", "raw", raw)
+	tags, err := parseJSONStringArray(raw)
+	if err != nil {
+		slog.Error("engine: parse tags failed", "raw", raw, "error", err)
+		return nil, err
+	}
+	slog.Info("engine: extracted tags", "tags", tags)
+	return tags, nil
 }
 
 // ExtractKeywords asks the LLM to produce search keywords for a question.
 func (e *Engine) ExtractKeywords(ctx context.Context, question string) ([]string, error) {
+	slog.Info("engine: extracting keywords for question", "question", question)
 	msgs := []llm.Message{
 		{
 			Role: "system",
@@ -130,18 +166,33 @@ func (e *Engine) ExtractKeywords(ctx context.Context, question string) ([]string
 	}
 	raw, err := e.llm.Chat(ctx, msgs, nil)
 	if err != nil {
+		slog.Error("engine: extract keywords LLM call failed", "error", err)
 		return nil, err
 	}
-	return parseJSONStringArray(raw)
+	slog.Debug("engine: extract keywords raw response", "raw", raw)
+	keywords, err := parseJSONStringArray(raw)
+	if err != nil {
+		slog.Error("engine: parse keywords failed", "raw", raw, "error", err)
+		return nil, err
+	}
+	slog.Info("engine: extracted keywords", "keywords", keywords)
+	return keywords, nil
 }
 
 // SearchQuotes runs a ranked FTS5 search using the given keywords.
 func (e *Engine) SearchQuotes(ctx context.Context, keywords []string) ([]Quote, error) {
+	slog.Info("engine: searching quotes", "keywords", keywords, "max_results", e.cfg.Search.MaxResults)
 	rows, err := e.store.SearchQuotes(keywords, e.cfg.Search.MaxResults)
 	if err != nil {
+		slog.Error("engine: search failed", "error", err)
 		return nil, err
 	}
-	return rowsToQuotes(rows), nil
+	quotes := rowsToQuotes(rows)
+	slog.Info("engine: search complete", "result_count", len(quotes))
+	for i, q := range quotes {
+		slog.Debug("engine: search result", "index", i, "id", q.ID, "content_preview", truncate(q.Content, 80), "tags", q.Tags)
+	}
+	return quotes, nil
 }
 
 // GenerateResponse streams a synthesized answer grounded in candidate quotes.
@@ -153,6 +204,7 @@ func (e *Engine) GenerateResponse(
 	candidates []Quote,
 	tokenCh chan<- string,
 ) error {
+	slog.Info("engine: generating response", "question", question, "candidate_count", len(candidates))
 	var sb strings.Builder
 	for i, q := range candidates {
 		sb.WriteString(fmt.Sprintf("[%d] %s\n", i+1, q.Content))
@@ -163,11 +215,16 @@ func (e *Engine) GenerateResponse(
 		`If the notes do not contain enough information, say so clearly. Be concise and direct.` +
 		"\n\nReference notes:\n" + sb.String()
 
+	slog.Debug("engine: response system prompt", "prompt_len", len(systemPrompt))
+
 	msgs := []llm.Message{
 		{Role: "system", Content: systemPrompt},
 		{Role: "user", Content: question},
 	}
 	_, err := e.llm.Chat(ctx, msgs, tokenCh)
+	if err != nil {
+		slog.Error("engine: generate response failed", "error", err)
+	}
 	return err
 }
 
@@ -175,14 +232,25 @@ func (e *Engine) GenerateResponse(
 
 // FetchModels retrieves available model IDs from the provider.
 func (e *Engine) FetchModels(ctx context.Context, cfg ProviderConfig) ([]string, error) {
+	slog.Info("engine: fetching models", "host", cfg.Host, "port", cfg.Port)
 	c := llm.NewClient(cfg)
-	return c.FetchModels(ctx)
+	models, err := c.FetchModels(ctx)
+	if err != nil {
+		slog.Error("engine: fetch models failed", "error", err)
+		return nil, err
+	}
+	slog.Info("engine: models fetched", "count", len(models))
+	return models, err
 }
 
 // TestProvider checks connectivity to the given provider config.
 func (e *Engine) TestProvider(ctx context.Context, cfg ProviderConfig) error {
+	slog.Info("engine: testing provider", "host", cfg.Host, "port", cfg.Port)
 	c := llm.NewClient(cfg)
 	_, err := c.FetchModels(ctx)
+	if err != nil {
+		slog.Error("engine: test provider failed", "error", err)
+	}
 	return err
 }
 
@@ -190,30 +258,39 @@ func (e *Engine) TestProvider(ctx context.Context, cfg ProviderConfig) error {
 
 // LoadSettings reads settings from the DB, falling back to defaults.
 func (e *Engine) LoadSettings(ctx context.Context) (*Settings, error) {
+	slog.Debug("engine: loading settings")
 	val, err := e.store.GetSetting("settings")
 	if err != nil {
+		slog.Warn("engine: load settings failed, using defaults", "error", err)
 		return DefaultSettings(), nil
 	}
 	if val == "" {
+		slog.Debug("engine: no saved settings, using defaults")
 		return DefaultSettings(), nil
 	}
 	var s Settings
 	if err := json.Unmarshal([]byte(val), &s); err != nil {
+		slog.Error("engine: unmarshal settings failed, using defaults", "error", err, "raw", val)
 		return DefaultSettings(), nil
 	}
+	slog.Info("engine: settings loaded", "host", s.Provider.Host, "port", s.Provider.Port, "model", s.Provider.Model)
 	return &s, nil
 }
 
 // SaveSettings persists settings to the DB and updates the engine.
 func (e *Engine) SaveSettings(ctx context.Context, s *Settings) error {
+	slog.Info("engine: saving settings", "host", s.Provider.Host, "port", s.Provider.Port, "model", s.Provider.Model)
 	data, err := json.Marshal(s)
 	if err != nil {
+		slog.Error("engine: marshal settings failed", "error", err)
 		return err
 	}
 	if err := e.store.SetSetting("settings", string(data)); err != nil {
+		slog.Error("engine: persist settings failed", "error", err)
 		return err
 	}
 	e.UpdateSettings(s)
+	slog.Info("engine: settings saved and applied")
 	return nil
 }
 
@@ -249,6 +326,7 @@ func parseJSONStringArray(s string) ([]string, error) {
 	}
 	var tags []string
 	if err := json.Unmarshal([]byte(s), &tags); err != nil {
+		slog.Debug("engine: JSON unmarshal failed, trying comma-split fallback", "input", s, "error", err)
 		// Fallback: split on commas and strip quotes/brackets.
 		s = strings.Trim(s, "[]")
 		for _, part := range strings.Split(s, ",") {
@@ -259,6 +337,13 @@ func parseJSONStringArray(s string) ([]string, error) {
 		}
 	}
 	return tags, nil
+}
+
+func truncate(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n] + "..."
 }
 
 // ProviderConfig is re-exported from the llm package for engine consumers.
