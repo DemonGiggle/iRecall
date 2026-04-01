@@ -204,11 +204,9 @@ func (p *RecallPage) recalcLayout() {
 	innerW := p.width - 6 // account for panel borders + padding
 	// Divide remaining vertical space between response and ref panels.
 	// Height() is inner (before borders), so Panel.Height(n) renders n+2 outer lines.
-	// Each panel overhead = 3 (Height excess) + 2 (borders) = 5.
-	// Fixed overhead: 3 (input) + 1 (keywords) + 1 (help) + 5 + 5 (panels) + 1 (status) = 16
-	// Target body = p.height+3 so app overflow matches pre-keyword baseline.
-	// → remaining = (p.height+3) - 16 = p.height - 13
-	remaining := p.height - 13
+	// Fixed overhead: 3 (input) + 1 (keywords) + 1 (help) + 5 (resp panel) + 5 (ref panel) + 1 (status) = 16
+	// Target body = p.height so total app = header(1) + p.height = T-2, no overflow.
+	remaining := p.height - 16
 	responseH := remaining * 2 / 3
 	refH := remaining - responseH
 	if responseH < 3 {
