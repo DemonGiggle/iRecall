@@ -12,7 +12,9 @@ type activePage int
 
 const (
 	pageRecall activePage = iota
+	pageQuotes
 	pageSettings
+	pageCount // sentinel
 )
 
 type overlayKind int
@@ -30,9 +32,10 @@ type App struct {
 	page    activePage
 	overlay overlayKind
 
-	recall   pages.RecallPage
+	recall    pages.RecallPage
+	quotes    pages.QuotesPage
 	settings_ pages.SettingsPage
-	addQuote pages.AddQuotePage
+	addQuote  pages.AddQuotePage
 
 	width  int
 	height int
@@ -40,15 +43,16 @@ type App struct {
 
 func NewApp(engine *core.Engine, settings *core.Settings, width, height int) App {
 	return App{
-		engine:   engine,
-		settings: settings,
-		page:     pageRecall,
-		overlay:  overlayNone,
-		recall:   pages.NewRecallPage(engine, width, height-3),
+		engine:    engine,
+		settings:  settings,
+		page:      pageRecall,
+		overlay:   overlayNone,
+		recall:    pages.NewRecallPage(engine, width, height-3),
+		quotes:    pages.NewQuotesPage(engine, width, height-3),
 		settings_: pages.NewSettingsPage(engine, width, height-3, settings),
-		addQuote: pages.NewAddQuotePage(engine, width, height),
-		width:    width,
-		height:   height,
+		addQuote:  pages.NewAddQuotePage(engine, width, height),
+		width:     width,
+		height:    height,
 	}
 }
 
@@ -64,6 +68,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.width = msg.Width
 		a.height = msg.Height
 		a.recall.SetSize(msg.Width, msg.Height-3)
+		a.quotes.SetSize(msg.Width, msg.Height-3)
 		a.settings_.SetSize(msg.Width, msg.Height-3)
 		a.addQuote.SetSize(msg.Width, msg.Height)
 		return a, nil
@@ -75,14 +80,19 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "ctrl+c":
 				return a, tea.Quit
 			case "tab":
-				// From recall page, Tab switches to settings.
-				// From settings page, Tab cycles form fields (handled by settings page).
-				if a.page == pageRecall {
-					a.page = pageSettings
-					return a, nil
+				// Cycle forward: Recall → Quotes → Settings → Recall.
+				// Settings page uses Tab internally for field cycling, so only
+				// advance from non-settings pages here.
+				if a.page != pageSettings {
+					next := activePage((int(a.page) + 1) % int(pageCount))
+					a.page = next
+					if next == pageQuotes {
+						cmds = append(cmds, a.quotes.Reload())
+					}
+					return a, tea.Batch(cmds...)
 				}
 			case "esc":
-				// From settings page, Esc goes back to recall.
+				// From settings page, Esc returns to recall.
 				if a.page == pageSettings {
 					a.page = pageRecall
 					return a, nil
@@ -101,7 +111,17 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case pages.CloseAddQuoteMsg:
 		a.overlay = overlayNone
-		return a, nil
+		// Reload quotes if the quotes page is visible.
+		if a.page == pageQuotes {
+			cmds = append(cmds, a.quotes.Reload())
+		}
+		return a, tea.Batch(cmds...)
+
+	case pages.QuotesLoadedMsg:
+		var cmd tea.Cmd
+		a.quotes, cmd = a.quotes.Update(msg)
+		cmds = append(cmds, cmd)
+		return a, tea.Batch(cmds...)
 	}
 
 	// Route messages to the active overlay or page.
@@ -116,6 +136,10 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case pageRecall:
 		var cmd tea.Cmd
 		a.recall, cmd = a.recall.Update(msg)
+		cmds = append(cmds, cmd)
+	case pageQuotes:
+		var cmd tea.Cmd
+		a.quotes, cmd = a.quotes.Update(msg)
 		cmds = append(cmds, cmd)
 	case pageSettings:
 		var cmd tea.Cmd
@@ -133,6 +157,8 @@ func (a App) View() string {
 	switch a.page {
 	case pageRecall:
 		body = a.recall.View()
+	case pageQuotes:
+		body = a.quotes.View()
 	case pageSettings:
 		body = a.settings_.View()
 	}
@@ -154,14 +180,16 @@ func (a App) View() string {
 func (a App) headerView() string {
 	title := styles.TitleBar.Render("iRecall")
 
-	recallTab := styles.TabInactive.Render("Recall")
-	settingsTab := styles.TabInactive.Render("Settings")
-	if a.page == pageRecall {
-		recallTab = styles.TabActive.Render("Recall")
-	} else {
-		settingsTab = styles.TabActive.Render("Settings")
+	tab := func(label string, p activePage) string {
+		if a.page == p {
+			return styles.TabActive.Render(label)
+		}
+		return styles.TabInactive.Render(label)
 	}
-	tabs := recallTab + styles.Muted.Render(" | ") + settingsTab
+	sep := styles.Muted.Render(" | ")
+	tabs := tab("Recall", pageRecall) + sep +
+		tab("Quotes", pageQuotes) + sep +
+		tab("Settings", pageSettings)
 
 	spacer := lipgloss.NewStyle().Width(a.width - lipgloss.Width(title) - lipgloss.Width(tabs) - 4)
 	return lipgloss.JoinHorizontal(lipgloss.Top,
