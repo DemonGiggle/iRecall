@@ -94,13 +94,7 @@ func (e *Engine) AddQuote(ctx context.Context, content string) (*Quote, error) {
 	}
 
 	slog.Info("engine: add quote complete", "id", id, "tag_count", len(tags))
-	return &Quote{
-		ID:        id,
-		Content:   content,
-		Tags:      tags,
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
-	}, nil
+	return e.loadQuote(id)
 }
 
 // ListQuotes returns all quotes, newest first.
@@ -120,6 +114,53 @@ func (e *Engine) ListQuotes(ctx context.Context) ([]Quote, error) {
 func (e *Engine) DeleteQuote(ctx context.Context, id int64) error {
 	slog.Info("engine: deleting quote", "id", id)
 	return e.store.DeleteQuote(id)
+}
+
+// DeleteQuotes removes multiple quotes by ID.
+func (e *Engine) DeleteQuotes(ctx context.Context, ids []int64) error {
+	for _, id := range ids {
+		if err := e.DeleteQuote(ctx, id); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// UpdateQuote rewrites quote content, regenerates tags, and refreshes FTS.
+func (e *Engine) UpdateQuote(ctx context.Context, id int64, content string) (*Quote, error) {
+	content = strings.TrimSpace(content)
+	if content == "" {
+		return nil, fmt.Errorf("quote content is empty")
+	}
+
+	slog.Info("engine: updating quote", "id", id, "content_len", len(content), "content_preview", truncate(content, 100))
+	if err := e.store.UpdateQuoteContent(id, content); err != nil {
+		return nil, fmt.Errorf("update quote content: %w", err)
+	}
+
+	tags, err := e.ExtractTags(ctx, content)
+	if err != nil {
+		slog.Error("engine: tag extraction failed during update, saving without tags", "quote_id", id, "error", err)
+		tags = []string{}
+	}
+
+	var tagIDs []int64
+	if len(tags) > 0 {
+		tagIDs, err = e.store.UpsertTags(tags)
+		if err != nil {
+			slog.Error("engine: upsert tags failed during update", "quote_id", id, "error", err)
+			tags = []string{}
+			tagIDs = nil
+		}
+	}
+	if err := e.store.ReplaceQuoteTags(id, tagIDs); err != nil {
+		return nil, fmt.Errorf("replace quote tags: %w", err)
+	}
+	if err := e.store.UpdateQuoteFTS(id, tags); err != nil {
+		return nil, fmt.Errorf("update quote fts: %w", err)
+	}
+
+	return e.loadQuote(id)
 }
 
 // --- Recall workflow ---
@@ -330,6 +371,15 @@ func rowsToQuotes(rows []db.QuoteRow) []Quote {
 		}
 	}
 	return out
+}
+
+func (e *Engine) loadQuote(id int64) (*Quote, error) {
+	row, err := e.store.GetQuote(id)
+	if err != nil {
+		return nil, err
+	}
+	quotes := rowsToQuotes([]db.QuoteRow{row})
+	return &quotes[0], nil
 }
 
 // parseJSONStringArray parses a JSON string array, with comma-split fallback.

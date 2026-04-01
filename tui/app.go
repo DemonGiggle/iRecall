@@ -21,7 +21,8 @@ type overlayKind int
 
 const (
 	overlayNone overlayKind = iota
-	overlayAddQuote
+	overlayQuoteEditor
+	overlayDeleteQuotes
 )
 
 // App is the root Bubbletea model. It owns page routing and global key handling.
@@ -32,10 +33,11 @@ type App struct {
 	page    activePage
 	overlay overlayKind
 
-	recall    pages.RecallPage
-	quotes    pages.QuotesPage
-	settings_ pages.SettingsPage
-	addQuote  pages.AddQuotePage
+	recall       pages.RecallPage
+	quotes       pages.QuotesPage
+	settings_    pages.SettingsPage
+	quoteEditor  pages.QuoteEditorPage
+	deleteQuotes pages.DeleteQuotesPage
 
 	width  int
 	height int
@@ -43,16 +45,17 @@ type App struct {
 
 func NewApp(engine *core.Engine, settings *core.Settings, width, height int) App {
 	return App{
-		engine:    engine,
-		settings:  settings,
-		page:      pageRecall,
-		overlay:   overlayNone,
-		recall:    pages.NewRecallPage(engine, width, height-3),
-		quotes:    pages.NewQuotesPage(engine, width, height-3),
-		settings_: pages.NewSettingsPage(engine, width, height-3, settings),
-		addQuote:  pages.NewAddQuotePage(engine, width, height),
-		width:     width,
-		height:    height,
+		engine:       engine,
+		settings:     settings,
+		page:         pageRecall,
+		overlay:      overlayNone,
+		recall:       pages.NewRecallPage(engine, width, height-3),
+		quotes:       pages.NewQuotesPage(engine, width, height-3),
+		settings_:    pages.NewSettingsPage(engine, width, height-3, settings),
+		quoteEditor:  pages.NewQuoteEditorPage(engine, width, height),
+		deleteQuotes: pages.NewDeleteQuotesPage(engine, width, height),
+		width:        width,
+		height:       height,
 	}
 }
 
@@ -70,7 +73,8 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.recall.SetSize(msg.Width, msg.Height-3)
 		a.quotes.SetSize(msg.Width, msg.Height-3)
 		a.settings_.SetSize(msg.Width, msg.Height-3)
-		a.addQuote.SetSize(msg.Width, msg.Height)
+		a.quoteEditor.SetSize(msg.Width, msg.Height)
+		a.deleteQuotes.SetSize(msg.Width, msg.Height)
 		return a, nil
 
 	case tea.KeyMsg:
@@ -94,17 +98,32 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	// Overlay lifecycle.
-	case pages.OpenAddQuoteMsg:
-		a.overlay = overlayAddQuote
-		a.addQuote.Reset()
-		return a, a.addQuote.Init()
+	case pages.OpenQuoteEditorMsg:
+		a.overlay = overlayQuoteEditor
+		a.quoteEditor.Reset(msg.Mode, msg.Quote)
+		return a, a.quoteEditor.Init()
 
-	case pages.CloseAddQuoteMsg:
+	case pages.CloseQuoteEditorMsg:
 		a.overlay = overlayNone
-		// Reload quotes if the quotes page is visible.
-		if a.page == pageQuotes {
-			cmds = append(cmds, a.quotes.Reload())
+		if msg.SavedQuote != nil {
+			a.recall.ApplyQuoteUpdate(*msg.SavedQuote)
+			a.quotes.ApplyQuoteUpdate(*msg.SavedQuote)
 		}
+		cmds = append(cmds, a.quotes.Reload())
+		return a, tea.Batch(cmds...)
+
+	case pages.OpenDeleteQuotesMsg:
+		a.overlay = overlayDeleteQuotes
+		a.deleteQuotes.Reset(msg.Quotes)
+		return a, a.deleteQuotes.Init()
+
+	case pages.CloseDeleteQuotesMsg:
+		a.overlay = overlayNone
+		if len(msg.DeletedIDs) > 0 {
+			a.recall.RemoveQuotes(msg.DeletedIDs)
+			a.quotes.RemoveQuotes(msg.DeletedIDs)
+		}
+		cmds = append(cmds, a.quotes.Reload())
 		return a, tea.Batch(cmds...)
 
 	case pages.QuotesLoadedMsg:
@@ -115,9 +134,15 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	// Route messages to the active overlay or page.
-	if a.overlay == overlayAddQuote {
+	if a.overlay == overlayQuoteEditor {
 		var cmd tea.Cmd
-		a.addQuote, cmd = a.addQuote.Update(msg)
+		a.quoteEditor, cmd = a.quoteEditor.Update(msg)
+		cmds = append(cmds, cmd)
+		return a, tea.Batch(cmds...)
+	}
+	if a.overlay == overlayDeleteQuotes {
+		var cmd tea.Cmd
+		a.deleteQuotes, cmd = a.deleteQuotes.Update(msg)
 		cmds = append(cmds, cmd)
 		return a, tea.Batch(cmds...)
 	}
@@ -155,10 +180,18 @@ func (a App) View() string {
 
 	base := lipgloss.JoinVertical(lipgloss.Left, header, body)
 
-	if a.overlay == overlayAddQuote {
+	if a.overlay == overlayQuoteEditor {
 		return lipgloss.Place(a.width, a.height,
 			lipgloss.Center, lipgloss.Center,
-			a.addQuote.View(),
+			a.quoteEditor.View(),
+			lipgloss.WithWhitespaceChars(" "),
+			lipgloss.WithWhitespaceForeground(styles.ColorMuted),
+		)
+	}
+	if a.overlay == overlayDeleteQuotes {
+		return lipgloss.Place(a.width, a.height,
+			lipgloss.Center, lipgloss.Center,
+			a.deleteQuotes.View(),
 			lipgloss.WithWhitespaceChars(" "),
 			lipgloss.WithWhitespaceForeground(styles.ColorMuted),
 		)

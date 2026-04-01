@@ -98,15 +98,24 @@ func (s *Store) DeleteQuote(id int64) error {
 	return err
 }
 
+// UpdateQuoteContent rewrites quote content and bumps updated_at.
+func (s *Store) UpdateQuoteContent(id int64, content string) error {
+	slog.Info("db: updating quote content", "id", id, "content_len", len(content))
+	_, err := s.db.Exec(
+		`UPDATE quotes SET content = ?, updated_at = ? WHERE id = ?`,
+		content, time.Now().Unix(), id,
+	)
+	if err != nil {
+		slog.Error("db: update quote failed", "id", id, "error", err)
+		return fmt.Errorf("update quote: %w", err)
+	}
+	return nil
+}
+
 // ListQuotes returns all quotes with their tags, newest first.
 func (s *Store) ListQuotes() ([]QuoteRow, error) {
 	slog.Debug("db: listing all quotes")
-	rows, err := s.db.Query(`
-		SELECT q.id, q.content, q.created_at, q.updated_at,
-		       COALESCE(GROUP_CONCAT(t.name, ','), '') AS tags
-		FROM quotes q
-		LEFT JOIN quote_tags qt ON qt.quote_id = q.id
-		LEFT JOIN tags t        ON t.id = qt.tag_id
+	rows, err := s.db.Query(baseQuoteSelect + `
 		GROUP BY q.id
 		ORDER BY q.created_at DESC
 	`)
@@ -119,6 +128,31 @@ func (s *Store) ListQuotes() ([]QuoteRow, error) {
 	slog.Debug("db: listed quotes", "count", len(result))
 	return result, err
 }
+
+// GetQuote returns one quote by ID with associated tags.
+func (s *Store) GetQuote(id int64) (QuoteRow, error) {
+	slog.Debug("db: fetching quote", "id", id)
+	row := s.db.QueryRow(baseQuoteSelect+`
+		WHERE q.id = ?
+		GROUP BY q.id
+	`, id)
+	var out QuoteRow
+	if err := row.Scan(&out.ID, &out.Content, &out.CreatedAt, &out.UpdatedAt, &out.Tags); err != nil {
+		if err == sql.ErrNoRows {
+			return QuoteRow{}, fmt.Errorf("quote %d not found", id)
+		}
+		return QuoteRow{}, fmt.Errorf("get quote: %w", err)
+	}
+	return out, nil
+}
+
+const baseQuoteSelect = `
+		SELECT q.id, q.content, q.created_at, q.updated_at,
+		       COALESCE(GROUP_CONCAT(t.name, ','), '') AS tags
+		FROM quotes q
+		LEFT JOIN quote_tags qt ON qt.quote_id = q.id
+		LEFT JOIN tags t        ON t.id = qt.tag_id
+`
 
 // SearchQuotes performs a ranked FTS5 query and returns up to limit results.
 // keywords is joined as "kw1 OR kw2 OR ..." before querying.
@@ -235,6 +269,15 @@ func (s *Store) InsertQuoteTags(quoteID int64, tagIDs []int64) error {
 		}
 	}
 	return nil
+}
+
+// ReplaceQuoteTags resets all quote-tag associations for a quote.
+func (s *Store) ReplaceQuoteTags(quoteID int64, tagIDs []int64) error {
+	slog.Debug("db: replacing quote-tag associations", "quote_id", quoteID, "tag_ids", tagIDs)
+	if _, err := s.db.Exec(`DELETE FROM quote_tags WHERE quote_id = ?`, quoteID); err != nil {
+		return fmt.Errorf("clear quote tags: %w", err)
+	}
+	return s.InsertQuoteTags(quoteID, tagIDs)
 }
 
 // --- Settings ---

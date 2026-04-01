@@ -3,7 +3,6 @@ package pages
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
@@ -23,6 +22,7 @@ type QuotesPage struct {
 	engine   *core.Engine
 	viewport viewport.Model
 	quotes   []core.Quote
+	quoteFns quoteSelection
 	loading  bool
 	errMsg   string
 	width    int
@@ -32,11 +32,12 @@ type QuotesPage struct {
 func NewQuotesPage(engine *core.Engine, width, height int) QuotesPage {
 	vp := viewport.New(width-4, height-4)
 	return QuotesPage{
-		engine:  engine,
+		engine:   engine,
 		viewport: vp,
-		loading: true,
-		width:   width,
-		height:  height,
+		quoteFns: newQuoteSelection(),
+		loading:  true,
+		width:    width,
+		height:   height,
 	}
 }
 
@@ -52,16 +53,41 @@ func (p QuotesPage) Update(msg tea.Msg) (QuotesPage, tea.Cmd) {
 			p.errMsg = "Error loading quotes: " + msg.Err.Error()
 		} else {
 			p.quotes = msg.Quotes
+			p.quoteFns.clamp(p.quotes)
 			p.viewport.SetContent(p.renderQuotes())
 		}
 		return p, nil
 
 	case tea.KeyMsg:
-		// Reload on 'r'.
-		if msg.String() == "r" {
+		switch msg.String() {
+		case "r":
 			p.loading = true
 			p.errMsg = ""
 			return p, p.loadQuotes()
+		case "up":
+			p.quoteFns.move(-1, p.quotes)
+			p.viewport.SetContent(p.renderQuotes())
+			return p, nil
+		case "down":
+			p.quoteFns.move(1, p.quotes)
+			p.viewport.SetContent(p.renderQuotes())
+			return p, nil
+		case " ":
+			p.quoteFns.toggleCurrent(p.quotes)
+			p.viewport.SetContent(p.renderQuotes())
+			return p, nil
+		case "e":
+			if q := p.quoteFns.current(p.quotes); q != nil {
+				quote := *q
+				return p, func() tea.Msg {
+					return OpenQuoteEditorMsg{Mode: QuoteEditorModeEdit, Quote: &quote}
+				}
+			}
+		case "d":
+			selected := p.quoteFns.selectedQuotes(p.quotes)
+			if len(selected) > 0 {
+				return p, func() tea.Msg { return OpenDeleteQuotesMsg{Quotes: selected} }
+			}
 		}
 	}
 
@@ -71,7 +97,7 @@ func (p QuotesPage) Update(msg tea.Msg) (QuotesPage, tea.Cmd) {
 }
 
 func (p QuotesPage) View() string {
-	helpLine := styles.HelpBar.Render("↑/↓: Scroll   PgUp/PgDn: Page   R: Refresh   Tab: Switch page")
+	helpLine := styles.HelpBar.Render("↑/↓: Move   Space: Select   E: Edit   D: Delete   R: Refresh   PgUp/PgDn: Page")
 
 	var body string
 	switch {
@@ -121,31 +147,31 @@ func (p *QuotesPage) loadQuotes() tea.Cmd {
 }
 
 func (p *QuotesPage) renderQuotes() string {
-	innerW := p.viewport.Width - 2
-	if innerW < 20 {
-		innerW = 20
-	}
+	return renderQuoteFunctionList(p.quotes, p.quoteFns, p.viewport.Width-2, true)
+}
 
-	var sb strings.Builder
-	sep := styles.Muted.Render(strings.Repeat("─", innerW))
-
-	for i, q := range p.quotes {
-		// Quote number + content.
-		num := styles.QuoteNumber.Render(fmt.Sprintf("[%d]", i+1))
-		content := lipgloss.NewStyle().Width(innerW).Render(q.Content)
-		sb.WriteString(num + " " + content + "\n")
-
-		// Tags line.
-		if len(q.Tags) > 0 {
-			tagStr := strings.Join(q.Tags, "  ·  ")
-			sb.WriteString(styles.Muted.Render("    Tags: ") + styles.Accent.Render(tagStr) + "\n")
-		} else {
-			sb.WriteString(styles.Muted.Render("    Tags: (none)") + "\n")
-		}
-
-		if i < len(p.quotes)-1 {
-			sb.WriteString(sep + "\n")
+func (p *QuotesPage) ApplyQuoteUpdate(updated core.Quote) {
+	for i := range p.quotes {
+		if p.quotes[i].ID == updated.ID {
+			p.quotes[i] = updated
+			p.viewport.SetContent(p.renderQuotes())
+			return
 		}
 	}
-	return sb.String()
+}
+
+func (p *QuotesPage) RemoveQuotes(ids []int64) {
+	if len(ids) == 0 || len(p.quotes) == 0 {
+		return
+	}
+	remove := idsSet(ids)
+	filtered := p.quotes[:0]
+	for _, q := range p.quotes {
+		if !remove[q.ID] {
+			filtered = append(filtered, q)
+		}
+	}
+	p.quotes = filtered
+	p.quoteFns.clamp(p.quotes)
+	p.viewport.SetContent(p.renderQuotes())
 }

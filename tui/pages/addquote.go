@@ -13,24 +13,37 @@ import (
 	"github.com/gigol/irecall/tui/styles"
 )
 
-// --- Messages ---
+type QuoteEditorMode int
 
-// CloseAddQuoteMsg tells the app to dismiss the overlay.
-type CloseAddQuoteMsg struct{}
+const (
+	QuoteEditorModeAdd QuoteEditorMode = iota
+	QuoteEditorModeEdit
+)
 
-// AddQuoteDoneMsg signals the result of an add-quote operation.
-type AddQuoteDoneMsg struct {
+// OpenQuoteEditorMsg tells the app router to show the quote editor overlay.
+type OpenQuoteEditorMsg struct {
+	Mode  QuoteEditorMode
+	Quote *core.Quote
+}
+
+// CloseQuoteEditorMsg tells the app router to dismiss the quote editor overlay.
+type CloseQuoteEditorMsg struct {
+	SavedQuote *core.Quote
+}
+
+// QuoteEditorDoneMsg signals the result of an add/edit operation.
+type QuoteEditorDoneMsg struct {
 	Quote *core.Quote
 	Err   error
 }
 
-// --- AddQuotePage ---
-
-// AddQuotePage is a modal overlay for capturing a new quote.
-type AddQuotePage struct {
+// QuoteEditorPage is a modal overlay for adding or editing a quote.
+type QuoteEditorPage struct {
 	engine    *core.Engine
 	textarea  textarea.Model
 	spinner   spinner.Model
+	mode      QuoteEditorMode
+	editingID int64
 	busy      bool
 	statusMsg string
 	isErr     bool
@@ -40,7 +53,7 @@ type AddQuotePage struct {
 	height int
 }
 
-func NewAddQuotePage(engine *core.Engine, width, height int) AddQuotePage {
+func NewQuoteEditorPage(engine *core.Engine, width, height int) QuoteEditorPage {
 	ta := textarea.New()
 	ta.Placeholder = "Type or paste your note here. Multi-line input supported."
 	ta.Focus()
@@ -52,23 +65,23 @@ func NewAddQuotePage(engine *core.Engine, width, height int) AddQuotePage {
 	sp.Spinner = spinner.Dot
 	sp.Style = lipgloss.NewStyle().Foreground(styles.ColorAccent)
 
-	return AddQuotePage{
+	return QuoteEditorPage{
 		engine:   engine,
 		textarea: ta,
 		spinner:  sp,
 		width:    width,
 		height:   height,
+		mode:     QuoteEditorModeAdd,
 	}
 }
 
-func (p AddQuotePage) Init() tea.Cmd {
+func (p QuoteEditorPage) Init() tea.Cmd {
 	return textarea.Blink
 }
 
-func (p AddQuotePage) Update(msg tea.Msg) (AddQuotePage, tea.Cmd) {
+func (p QuoteEditorPage) Update(msg tea.Msg) (QuoteEditorPage, tea.Cmd) {
 	var cmds []tea.Cmd
 
-	// Clear status message after timeout.
 	if !p.clearAt.IsZero() && time.Now().After(p.clearAt) {
 		p.statusMsg = ""
 		p.clearAt = time.Time{}
@@ -79,9 +92,8 @@ func (p AddQuotePage) Update(msg tea.Msg) (AddQuotePage, tea.Cmd) {
 		switch msg.String() {
 		case "esc":
 			if !p.busy {
-				return p, func() tea.Msg { return CloseAddQuoteMsg{} }
+				return p, func() tea.Msg { return CloseQuoteEditorMsg{} }
 			}
-
 		case "ctrl+s":
 			if p.busy {
 				break
@@ -95,10 +107,10 @@ func (p AddQuotePage) Update(msg tea.Msg) (AddQuotePage, tea.Cmd) {
 			}
 			p.busy = true
 			p.statusMsg = ""
-			cmds = append(cmds, p.spinner.Tick, p.doAdd(content))
+			cmds = append(cmds, p.spinner.Tick, p.persistQuote(content))
 		}
 
-	case AddQuoteDoneMsg:
+	case QuoteEditorDoneMsg:
 		p.busy = false
 		if msg.Err != nil {
 			p.statusMsg = "Error: " + msg.Err.Error()
@@ -108,10 +120,8 @@ func (p AddQuotePage) Update(msg tea.Msg) (AddQuotePage, tea.Cmd) {
 			p.statusMsg = "Saved."
 			p.isErr = false
 			p.clearAt = time.Now().Add(2 * time.Second)
-			p.textarea.Reset()
-			// Close after a brief moment so the user sees "Saved."
-			cmds = append(cmds, tea.Tick(2*time.Second, func(t time.Time) tea.Msg {
-				return CloseAddQuoteMsg{}
+			cmds = append(cmds, tea.Tick(2*time.Second, func(time.Time) tea.Msg {
+				return CloseQuoteEditorMsg{SavedQuote: msg.Quote}
 			}))
 		}
 
@@ -130,7 +140,7 @@ func (p AddQuotePage) Update(msg tea.Msg) (AddQuotePage, tea.Cmd) {
 	return p, tea.Batch(cmds...)
 }
 
-func (p AddQuotePage) View() string {
+func (p QuoteEditorPage) View() string {
 	helpLine := "  Ctrl+S: Save   Esc: Cancel"
 	if p.busy {
 		helpLine = "  " + p.spinner.View() + " Saving..."
@@ -145,7 +155,11 @@ func (p AddQuotePage) View() string {
 		}
 	}
 
-	hint := styles.Muted.Render("  Tags will be extracted automatically by the LLM.")
+	hint := styles.Muted.Render("  Tags will be regenerated automatically by the LLM.")
+	title := " Add Quote "
+	if p.mode == QuoteEditorModeEdit {
+		title = " Edit Quote "
+	}
 
 	inner := lipgloss.JoinVertical(lipgloss.Left,
 		"\n",
@@ -164,35 +178,46 @@ func (p AddQuotePage) View() string {
 
 	modal := styles.Modal.Width(modalW).Render(inner)
 
-	// Center the modal on screen.
 	return lipgloss.Place(p.width, p.height,
 		lipgloss.Center, lipgloss.Center,
 		lipgloss.JoinVertical(lipgloss.Left,
-			styles.Bold.Foreground(styles.ColorPrimary).Render(" Add Quote "),
+			styles.Bold.Foreground(styles.ColorPrimary).Render(title),
 			modal,
 		),
 	)
 }
 
-func (p *AddQuotePage) SetSize(width, height int) {
+func (p *QuoteEditorPage) SetSize(width, height int) {
 	p.width = width
 	p.height = height
 	p.textarea.SetWidth(width - 12)
 }
 
-func (p *AddQuotePage) Reset() {
+func (p *QuoteEditorPage) Reset(mode QuoteEditorMode, quote *core.Quote) {
+	p.mode = mode
 	p.textarea.Reset()
 	p.textarea.Focus()
 	p.statusMsg = ""
 	p.isErr = false
 	p.busy = false
 	p.clearAt = time.Time{}
+	p.editingID = 0
+	if quote != nil {
+		p.editingID = quote.ID
+		p.textarea.SetValue(quote.Content)
+	}
 }
 
-func (p *AddQuotePage) doAdd(content string) tea.Cmd {
+func (p *QuoteEditorPage) persistQuote(content string) tea.Cmd {
 	engine := p.engine
+	mode := p.mode
+	editingID := p.editingID
 	return func() tea.Msg {
+		if mode == QuoteEditorModeEdit {
+			q, err := engine.UpdateQuote(context.Background(), editingID, content)
+			return QuoteEditorDoneMsg{Quote: q, Err: err}
+		}
 		q, err := engine.AddQuote(context.Background(), content)
-		return AddQuoteDoneMsg{Quote: q, Err: err}
+		return QuoteEditorDoneMsg{Quote: q, Err: err}
 	}
 }

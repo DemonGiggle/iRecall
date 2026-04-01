@@ -28,9 +28,6 @@ type QuotesReadyMsg struct{ Quotes []core.Quote }
 // KeywordsReadyMsg carries the extracted search keywords.
 type KeywordsReadyMsg struct{ Keywords []string }
 
-// OpenAddQuoteMsg tells the app router to show the Add Quote overlay.
-type OpenAddQuoteMsg struct{}
-
 // --- RecallPage ---
 
 // RecallPage is the main Q&A page.
@@ -47,6 +44,7 @@ type RecallPage struct {
 	quotes   []core.Quote
 	keywords []string
 	respBuf  string
+	quoteFns quoteSelection
 
 	width  int
 	height int
@@ -63,11 +61,12 @@ func NewRecallPage(engine *core.Engine, width, height int) RecallPage {
 	sp.Style = lipgloss.NewStyle().Foreground(styles.ColorAccent)
 
 	p := RecallPage{
-		engine:  engine,
-		input:   ti,
-		spinner: sp,
-		width:   width,
-		height:  height,
+		engine:   engine,
+		input:    ti,
+		spinner:  sp,
+		width:    width,
+		height:   height,
+		quoteFns: newQuoteSelection(),
 	}
 	p.recalcLayout()
 	return p
@@ -84,7 +83,7 @@ func (p RecallPage) Update(msg tea.Msg) (RecallPage, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+n":
-			return p, func() tea.Msg { return OpenAddQuoteMsg{} }
+			return p, func() tea.Msg { return OpenQuoteEditorMsg{Mode: QuoteEditorModeAdd} }
 
 		case "enter":
 			if p.busy || strings.TrimSpace(p.input.Value()) == "" {
@@ -97,9 +96,35 @@ func (p RecallPage) Update(msg tea.Msg) (RecallPage, tea.Cmd) {
 			p.refPanel.SetContent("")
 			p.quotes = nil
 			p.keywords = nil
+			p.quoteFns.clear()
 			p.busy = true
 			p.statusMsg = ""
-			cmds = append(cmds, p.spinner.Tick, p.runRecall(question))
+			return p, tea.Batch(p.spinner.Tick, p.runRecall(question))
+		case "up":
+			p.quoteFns.move(-1, p.quotes)
+			p.refreshReferencePanel()
+			return p, nil
+		case "down":
+			p.quoteFns.move(1, p.quotes)
+			p.refreshReferencePanel()
+			return p, nil
+		case " ":
+			p.quoteFns.toggleCurrent(p.quotes)
+			p.refreshReferencePanel()
+			return p, nil
+		case "e":
+			if q := p.quoteFns.current(p.quotes); q != nil {
+				quote := *q
+				return p, func() tea.Msg {
+					return OpenQuoteEditorMsg{Mode: QuoteEditorModeEdit, Quote: &quote}
+				}
+			}
+		case "d":
+			selected := p.quoteFns.selectedQuotes(p.quotes)
+			if len(selected) > 0 {
+				return p, func() tea.Msg { return OpenDeleteQuotesMsg{Quotes: selected} }
+			}
+			return p, nil
 		}
 
 	case TokenMsg:
@@ -112,7 +137,8 @@ func (p RecallPage) Update(msg tea.Msg) (RecallPage, tea.Cmd) {
 
 	case QuotesReadyMsg:
 		p.quotes = msg.Quotes
-		p.refPanel.SetContent(renderQuotes(msg.Quotes))
+		p.quoteFns.clamp(p.quotes)
+		p.refreshReferencePanel()
 
 	case RecallDoneMsg:
 		p.busy = false
@@ -154,7 +180,7 @@ func (p RecallPage) Update(msg tea.Msg) (RecallPage, tea.Cmd) {
 
 func (p RecallPage) View() string {
 	helpLine := styles.HelpBar.Render(
-		"Enter: Ask   Ctrl+N: Add Quote   Tab: Settings   Ctrl+C: Quit",
+		"Enter: Ask   Ctrl+N: Add Quote   ↑/↓: Move quote   Space: Select   E: Edit   D: Delete   Tab: Settings",
 	)
 	if p.busy {
 		helpLine = styles.HelpBar.Render(p.spinner.View() + " Thinking...")
@@ -219,6 +245,11 @@ func (p *RecallPage) recalcLayout() {
 	p.refPanel = viewport.New(innerW, refH)
 }
 
+func (p *RecallPage) refreshReferencePanel() {
+	p.quoteFns.clamp(p.quotes)
+	p.refPanel.SetContent(renderQuoteFunctionList(p.quotes, p.quoteFns, p.refPanel.Width, false))
+}
+
 // runRecall starts the full recall pipeline as a tea.Cmd.
 func (p *RecallPage) runRecall(question string) tea.Cmd {
 	engine := p.engine
@@ -255,7 +286,8 @@ type quotesAndStreamMsg struct {
 func (p RecallPage) handleQuotesAndStream(msg quotesAndStreamMsg) (RecallPage, tea.Cmd) {
 	p.quotes = msg.quotes
 	p.keywords = msg.keywords
-	p.refPanel.SetContent(renderQuotes(msg.quotes))
+	p.quoteFns.clamp(msg.quotes)
+	p.refreshReferencePanel()
 
 	engine := p.engine
 	return p, func() tea.Msg {
@@ -287,15 +319,28 @@ type tokenWithChannel struct {
 	ch    <-chan string
 }
 
-func renderQuotes(quotes []core.Quote) string {
-	if len(quotes) == 0 {
-		return styles.Muted.Render("No matching notes found.")
+func (p *RecallPage) ApplyQuoteUpdate(updated core.Quote) {
+	for i := range p.quotes {
+		if p.quotes[i].ID == updated.ID {
+			p.quotes[i] = updated
+			p.refreshReferencePanel()
+			return
+		}
 	}
-	var sb strings.Builder
-	for i, q := range quotes {
-		num := styles.QuoteNumber.Render(fmt.Sprintf("[%d]", i+1))
-		content := styles.QuoteItem.Render(q.Content)
-		sb.WriteString(num + " " + content + "\n\n")
+}
+
+func (p *RecallPage) RemoveQuotes(ids []int64) {
+	if len(ids) == 0 || len(p.quotes) == 0 {
+		return
 	}
-	return strings.TrimRight(sb.String(), "\n")
+	remove := idsSet(ids)
+	filtered := p.quotes[:0]
+	for _, q := range p.quotes {
+		if !remove[q.ID] {
+			filtered = append(filtered, q)
+		}
+	}
+	p.quotes = filtered
+	p.quoteFns.clamp(p.quotes)
+	p.refreshReferencePanel()
 }
