@@ -146,7 +146,7 @@ func (p RecallPage) Update(msg tea.Msg) (RecallPage, tea.Cmd) {
 
 func (p RecallPage) View() string {
 	helpLine := styles.HelpBar.Render(
-		"Enter: Ask   Ctrl+N: Add Quote   Tab: Settings   Q: Quit",
+		"Enter: Ask   Ctrl+N: Add Quote   Tab: Settings   Ctrl+C: Quit",
 	)
 	if p.busy {
 		helpLine = styles.HelpBar.Render(p.spinner.View() + " Thinking...")
@@ -176,11 +176,6 @@ func (p RecallPage) View() string {
 		refBox,
 		status,
 	)
-}
-
-// InputFocused reports whether the question text input is currently focused.
-func (p *RecallPage) InputFocused() bool {
-	return p.input.Focused()
 }
 
 func (p *RecallPage) SetSize(width, height int) {
