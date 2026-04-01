@@ -6,7 +6,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -36,6 +35,7 @@ const (
 	fieldHTTPS
 	fieldAPIKey
 	fieldFetchModels
+	fieldModel
 	fieldMaxResults
 	fieldMinRelevance
 	fieldCount // sentinel
@@ -45,10 +45,12 @@ const (
 type SettingsPage struct {
 	engine *core.Engine
 
-	inputs    [fieldCount]textinput.Model
-	httpsOn   bool
-	modelList list.Model
-	models    []string
+	inputs  [fieldCount]textinput.Model
+	httpsOn bool
+
+	models       []string // available model IDs
+	modelIdx     int      // currently selected index (-1 = none)
+	initialModel string   // model name from settings (before fetch)
 
 	focused   settingsField
 	spinner   spinner.Model
@@ -59,12 +61,6 @@ type SettingsPage struct {
 	width  int
 	height int
 }
-
-type modelItem string
-
-func (m modelItem) FilterValue() string { return string(m) }
-func (m modelItem) Title() string       { return string(m) }
-func (m modelItem) Description() string { return "" }
 
 func NewSettingsPage(engine *core.Engine, width, height int, s *core.Settings) SettingsPage {
 	makeInput := func(placeholder string, masked bool) textinput.Model {
@@ -97,26 +93,16 @@ func NewSettingsPage(engine *core.Engine, width, height int, s *core.Settings) S
 	sp.Spinner = spinner.Dot
 	sp.Style = lipgloss.NewStyle().Foreground(styles.ColorAccent)
 
-	delegate := list.NewDefaultDelegate()
-	delegate.ShowDescription = false
-	ml := list.New(nil, delegate, width-8, 5)
-	ml.SetShowHelp(false)
-	ml.SetShowStatusBar(false)
-	ml.SetFilteringEnabled(false)
-	ml.Title = ""
-	if s.Provider.Model != "" {
-		ml.SetItems([]list.Item{modelItem(s.Provider.Model)})
-	}
-
 	return SettingsPage{
-		engine:    engine,
-		inputs:    inputs,
-		httpsOn:   s.Provider.HTTPS,
-		modelList: ml,
-		focused:   fieldHost,
-		spinner:   sp,
-		width:     width,
-		height:    height,
+		engine:       engine,
+		inputs:       inputs,
+		httpsOn:      s.Provider.HTTPS,
+		initialModel: s.Provider.Model,
+		modelIdx:     -1,
+		focused:      fieldHost,
+		spinner:      sp,
+		width:        width,
+		height:       height,
 	}
 }
 
@@ -131,10 +117,6 @@ func (p SettingsPage) Update(msg tea.Msg) (SettingsPage, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "tab", "shift+tab":
-			// Tab cycles through fields. 'tab' handled at app level for page
-			// switching only when no input is focused — we skip that here.
-			// Handled at the app level; settings page only needs inner field focus.
-			// Fall through to field cycling:
 			dir := 1
 			if msg.String() == "shift+tab" {
 				dir = -1
@@ -154,6 +136,22 @@ func (p SettingsPage) Update(msg tea.Msg) (SettingsPage, tea.Cmd) {
 				p.busy = true
 				p.statusMsg = ""
 				cmds = append(cmds, p.spinner.Tick, p.doFetchModels())
+			}
+
+		case "up", "k":
+			if p.focused == fieldModel && len(p.models) > 0 {
+				p.modelIdx--
+				if p.modelIdx < 0 {
+					p.modelIdx = len(p.models) - 1
+				}
+			}
+
+		case "down", "j":
+			if p.focused == fieldModel && len(p.models) > 0 {
+				p.modelIdx++
+				if p.modelIdx >= len(p.models) {
+					p.modelIdx = 0
+				}
 			}
 
 		case "ctrl+s":
@@ -179,11 +177,18 @@ func (p SettingsPage) Update(msg tea.Msg) (SettingsPage, tea.Cmd) {
 			p.isErr = false
 		} else {
 			p.models = msg.Models
-			items := make([]list.Item, len(msg.Models))
-			for i, m := range msg.Models {
-				items[i] = modelItem(m)
+			// Try to preserve the previously selected model.
+			p.modelIdx = 0
+			prev := p.initialModel
+			if prev == "" {
+				prev = p.SelectedModel()
 			}
-			p.modelList.SetItems(items)
+			for i, m := range msg.Models {
+				if m == prev {
+					p.modelIdx = i
+					break
+				}
+			}
 			p.statusMsg = fmt.Sprintf("Fetched %d models.", len(msg.Models))
 			p.isErr = false
 		}
@@ -196,15 +201,10 @@ func (p SettingsPage) Update(msg tea.Msg) (SettingsPage, tea.Cmd) {
 		}
 	}
 
-	// Update focused input.
+	// Update focused text input.
 	if p.isInputField(p.focused) {
 		var cmd tea.Cmd
 		p.inputs[p.focused], cmd = p.inputs[p.focused].Update(msg)
-		cmds = append(cmds, cmd)
-	}
-	if p.focused == fieldFetchModels+1 { // model list
-		var cmd tea.Cmd
-		p.modelList, cmd = p.modelList.Update(msg)
 		cmds = append(cmds, cmd)
 	}
 
@@ -235,6 +235,8 @@ func (p SettingsPage) View() string {
 		fetchBtn = p.spinner.View() + " Fetching..."
 	}
 
+	modelView := p.modelSelectorView()
+
 	providerSection := lipgloss.JoinVertical(lipgloss.Left,
 		styles.SectionHeader.Render("LLM Provider"),
 		row("Host / IP", p.inputView(fieldHost)),
@@ -244,7 +246,7 @@ func (p SettingsPage) View() string {
 		"",
 		"  "+fetchBtn,
 		"",
-		row("Model", p.modelList.View()),
+		row("Model", modelView),
 	)
 
 	searchSection := lipgloss.JoinVertical(lipgloss.Left,
@@ -276,6 +278,28 @@ func (p SettingsPage) View() string {
 	)
 }
 
+func (p *SettingsPage) modelSelectorView() string {
+	if len(p.models) == 0 {
+		name := p.initialModel
+		if name == "" {
+			name = "(none)"
+		}
+		if p.focused == fieldModel {
+			return styles.Accent.Render(name) + styles.Muted.Render("  Fetch models first")
+		}
+		return styles.Muted.Render(name)
+	}
+
+	name := p.models[p.modelIdx]
+	pos := fmt.Sprintf(" (%d/%d)", p.modelIdx+1, len(p.models))
+
+	if p.focused == fieldModel {
+		return styles.Accent.Render("< "+name+" >") +
+			styles.Muted.Render(pos+"  ↑/↓ to change")
+	}
+	return name + styles.Muted.Render(pos)
+}
+
 func (p *SettingsPage) SetSize(width, height int) {
 	p.width = width
 	p.height = height
@@ -288,14 +312,15 @@ func (p *SettingsPage) LoadFrom(s *core.Settings) {
 	p.inputs[fieldMaxResults].SetValue(strconv.Itoa(s.Search.MaxResults))
 	p.inputs[fieldMinRelevance].SetValue(fmt.Sprintf("%.1f", s.Search.MinRelevance))
 	p.httpsOn = s.Provider.HTTPS
+	p.initialModel = s.Provider.Model
 }
 
 // SelectedModel returns the currently selected model name (if any).
 func (p *SettingsPage) SelectedModel() string {
-	if sel := p.modelList.SelectedItem(); sel != nil {
-		return string(sel.(modelItem))
+	if len(p.models) > 0 && p.modelIdx >= 0 && p.modelIdx < len(p.models) {
+		return p.models[p.modelIdx]
 	}
-	return ""
+	return p.initialModel
 }
 
 // CurrentSettings builds a Settings from the form values.
@@ -360,7 +385,6 @@ func (p *SettingsPage) isInputField(f settingsField) bool {
 }
 
 func (p *SettingsPage) cycleFocus(dir int) {
-	// Unfocus current.
 	if p.isInputField(p.focused) {
 		p.inputs[p.focused].Blur()
 	}
