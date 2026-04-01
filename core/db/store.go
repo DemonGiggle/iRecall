@@ -109,7 +109,21 @@ func (s *Store) SearchQuotes(keywords []string, limit int) ([]QuoteRow, error) {
 	if len(keywords) == 0 {
 		return nil, nil
 	}
-	query := strings.Join(keywords, " OR ")
+	// Quote each keyword with double quotes to escape FTS5 special characters.
+	// Any embedded double quotes are doubled to escape them per FTS5 syntax.
+	quoted := make([]string, 0, len(keywords))
+	for _, kw := range keywords {
+		kw = strings.TrimSpace(kw)
+		if kw == "" {
+			continue
+		}
+		kw = strings.ReplaceAll(kw, `"`, `""`)
+		quoted = append(quoted, `"`+kw+`"`)
+	}
+	if len(quoted) == 0 {
+		return nil, nil
+	}
+	query := strings.Join(quoted, " OR ")
 	rows, err := s.db.Query(`
 		SELECT q.id, q.content, q.created_at, q.updated_at,
 		       COALESCE(GROUP_CONCAT(t.name, ','), '') AS tags
