@@ -118,6 +118,13 @@ func (c *Client) Chat(ctx context.Context, msgs []Message, tokenCh chan<- string
 	}
 	defer resp.Body.Close()
 
+	rawBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		slog.Error("llm: failed to read response body", "error", err)
+		return "", fmt.Errorf("read response body: %w", err)
+	}
+	slog.Debug("llm: raw chat response", "body", string(rawBody))
+
 	var result struct {
 		Choices []struct {
 			Message struct {
@@ -125,7 +132,7 @@ func (c *Client) Chat(ctx context.Context, msgs []Message, tokenCh chan<- string
 			} `json:"message"`
 		} `json:"choices"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	if err := json.Unmarshal(rawBody, &result); err != nil {
 		slog.Error("llm: failed to decode response", "error", err)
 		return "", fmt.Errorf("decode response: %w", err)
 	}
@@ -194,8 +201,11 @@ func (c *Client) FetchModels(ctx context.Context) ([]string, error) {
 func parseSSE(r io.Reader, ch chan<- string) {
 	scanner := bufio.NewScanner(r)
 	tokenCount := 0
+	var raw strings.Builder
 	for scanner.Scan() {
 		line := scanner.Text()
+		raw.WriteString(line)
+		raw.WriteByte('\n')
 		if !strings.HasPrefix(line, "data: ") {
 			continue
 		}
@@ -225,5 +235,6 @@ func parseSSE(r io.Reader, ch chan<- string) {
 	if err := scanner.Err(); err != nil {
 		slog.Error("llm: SSE scanner error", "error", err)
 	}
+	slog.Debug("llm: raw SSE response", "body", raw.String())
 	slog.Debug("llm: SSE stream ended", "total_tokens", tokenCount)
 }
