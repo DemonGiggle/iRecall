@@ -34,10 +34,16 @@ type Message struct {
 	Content string `json:"content"`
 }
 
+// ChatOptions controls optional per-request parameters.
+type ChatOptions struct {
+	Temperature *float64 // nil = provider default
+	MaxTokens   *int     // nil = provider default
+}
+
 // Chat sends a chat completion request.
 // If tokenCh is non-nil, streaming is enabled; tokens are sent to the channel
 // which is closed when the stream ends. Returns empty string when streaming.
-func (c *Client) Chat(ctx context.Context, msgs []Message, tokenCh chan<- string) (string, error) {
+func (c *Client) Chat(ctx context.Context, msgs []Message, tokenCh chan<- string, opts ...ChatOptions) (string, error) {
 	stream := tokenCh != nil
 	url := c.cfg.BaseURL() + "/chat/completions"
 
@@ -50,6 +56,15 @@ func (c *Client) Chat(ctx context.Context, msgs []Message, tokenCh chan<- string
 		"model":    c.cfg.Model,
 		"messages": msgs,
 		"stream":   stream,
+	}
+	if len(opts) > 0 {
+		o := opts[0]
+		if o.Temperature != nil {
+			body["temperature"] = *o.Temperature
+		}
+		if o.MaxTokens != nil {
+			body["max_tokens"] = *o.MaxTokens
+		}
 	}
 	data, err := json.Marshal(body)
 	if err != nil {

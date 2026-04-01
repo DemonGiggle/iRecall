@@ -130,14 +130,19 @@ func (e *Engine) ExtractTags(ctx context.Context, text string) ([]string, error)
 	msgs := []llm.Message{
 		{
 			Role: "system",
-			Content: `You are a keyword extractor. Given a piece of text, return a JSON array of ` +
-				`3 to 8 short, lowercase keyword tags that best represent the core concepts. ` +
-				`Return ONLY the JSON array with no explanation. ` +
-				`Example: ["machine learning", "neural networks", "backpropagation"]`,
+			Content: `You are a JSON keyword extractor. ` +
+				`Output ONLY a valid JSON array of 3 to 8 short lowercase keyword strings. ` +
+				`No explanation, no markdown, no code fences, no extra text — just the JSON array. ` +
+				`Example output: ["emmc", "flash memory", "partition", "offset"]`,
 		},
-		{Role: "user", Content: text},
+		{
+			Role:    "user",
+			Content: "Extract keyword tags for this text:\n" + text,
+		},
 	}
-	raw, err := e.llm.Chat(ctx, msgs, nil)
+	zero := 0.0
+	maxTok := 150
+	raw, err := e.llm.Chat(ctx, msgs, nil, llm.ChatOptions{Temperature: &zero, MaxTokens: &maxTok})
 	if err != nil {
 		slog.Error("engine: extract tags LLM call failed", "error", err)
 		return nil, err
@@ -158,13 +163,19 @@ func (e *Engine) ExtractKeywords(ctx context.Context, question string) ([]string
 	msgs := []llm.Message{
 		{
 			Role: "system",
-			Content: `You are a search keyword extractor. Given a question, return a JSON array of ` +
-				`3 to 6 lowercase keywords or short phrases most useful for searching a personal ` +
-				`knowledge base. Return ONLY the JSON array.`,
+			Content: `You are a JSON search keyword extractor. ` +
+				`Output ONLY a valid JSON array of 3 to 6 short lowercase keyword strings useful for searching a knowledge base. ` +
+				`No explanation, no markdown, no code fences, no extra text — just the JSON array. ` +
+				`Example output: ["emmc", "flash", "partition"]`,
 		},
-		{Role: "user", Content: question},
+		{
+			Role:    "user",
+			Content: "Extract search keywords for this question:\n" + question,
+		},
 	}
-	raw, err := e.llm.Chat(ctx, msgs, nil)
+	zero := 0.0
+	maxTok := 100
+	raw, err := e.llm.Chat(ctx, msgs, nil, llm.ChatOptions{Temperature: &zero, MaxTokens: &maxTok})
 	if err != nil {
 		slog.Error("engine: extract keywords LLM call failed", "error", err)
 		return nil, err
