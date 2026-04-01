@@ -262,7 +262,7 @@ func (p SettingsPage) View() string {
 		}
 	}
 
-	helpLine := styles.HelpBar.Render("Tab/Shift+Tab: Move   Space: Toggle   Enter: Select   Ctrl+S: Save")
+	helpLine := styles.HelpBar.Render("Tab/Shift+Tab: Move   Space: Toggle   Enter: Select   Ctrl+S: Save   Esc: Back")
 
 	return styles.Panel.Width(p.width - 4).Render(
 		lipgloss.JoinVertical(lipgloss.Left,

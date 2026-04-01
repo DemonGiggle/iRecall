@@ -75,12 +75,18 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "q", "ctrl+c":
 				return a, tea.Quit
 			case "tab":
+				// From recall page, Tab switches to settings.
+				// From settings page, Tab cycles form fields (handled by settings page).
 				if a.page == pageRecall {
 					a.page = pageSettings
-				} else {
-					a.page = pageRecall
+					return a, nil
 				}
-				return a, nil
+			case "esc":
+				// From settings page, Esc goes back to recall.
+				if a.page == pageSettings {
+					a.page = pageRecall
+					return a, nil
+				}
 			}
 		}
 		if msg.String() == "ctrl+c" {
@@ -134,14 +140,12 @@ func (a App) View() string {
 	base := lipgloss.JoinVertical(lipgloss.Left, header, body)
 
 	if a.overlay == overlayAddQuote {
-		// Render overlay on top using Place.
 		return lipgloss.Place(a.width, a.height,
 			lipgloss.Center, lipgloss.Center,
 			a.addQuote.View(),
 			lipgloss.WithWhitespaceChars(" "),
 			lipgloss.WithWhitespaceForeground(styles.ColorMuted),
 		)
-		_ = base
 	}
 
 	return base

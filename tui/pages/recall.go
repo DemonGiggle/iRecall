@@ -112,6 +112,18 @@ func (p RecallPage) Update(msg tea.Msg) (RecallPage, tea.Cmd) {
 			p.statusMsg = "Error: " + msg.Err.Error()
 		}
 
+	case quotesAndStreamMsg:
+		return p.handleQuotesAndStream(msg)
+
+	case tokenWithChannel:
+		p.respBuf.WriteString(msg.token)
+		p.response.SetContent(p.respBuf.String())
+		p.response.GotoBottom()
+		ch := msg.ch
+		cmds = append(cmds, func() tea.Msg {
+			return drainNext(ch)
+		})
+
 	case spinner.TickMsg:
 		if p.busy {
 			var cmd tea.Cmd
