@@ -384,13 +384,20 @@ func (e *Engine) loadQuote(id int64) (*Quote, error) {
 
 // parseJSONStringArray parses a JSON string array, with comma-split fallback.
 func parseJSONStringArray(s string) ([]string, error) {
-	s = strings.TrimSpace(s)
+	s = strings.TrimSpace(stripMarkdownCodeFence(s))
+	if s == "" {
+		return nil, fmt.Errorf("empty model response")
+	}
 	// Find the first '[' in case the model prefixes with text.
 	if i := strings.Index(s, "["); i >= 0 {
 		s = s[i:]
 	}
 	if j := strings.LastIndex(s, "]"); j >= 0 {
 		s = s[:j+1]
+	}
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return nil, fmt.Errorf("empty model response")
 	}
 	var tags []string
 	if err := json.Unmarshal([]byte(s), &tags); err != nil {
@@ -403,8 +410,30 @@ func parseJSONStringArray(s string) ([]string, error) {
 				tags = append(tags, strings.ToLower(part))
 			}
 		}
+		if len(tags) == 0 {
+			return nil, fmt.Errorf("parse keyword array: %w", err)
+		}
 	}
 	return tags, nil
+}
+
+func stripMarkdownCodeFence(s string) string {
+	s = strings.TrimSpace(s)
+	if !strings.HasPrefix(s, "```") {
+		return s
+	}
+
+	lines := strings.Split(s, "\n")
+	if len(lines) == 0 {
+		return s
+	}
+	if strings.HasPrefix(lines[0], "```") {
+		lines = lines[1:]
+	}
+	if len(lines) > 0 && strings.TrimSpace(lines[len(lines)-1]) == "```" {
+		lines = lines[:len(lines)-1]
+	}
+	return strings.TrimSpace(strings.Join(lines, "\n"))
 }
 
 func truncate(s string, n int) string {
