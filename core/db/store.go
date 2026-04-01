@@ -22,16 +22,12 @@ func Open(path string) (*Store, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open db: %w", err)
 	}
-	if _, err := db.Exec(`PRAGMA journal_mode = WAL`); err != nil {
-		return nil, err
-	}
-	if _, err := db.Exec(`PRAGMA foreign_keys = ON`); err != nil {
-		return nil, err
-	}
-	if _, err := db.Exec(`PRAGMA busy_timeout = 5000`); err != nil {
+	if err := configureConnection(db); err != nil {
+		db.Close()
 		return nil, err
 	}
 	if err := runMigrations(db); err != nil {
+		db.Close()
 		return nil, fmt.Errorf("migrate: %w", err)
 	}
 	slog.Info("db: database ready")
@@ -275,4 +271,17 @@ func truncate(s string, n int) string {
 		return s
 	}
 	return s[:n] + "..."
+}
+
+func configureConnection(db *sql.DB) error {
+	if _, err := db.Exec(`PRAGMA journal_mode = WAL`); err != nil {
+		return fmt.Errorf("set journal_mode WAL: %w", err)
+	}
+	if _, err := db.Exec(`PRAGMA foreign_keys = ON`); err != nil {
+		return fmt.Errorf("enable foreign keys: %w", err)
+	}
+	if _, err := db.Exec(`PRAGMA busy_timeout = 5000`); err != nil {
+		return fmt.Errorf("set busy timeout: %w", err)
+	}
+	return nil
 }
