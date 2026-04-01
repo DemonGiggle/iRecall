@@ -1,102 +1,152 @@
 # iRecall
 
-A personal knowledge recall system powered by AI. Capture anything — notes, quotes, learnings — and retrieve them conversationally. The LLM extracts tags on ingestion and synthesizes answers from your own knowledge base when you ask questions.
+iRecall is a terminal-first personal knowledge recall tool written in Go. It stores your notes in SQLite, asks an OpenAI-compatible model to extract tags and search keywords, and then answers questions strictly from the notes it retrieved.
 
-## How It Works
+## Current Capabilities
 
-1. **Add a quote** — paste any note or text snippet. The LLM automatically extracts keyword tags.
-2. **Ask a question** — type anything in natural language. The LLM extracts keywords, finds matching quotes via full-text search, and synthesizes a response grounded in your own notes.
-3. **See your sources** — matched reference quotes are always shown alongside the response so you know exactly where the answer came from.
+- Add free-form notes through a modal composer in the TUI
+- Auto-tag notes with an OpenAI-compatible chat-completions endpoint
+- Search notes with SQLite FTS5 and BM25 ranking
+- Generate grounded answers with streamed LLM output
+- Browse all stored notes on a dedicated Quotes page
+- Configure provider connection details and search settings from the Settings page
+- Persist notes and settings locally with XDG-style data/state directories
 
-## Features
+## Interface
 
-- AI-driven tagging and retrieval via any OpenAI-compatible provider (Ollama, LM Studio, OpenAI, etc.)
-- Full-text search with BM25 ranking (SQLite FTS5)
-- Streaming LLM responses
-- Clean separation of engine and UI — same core works with TUI, web, or native UI
-- TUI interface built with Bubbletea
+The current TUI has three pages plus a modal overlay:
+
+- `Recall`: ask questions, see extracted keywords, streamed answers, and matched reference notes
+- `Quotes`: browse every stored quote and its tags
+- `Settings`: configure host, port, HTTPS, API key, model, and search limits
+- `Add Quote` modal: open from the Recall page with `Ctrl+N`
+
+Global navigation:
+
+| Key | Action |
+| --- | --- |
+| `Tab` | Cycle `Recall -> Quotes -> Settings -> Recall` |
+| `Ctrl+C` | Quit |
+
+Recall page:
+
+| Key | Action |
+| --- | --- |
+| `Enter` | Run recall workflow for the current question |
+| `Ctrl+N` | Open the Add Quote modal |
+
+Quotes page:
+
+| Key | Action |
+| --- | --- |
+| `R` | Reload stored quotes |
+| `Up` / `Down` | Scroll |
+| `PgUp` / `PgDn` | Page scroll |
+
+Settings page:
+
+| Key | Action |
+| --- | --- |
+| `Up` / `Down` | Move focus between fields |
+| `Space` | Toggle HTTPS when focused |
+| `Enter` | Fetch models when the button is focused |
+| `Left` / `Right` | Cycle fetched models when the model field is focused |
+| `Ctrl+S` | Save settings |
+
+Add Quote modal:
+
+| Key | Action |
+| --- | --- |
+| `Ctrl+S` | Save the note |
+| `Esc` | Close the modal if no save is in progress |
 
 ## Quick Start
 
 ```bash
-# Build
-go build -o irecall ./cmd/irecall
-
-# Run
-./irecall
+make build
+./bin/irecall
 ```
 
-On first launch, go to the **Settings** page (`Tab`) and configure your LLM provider.
+Useful flags:
 
-## UI Overview
-
-```
-Main Page (Recall)         Settings Page
-┌──────────────────┐       ┌──────────────────┐
-│ [Question input] │       │ Host / Port      │
-│ ─── Response ──  │  Tab  │ API Key          │
-│ Streamed answer  │ ───── │ [Fetch Models]   │
-│ ─── References ─ │       │ Model selector   │
-│ [1] quote...     │       │ Search tuning    │
-│ [2] quote...     │       └──────────────────┘
-└──────────────────┘
-Ctrl+N → Add Quote popup
+```bash
+./bin/irecall --version
+./bin/irecall --debug
 ```
 
-## Keyboard Shortcuts
+On first launch:
 
-| Key | Action |
-|---|---|
-| `Enter` | Submit question |
-| `Ctrl+N` | Open Add Quote popup |
-| `Tab` | Switch between Recall / Settings |
-| `Ctrl+S` | Save (in popup or settings) |
-| `Esc` | Close popup / cancel |
-| `Q` / `Ctrl+C` | Quit |
+1. Open `Settings` with `Tab`.
+2. Enter the provider host, port, HTTPS preference, API key if needed, and a model name.
+3. Optionally use `Fetch Models` to populate the model selector from `/v1/models`.
+4. Save with `Ctrl+S`.
 
-## LLM Provider Setup
+After that:
 
-iRecall works with any OpenAI-compatible API endpoint.
+1. Go back to `Recall`.
+2. Press `Ctrl+N` to add notes.
+3. Ask questions with `Enter`.
 
-| Provider | Host | Port | Notes |
-|---|---|---|---|
-| Ollama | localhost | 11434 | No API key needed |
-| LM Studio | localhost | 1234 | No API key needed |
-| OpenAI | api.openai.com | 443 | Enable HTTPS + API key |
-| Any compatible | your host | your port | |
+## Provider Compatibility
 
-## Data Storage
+iRecall expects an OpenAI-compatible API with:
 
-Follows XDG Base Directory spec:
+- `POST /v1/chat/completions`
+- `GET /v1/models`
+
+Typical setups:
+
+| Provider | Host | Port | HTTPS | API Key |
+| --- | --- | --- | --- | --- |
+| Ollama | `localhost` | `11434` | off | not required |
+| LM Studio | `localhost` | `1234` | off | not required |
+| OpenAI-compatible hosted endpoint | provider host | provider port | usually on | provider-specific |
+
+## Data and Logs
+
+iRecall follows XDG-style directories and stores everything locally:
 
 | Item | Default Path |
-|---|---|
-| Database | `~/.local/share/irecall/irecall.db` |
-| Config | `~/.config/irecall/config.json` |
-| Logs | `~/.local/state/irecall/irecall.log` |
+| --- | --- |
+| SQLite database | `~/.local/share/irecall/irecall.db` |
+| Log file | `~/.local/state/irecall/irecall.log` |
+| Reserved config directory | `~/.config/irecall/` |
 
-## Project Structure
+Notes:
 
-```
+- Settings are currently stored in the SQLite `settings` table, not in a JSON config file.
+- The config directory is created up front but is not yet used for persisted configuration.
+
+## Project Layout
+
+```text
 iRecall/
-├── core/          # Engine — pure business logic, no UI
-│   ├── db/        # SQLite + FTS5 layer
-│   ├── llm/       # OpenAI-compatible client
-│   ├── engine.go  # Public engine API
-│   └── models.go  # Shared data types
-├── tui/           # Bubbletea TUI (depends only on core)
-│   ├── pages/     # Recall, Settings, AddQuote
-│   └── styles/    # Lipgloss theme
-├── cmd/irecall/   # Entry point
-└── config/        # XDG config helpers
+├── cmd/irecall/      # CLI entry point and TUI startup
+├── config/           # XDG directory helpers
+├── core/             # Engine, data models, DB layer, LLM client
+│   ├── db/
+│   └── llm/
+├── tui/              # Bubble Tea application and pages
+│   ├── pages/
+│   └── styles/
+├── README.md
+├── SPEC.md
+├── PLAN.md
+└── Makefile
 ```
 
-## Roadmap
+## Development
 
-- v1.0 — TUI with recall, add quote, settings
-- v2.0 — Web UI over the same core engine
-- v3.0 — Native OS UI
+```bash
+make build
+make run
+make test
+make lint
+make build-all
+```
 
-## License
+Current implementation notes:
 
-MIT
+- Search uses `MaxResults` today.
+- `MinRelevance` is captured and persisted in settings, but it is not yet applied to the FTS query.
+- The app is TUI-only at the moment; there is no web or native UI in the repository.

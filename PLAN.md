@@ -1,167 +1,112 @@
-# iRecall — Implementation Plan
+# iRecall Implementation Status and Forward Plan
 
-## Goal
+## Current State
 
-Build an AI-driven personal knowledge recall system. The user captures notes/quotes;
-the system tags them automatically via LLM and retrieves relevant ones when the user
-asks questions, synthesizing a grounded response from their own knowledge base.
+The repository is no longer at the scaffold stage. The following are implemented and working at the code level:
 
-## Language & Runtime
+- Go module initialized as `github.com/gigol/irecall`
+- Bubble Tea TUI with `Recall`, `Quotes`, and `Settings` pages
+- Add Quote modal overlay with asynchronous save flow
+- SQLite persistence with migrations, FTS5, and tag joins
+- OpenAI-compatible HTTP client for chat completions and model listing
+- Streaming response handling in the TUI
+- XDG-style directory setup for data, config, and state
+- File-based structured logging
+- `Makefile` build, run, test, lint, install, tidy, clean, and cross-build targets
 
-**Go 1.22+**
+## What the App Does Today
 
-Rationale:
-- `bubbletea` + `lipgloss` + `bubbles` is the premier TUI stack in any language
-- Compiles to a single static binary — zero install friction
-- `modernc.org/sqlite` is pure Go (no CGO), making cross-compilation trivial
-- Native concurrency suits streaming LLM responses cleanly
-- The engine/UI separation maps naturally to Go packages
+### End-user flow
 
-## Architecture Principle
+1. Configure an LLM endpoint and model on the Settings page.
+2. Add notes from the Recall page with `Ctrl+N`.
+3. Let the model extract tags for each note.
+4. Ask a question on the Recall page.
+5. Let the model extract search keywords.
+6. Search notes through SQLite FTS5.
+7. Stream a grounded answer alongside the matched notes.
 
-> The `core/` package must never import anything from `tui/`. All business logic
-> lives in `core/`. The `tui/` package is a thin presentation layer that calls
-> the engine API and renders results.
+### Core architecture
 
-This contract ensures future UIs (web, native) are drop-in consumers of the
-same engine with no refactoring.
+- `core/` remains independent from the TUI and contains the engine, DB layer, and LLM client
+- `tui/` is a presentation layer that turns asynchronous engine work into Bubble Tea messages
+- settings are persisted in SQLite, not a standalone config file
 
----
+## Completed Work by Area
 
-## Phases
+### Platform and packaging
 
-### Phase 0 — Repository Bootstrap
-- [x] Write PLAN.md, SPEC.md, README.md
-- [ ] `go mod init github.com/gigol/irecall`
-- [ ] Directory scaffold (see SPEC.md §Project Structure)
-- [ ] Pre-commit: `go vet`, `go fmt` checks
+- [x] Module initialized
+- [x] Single-binary build flow via `make build`
+- [x] Cross-compilation targets in `Makefile`
+- [x] Version injection via linker flags
 
-### Phase 1 — Core: Database Layer
-**Target:** `core/db/`
+### Persistence
 
-- [ ] SQLite connection pool with WAL mode enabled
-- [ ] Migration runner (`schema_version` table)
-- [ ] Schema v1: `quotes`, `tags`, `quote_tags`, `quotes_fts`, `settings`
-- [ ] FTS5 sync triggers (insert / update / delete)
-- [ ] `Store` struct with methods:
-  - `InsertQuote(content string, tags []string) (int64, error)`
-  - `UpdateQuoteFTS(id int64, tags []string) error`
-  - `SearchQuotes(ftsQuery string, limit int) ([]Quote, error)`
-  - `ListQuotes() ([]Quote, error)`
-  - `DeleteQuote(id int64) error`
-  - `GetSetting(key string) (string, error)`
-  - `SetSetting(key, value string) error`
-- [ ] Unit tests with in-memory SQLite (`:memory:`)
+- [x] SQLite store
+- [x] Migration runner
+- [x] Schema version tracking
+- [x] `quotes`, `tags`, `quote_tags`, `quotes_fts`, and `settings` tables
+- [x] FTS triggers for quote insert, update, and delete
+- [x] Explicit FTS refresh with tag text after tag association writes
 
-### Phase 2 — Core: LLM Client
-**Target:** `core/llm/`
+### LLM integration
 
-- [ ] `ProviderConfig` struct (Host, Port, HTTPS, APIKey, Model)
-- [ ] `BaseURL()` helper
-- [ ] HTTP client wrapping OpenAI `/v1/chat/completions`
-- [ ] Support streaming (`stream: true`) via SSE parsing
-- [ ] `FetchModels()` — calls `/v1/models`, returns sorted model IDs
-- [ ] `TestConnection()` — lightweight ping / model list check
-- [ ] Timeout and context cancellation propagation
-- [ ] Unit tests with `httptest.Server` mock
+- [x] OpenAI-compatible provider configuration
+- [x] `/v1/chat/completions` support
+- [x] `/v1/models` support
+- [x] SSE token streaming
+- [x] API key support
 
-### Phase 3 — Core: Engine API
-**Target:** `core/engine.go`, `core/models.go`
+### TUI
 
-- [ ] `Engine` struct (wraps `db.Store` + `llm.Client` + config)
-- [ ] `AddQuote(ctx, content)` — store → extract tags → update FTS
-- [ ] `ExtractKeywords(ctx, question)` — LLM call, returns `[]string`
-- [ ] `SearchQuotes(ctx, keywords)` — build FTS query, ranked results
-- [ ] `GenerateResponse(ctx, question, quotes, tokenCh)` — streaming synthesis
-- [ ] `FetchModels(ctx, config)` — delegates to llm.Client
-- [ ] `SaveSettings / LoadSettings`
-- [ ] Integration test: full add-then-recall round trip
+- [x] Root app with page routing
+- [x] Recall page
+- [x] Quotes page
+- [x] Settings page
+- [x] Add Quote modal
+- [x] Responsive resizing through `tea.WindowSizeMsg`
 
-### Phase 4 — TUI: Foundation
-**Target:** `tui/app.go`, `tui/styles/`
+## Known Gaps
 
-- [ ] Root Bubbletea model with page routing (`currentPage` enum)
-- [ ] Global key bindings: Tab (switch page), Q/Ctrl+C (quit)
-- [ ] Lipgloss theme: colors, borders, widths (adaptive to terminal size)
-- [ ] `WindowSizeMsg` handler for responsive layout
-- [ ] Page interface: `Update(msg) (Page, tea.Cmd)`, `View() string`
+These are the main areas where the implementation still lags the intended product shape:
 
-### Phase 5 — TUI: Recall Page
-**Target:** `tui/pages/recall.go`
+- [ ] `SearchConfig.MinRelevance` is collected and saved but not applied in search queries
+- [ ] No automated tests are present even though `make test` is wired
+- [ ] No UI flow exists for deleting quotes, despite engine support
+- [ ] The config directory is created but not used for stored configuration
+- [ ] No CI workflow is present in the repository
+- [ ] No web or native client exists yet
 
-- [ ] Question input (single-line `textinput`)
-- [ ] Response viewport (scrollable, streaming-aware)
-- [ ] Reference quotes panel (scrollable list below response)
-- [ ] `Enter` → trigger recall workflow as `tea.Cmd`
-- [ ] Spinner shown during LLM calls
-- [ ] Stream tokens via `tea.Msg` channel bridge
-- [ ] `Ctrl+N` → emit `OpenAddQuoteMsg` to app router
+## Recommended Next Steps
 
-### Phase 6 — TUI: Add Quote Overlay
-**Target:** `tui/pages/addquote.go`
+### Short-term
 
-- [ ] Modal overlay rendered on top of recall page
-- [ ] Multi-line `textarea` input (`bubbles/textarea`)
-- [ ] `Ctrl+S` → call `Engine.AddQuote`, show spinner, close on success
-- [ ] `Esc` → cancel, return to recall page
-- [ ] Error display inline if add fails
+- [ ] Apply `MinRelevance` to the FTS query so saved search settings affect retrieval
+- [ ] Add core tests for DB migrations, FTS search, settings persistence, and LLM parsing fallbacks
+- [ ] Add provider validation in the UI for empty host and empty model
+- [ ] Surface quote timestamps on the Quotes page
 
-### Phase 7 — TUI: Settings Page
-**Target:** `tui/pages/settings.go`
+### Medium-term
 
-- [ ] Form fields: Host, Port, HTTPS toggle, API Key (masked), Model dropdown
-- [ ] `[Fetch Models]` button → `Engine.FetchModels` → populate dropdown
-- [ ] Search tuning: max reference quotes (1–20), min relevance score
-- [ ] `Ctrl+S` → persist via `Engine.SaveSettings`
-- [ ] Load current settings on page init
-- [ ] Inline success/error feedback
+- [ ] Add quote deletion and maybe editing from the Quotes page
+- [ ] Add cancellation for in-flight recall requests when the user asks a new question or exits
+- [ ] Add integration tests around the full add-then-recall path with a mock provider
+- [ ] Add a GitHub Actions workflow for build and test
 
-### Phase 8 — Polish & Packaging
-- [ ] XDG path resolution with `os.UserDataDir` fallbacks
-- [ ] Structured logging to file (not stdout — would corrupt TUI)
-- [ ] Graceful shutdown: cancel in-flight LLM requests on quit
-- [ ] Error boundary: never crash TUI; show error in status bar
-- [ ] Build flags: version, commit hash embedded at link time
-- [ ] `Makefile` with `build`, `test`, `lint`, `install` targets
-- [ ] GitHub Actions CI (build + test on Linux/macOS/Windows)
+### Longer-term
 
----
+- [ ] Expose the same `core/` engine through a web UI
+- [ ] Consider import and export flows for notes
+- [ ] Add better retrieval controls such as AND/OR search strategies, tag filters, or score thresholds
 
-## Key Dependencies
+## Non-goals for the Current Codebase
 
-```
-github.com/charmbracelet/bubbletea    v1.x   # TUI framework
-github.com/charmbracelet/bubbles      v0.x   # textinput, textarea, viewport, list, spinner
-github.com/charmbracelet/lipgloss     v1.x   # styling
-modernc.org/sqlite                    v1.x   # pure-Go SQLite (no CGO)
-github.com/sashabaranov/go-openai     v1.x   # OpenAI-compatible client
-```
+The repository does not currently include:
 
-No other runtime dependencies. All are vendorable.
-
----
-
-## Testing Strategy
-
-| Layer | Approach |
-|---|---|
-| `core/db` | In-memory SQLite (`:memory:`), table-driven |
-| `core/llm` | `httptest.Server` mock, test streaming |
-| `core/engine` | Integration tests, real in-memory DB + mock LLM |
-| `tui/` | Manual + snapshot testing via Bubbletea test helpers |
-
-Run all tests: `go test ./...`
-
----
-
-## Decision Log
-
-| Decision | Rationale |
-|---|---|
-| Go over Python | Single binary, better TUI ecosystem, no packaging mess |
-| SQLite over Postgres | Embedded, zero-ops, FTS5 built-in, sufficient for personal use |
-| FTS5 over manual tag matching | BM25 ranking, stemming, phrase queries — all free |
-| `modernc.org/sqlite` over `mattn/go-sqlite3` | No CGO = cross-compilation works out of the box |
-| OpenAI-compatible API only | Covers Ollama, LM Studio, OpenAI, Groq, etc. without vendor lock-in |
-| Streaming via channel bridge | Keeps engine pure (no bubbletea types); TUI side converts tokens to `tea.Msg` |
-| XDG directories | Standard on Linux, reasonable fallbacks on macOS/Windows |
+- background sync
+- multi-user support
+- remote storage
+- embeddings or vector search
+- a REST API
+- any GUI outside the terminal
