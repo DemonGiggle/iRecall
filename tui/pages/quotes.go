@@ -72,7 +72,7 @@ func (p QuotesPage) Update(msg tea.Msg) (QuotesPage, tea.Cmd) {
 			p.quoteFns.move(1, p.quotes)
 			p.viewport.SetContent(p.renderQuotes())
 			return p, nil
-		case " ":
+		case "x":
 			p.quoteFns.toggleCurrent(p.quotes)
 			p.viewport.SetContent(p.renderQuotes())
 			return p, nil
@@ -97,7 +97,7 @@ func (p QuotesPage) Update(msg tea.Msg) (QuotesPage, tea.Cmd) {
 }
 
 func (p QuotesPage) View() string {
-	helpLine := styles.HelpBar.Render("↑/↓: Move   Space: Select   E: Edit   D: Delete   R: Refresh   PgUp/PgDn: Page")
+	helpLine := styles.HelpBar.Render("↑/↓: Move   X: Select   E: Edit   D: Delete   R: Refresh   PgUp/PgDn: Page")
 
 	var body string
 	switch {

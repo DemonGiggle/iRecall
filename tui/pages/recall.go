@@ -108,7 +108,7 @@ func (p RecallPage) Update(msg tea.Msg) (RecallPage, tea.Cmd) {
 			p.quoteFns.move(1, p.quotes)
 			p.refreshReferencePanel()
 			return p, nil
-		case " ":
+		case "x":
 			p.quoteFns.toggleCurrent(p.quotes)
 			p.refreshReferencePanel()
 			return p, nil
@@ -180,7 +180,7 @@ func (p RecallPage) Update(msg tea.Msg) (RecallPage, tea.Cmd) {
 
 func (p RecallPage) View() string {
 	helpLine := styles.HelpBar.Render(
-		"Enter: Ask   Ctrl+N: Add Quote   ↑/↓: Move quote   Space: Select   E: Edit   D: Delete   Tab: Settings",
+		"Enter: Ask   Ctrl+N: Add Quote   ↑/↓: Move quote   X: Select   E: Edit   D: Delete   Tab: Settings",
 	)
 	if p.busy {
 		helpLine = styles.HelpBar.Render(p.spinner.View() + " Thinking...")
