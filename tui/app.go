@@ -81,22 +81,12 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return a, tea.Quit
 			case "tab":
 				// Cycle forward: Recall → Quotes → Settings → Recall.
-				// Settings page uses Tab internally for field cycling, so only
-				// advance from non-settings pages here.
-				if a.page != pageSettings {
-					next := activePage((int(a.page) + 1) % int(pageCount))
-					a.page = next
-					if next == pageQuotes {
-						cmds = append(cmds, a.quotes.Reload())
-					}
-					return a, tea.Batch(cmds...)
+				next := activePage((int(a.page) + 1) % int(pageCount))
+				a.page = next
+				if next == pageQuotes {
+					cmds = append(cmds, a.quotes.Reload())
 				}
-			case "esc":
-				// From settings page, Esc returns to recall.
-				if a.page == pageSettings {
-					a.page = pageRecall
-					return a, nil
-				}
+				return a, tea.Batch(cmds...)
 			}
 		}
 		if msg.String() == "ctrl+c" {

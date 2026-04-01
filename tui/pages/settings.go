@@ -116,12 +116,11 @@ func (p SettingsPage) Update(msg tea.Msg) (SettingsPage, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
-		case "tab", "shift+tab":
-			dir := 1
-			if msg.String() == "shift+tab" {
-				dir = -1
-			}
-			p.cycleFocus(dir)
+		case "down":
+			p.cycleFocus(1)
+
+		case "up":
+			p.cycleFocus(-1)
 
 		case " ":
 			if p.focused == fieldHTTPS {
@@ -138,7 +137,7 @@ func (p SettingsPage) Update(msg tea.Msg) (SettingsPage, tea.Cmd) {
 				cmds = append(cmds, p.spinner.Tick, p.doFetchModels())
 			}
 
-		case "up", "k":
+		case "left":
 			if p.focused == fieldModel && len(p.models) > 0 {
 				p.modelIdx--
 				if p.modelIdx < 0 {
@@ -146,7 +145,7 @@ func (p SettingsPage) Update(msg tea.Msg) (SettingsPage, tea.Cmd) {
 				}
 			}
 
-		case "down", "j":
+		case "right":
 			if p.focused == fieldModel && len(p.models) > 0 {
 				p.modelIdx++
 				if p.modelIdx >= len(p.models) {
@@ -264,7 +263,7 @@ func (p SettingsPage) View() string {
 		}
 	}
 
-	helpLine := styles.HelpBar.Render("Tab/Shift+Tab: Move   Space: Toggle   Enter: Select   Ctrl+S: Save   Esc: Back")
+	helpLine := styles.HelpBar.Render("↑/↓: Move   ←/→: Cycle Model   Space: Toggle   Enter: Fetch   Ctrl+S: Save   Tab: Switch Page")
 
 	return styles.Panel.Width(p.width - 4).Render(
 		lipgloss.JoinVertical(lipgloss.Left,
@@ -295,7 +294,7 @@ func (p *SettingsPage) modelSelectorView() string {
 
 	if p.focused == fieldModel {
 		return styles.Accent.Render("< "+name+" >") +
-			styles.Muted.Render(pos+"  ↑/↓ to change")
+			styles.Muted.Render(pos+"  ← / → to change")
 	}
 	return name + styles.Muted.Render(pos)
 }
