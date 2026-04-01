@@ -197,7 +197,7 @@ func (p SettingsPage) Update(msg tea.Msg) (SettingsPage, tea.Cmd) {
 	}
 
 	// Update focused input.
-	if p.focused < fieldFetchModels {
+	if p.isInputField(p.focused) {
 		var cmd tea.Cmd
 		p.inputs[p.focused], cmd = p.inputs[p.focused].Update(msg)
 		cmds = append(cmds, cmd)
@@ -354,13 +354,18 @@ func (p *SettingsPage) doFetchModels() tea.Cmd {
 	}
 }
 
+func (p *SettingsPage) isInputField(f settingsField) bool {
+	return f == fieldHost || f == fieldPort || f == fieldAPIKey ||
+		f == fieldMaxResults || f == fieldMinRelevance
+}
+
 func (p *SettingsPage) cycleFocus(dir int) {
 	// Unfocus current.
-	if p.focused < fieldFetchModels {
+	if p.isInputField(p.focused) {
 		p.inputs[p.focused].Blur()
 	}
 	p.focused = settingsField((int(p.focused) + dir + int(fieldCount)) % int(fieldCount))
-	if p.focused < fieldFetchModels {
+	if p.isInputField(p.focused) {
 		p.inputs[p.focused].Focus()
 	}
 }
