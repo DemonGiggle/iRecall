@@ -221,10 +221,16 @@ func (e *Engine) GenerateResponse(
 		sb.WriteString(fmt.Sprintf("[%d] %s\n", i+1, q.Content))
 	}
 
-	systemPrompt := `You are a personal knowledge assistant. Answer the user's question using ONLY ` +
-		`the reference notes provided below. Cite the notes by their number, e.g. [1]. ` +
-		`If the notes do not contain enough information, say so clearly. Be concise and direct.` +
-		"\n\nReference notes:\n" + sb.String()
+	systemPrompt := `You are a retrieval assistant. Your only job is to answer the question using the reference notes below.
+Rules:
+- Use ONLY information from the reference notes. Do not add any knowledge, opinion, or context of your own.
+- Cite each note you use by its number, e.g. [1].
+- If the notes do not contain enough information to answer, say exactly: "The reference notes do not contain enough information to answer this question."
+- Do not explain, elaborate, or offer suggestions beyond what the notes state.
+- Be as brief as possible.
+
+Reference notes:
+` + sb.String()
 
 	slog.Debug("engine: response system prompt", "prompt_len", len(systemPrompt))
 
@@ -232,7 +238,8 @@ func (e *Engine) GenerateResponse(
 		{Role: "system", Content: systemPrompt},
 		{Role: "user", Content: question},
 	}
-	_, err := e.llm.Chat(ctx, msgs, tokenCh)
+	zero := 0.0
+	_, err := e.llm.Chat(ctx, msgs, tokenCh, llm.ChatOptions{Temperature: &zero})
 	if err != nil {
 		slog.Error("engine: generate response failed", "error", err)
 	}
