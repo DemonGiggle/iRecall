@@ -69,10 +69,15 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case tea.KeyMsg:
-		// Global quit — only when no overlay is open.
+		// Global quit — only when no overlay is open and no text input is focused.
 		if a.overlay == overlayNone {
 			switch msg.String() {
-			case "q", "ctrl+c":
+			case "q":
+				// Only quit if the recall input is not focused (user isn't typing).
+				if a.page != pageRecall || !a.recall.InputFocused() {
+					return a, tea.Quit
+				}
+			case "ctrl+c":
 				return a, tea.Quit
 			case "tab":
 				// From recall page, Tab switches to settings.

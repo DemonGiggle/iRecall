@@ -178,6 +178,11 @@ func (p RecallPage) View() string {
 	)
 }
 
+// InputFocused reports whether the question text input is currently focused.
+func (p *RecallPage) InputFocused() bool {
+	return p.input.Focused()
+}
+
 func (p *RecallPage) SetSize(width, height int) {
 	p.width = width
 	p.height = height
