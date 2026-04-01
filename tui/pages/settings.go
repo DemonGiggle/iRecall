@@ -243,7 +243,7 @@ func (p SettingsPage) View() string {
 		row("HTTPS", httpsLabel),
 		row("API Key", p.inputView(fieldAPIKey)),
 		"",
-		"  "+fetchBtn,
+		row("", fetchBtn),
 		"",
 		row("Model", modelView),
 	)

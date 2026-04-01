@@ -83,6 +83,8 @@ var (
 	// Button (focused)
 	ButtonFocused = lipgloss.NewStyle().
 			Foreground(ColorFg).
+			Border(lipgloss.NormalBorder()).
+			BorderForeground(ColorPrimary).
 			Background(ColorPrimary).
 			Padding(0, 2).
 			Bold(true)
