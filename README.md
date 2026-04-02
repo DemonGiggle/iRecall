@@ -52,6 +52,7 @@ Quotes page:
 | Key | Action |
 | --- | --- |
 | `ctrl+n` | Open the Add Quote modal |
+| `i` | Open the Import Quotes modal |
 | `r` | Reload stored quotes |
 | `up` / `down` | Scroll |
 | `x` | Select or unselect the current quote |
@@ -83,6 +84,13 @@ Share Quotes modal:
 | Key | Action |
 | --- | --- |
 | `ctrl+s` / `enter` | Save the exported JSON payload to the file path in the modal |
+| `esc` | Close the modal |
+
+Import Quotes modal:
+
+| Key | Action |
+| --- | --- |
+| `ctrl+s` / `enter` | Import the JSON payload from the file path in the modal |
 | `esc` | Close the modal |
 
 ## Quick Start

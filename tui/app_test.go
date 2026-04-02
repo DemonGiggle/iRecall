@@ -99,6 +99,41 @@ func TestAppOpensAndClosesQuoteShareOverlay(t *testing.T) {
 	}
 }
 
+func TestAppReloadsQuotesAfterImportOverlayCloses(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp(t)
+
+	model, cmd := app.Update(pages.OpenQuoteImportMsg{})
+	app, _ = model.(App)
+	if app.overlay != overlayQuoteImport {
+		t.Fatalf("overlay after import open = %v, want %v", app.overlay, overlayQuoteImport)
+	}
+	if cmd != nil {
+		if msg := cmd(); msg != nil {
+			model, _ = app.Update(msg)
+			app, _ = model.(App)
+		}
+	}
+
+	model, cmd = app.Update(pages.CloseQuoteImportMsg{Reload: true})
+	app, _ = model.(App)
+	if app.overlay != overlayNone {
+		t.Fatalf("overlay after import close = %v, want %v", app.overlay, overlayNone)
+	}
+	if cmd == nil {
+		t.Fatal("quotes reload command after import close = nil, want command")
+	}
+	msg := cmd()
+	loaded, ok := msg.(pages.QuotesLoadedMsg)
+	if !ok {
+		t.Fatalf("reload msg type = %T, want pages.QuotesLoadedMsg", msg)
+	}
+	if loaded.Err != nil {
+		t.Fatalf("quotes reload error = %v", loaded.Err)
+	}
+}
+
 func newTestApp(t *testing.T) App {
 	t.Helper()
 

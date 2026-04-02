@@ -77,3 +77,25 @@ func TestQuotesPageCanOpenAddQuoteModal(t *testing.T) {
 		t.Fatalf("quotes page help missing add quote hint:\n%s", page.View())
 	}
 }
+
+func TestQuotesPageCanOpenImportModal(t *testing.T) {
+	t.Parallel()
+
+	page := NewQuotesPage(nil, 120, 40)
+	page.loading = false
+
+	model, cmd := page.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("i")})
+	page = model
+	if cmd == nil {
+		t.Fatal("import command = nil, want command")
+	}
+
+	msg := cmd()
+	if _, ok := msg.(OpenQuoteImportMsg); !ok {
+		t.Fatalf("msg type = %T, want OpenQuoteImportMsg", msg)
+	}
+
+	if !containsAllText(page.View(), "i: Import") {
+		t.Fatalf("quotes page help missing import hint:\n%s", page.View())
+	}
+}

@@ -62,6 +62,8 @@ func (p QuotesPage) Update(msg tea.Msg) (QuotesPage, tea.Cmd) {
 		switch msg.String() {
 		case "ctrl+n":
 			return p, func() tea.Msg { return OpenQuoteEditorMsg{Mode: QuoteEditorModeAdd} }
+		case "i":
+			return p, func() tea.Msg { return OpenQuoteImportMsg{} }
 		case "r":
 			p.loading = true
 			p.errMsg = ""
@@ -104,7 +106,7 @@ func (p QuotesPage) Update(msg tea.Msg) (QuotesPage, tea.Cmd) {
 }
 
 func (p QuotesPage) View() string {
-	helpLine := styles.HelpBar.Render("ctrl+n: Add Quote   ↑/↓: Move   x: Select   e: Edit   d: Delete   s: Share   r: Refresh   pgup/pgdn: Page")
+	helpLine := styles.HelpBar.Render("ctrl+n: Add Quote   i: Import   ↑/↓: Move   x: Select   e: Edit   d: Delete   s: Share   r: Refresh   pgup/pgdn: Page")
 
 	var body string
 	switch {
