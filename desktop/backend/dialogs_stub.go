@@ -1,0 +1,13 @@
+//go:build !wails
+
+package backend
+
+import "errors"
+
+func (a *App) SelectQuoteImportFile() (string, error) {
+	return "", errors.New("file dialogs require the Wails desktop build")
+}
+
+func (a *App) SelectQuoteExportFile() (string, error) {
+	return "", errors.New("file dialogs require the Wails desktop build")
+}

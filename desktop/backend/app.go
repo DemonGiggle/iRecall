@@ -30,13 +30,13 @@ type AppPaths struct {
 }
 
 type BootstrapState struct {
-	ProductName string             `json:"productName"`
-	Greeting    string             `json:"greeting"`
-	Profile     *core.UserProfile  `json:"profile"`
-	Settings    *core.Settings     `json:"settings"`
-	Paths       AppPaths           `json:"paths"`
-	Pages       []string           `json:"pages"`
-	Docs        map[string]string  `json:"docs"`
+	ProductName string            `json:"productName"`
+	Greeting    string            `json:"greeting"`
+	Profile     *core.UserProfile `json:"profile"`
+	Settings    *core.Settings    `json:"settings"`
+	Paths       AppPaths          `json:"paths"`
+	Pages       []string          `json:"pages"`
+	Docs        map[string]string `json:"docs"`
 }
 
 type RecallResult struct {
@@ -110,7 +110,7 @@ func (a *App) BootstrapState() BootstrapState {
 		Paths:       a.paths,
 		Pages:       []string{"Recall", "Quotes", "Settings"},
 		Docs: map[string]string{
-			"uiDesign":      "docs/UI_DESIGN.md",
+			"uiDesign":       "docs/UI_DESIGN.md",
 			"desktopMapping": "docs/WAILS_DESKTOP.md",
 		},
 	}
@@ -122,6 +122,14 @@ func (a *App) ListQuotes() ([]core.Quote, error) {
 
 func (a *App) AddQuote(content string) (*core.Quote, error) {
 	return a.engine.AddQuote(a.context(), content)
+}
+
+func (a *App) RefineQuoteDraft(content string) (string, error) {
+	content = strings.TrimSpace(content)
+	if content == "" {
+		return "", errors.New("quote draft is empty")
+	}
+	return a.engine.RefineQuoteDraft(a.context(), content)
 }
 
 func (a *App) UpdateQuote(id int64, content string) (*core.Quote, error) {
@@ -147,6 +155,14 @@ func (a *App) ExportQuotesToFile(ids []int64, path string) error {
 		return fmt.Errorf("write export payload: %w", err)
 	}
 	return nil
+}
+
+func (a *App) PreviewQuoteExport(ids []int64) (string, error) {
+	payload, err := a.engine.ExportQuotes(a.context(), ids)
+	if err != nil {
+		return "", err
+	}
+	return string(payload), nil
 }
 
 func (a *App) ImportQuotesFromFile(path string) (core.ImportResult, error) {

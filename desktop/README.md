@@ -1,6 +1,6 @@
 # Desktop Client
 
-This directory contains the Wails-oriented desktop client scaffold for iRecall.
+This directory contains the Wails desktop client for iRecall.
 
 ## Structure
 
@@ -24,17 +24,23 @@ The backend in `desktop/backend` is intentionally separate from `tui/` so the de
 
 ## Current scope
 
-The scaffold currently provides:
+The desktop app currently provides:
 
-1. bootstrap state for a shell with `Recall`, `Quotes`, and `Settings`
-2. quote CRUD wrappers
-3. quote import/export wrappers
-4. user profile and settings wrappers
-5. a non-streaming recall wrapper for desktop integration
-6. a minimal frontend shell that mirrors the current product structure
+1. the same three top-level surfaces as the TUI: `Recall`, `Quotes`, and `Settings`
+2. required startup name gating for quote attribution
+3. quote add, edit, refine, delete, import, and export flows
+4. grounded recall execution with reference quote actions
+5. provider settings save and model fetch actions
+6. Wails-native open/save dialogs for import and export
 
 ## Build note
 
-`main_wails.go` is behind the `wails` build tag so the core repo can continue to build and test without the Wails module installed.
+`main_wails.go` is behind the `wails` build tag so the core repo can continue to build and test without requiring the Wails runtime for non-desktop work.
 
-When you are ready to build the desktop client with the Wails toolchain, install the Wails dependencies and build the app from this scaffold.
+To build the desktop client directly from the repo:
+
+1. install frontend dependencies in `desktop/frontend` with `npm install`
+2. build the frontend bundle with `npm run build`
+3. build the desktop target from the repo root with `go build -tags wails ./desktop/...`
+
+You can also use the Wails CLI once it is installed in your environment.

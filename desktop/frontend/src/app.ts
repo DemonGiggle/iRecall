@@ -1,51 +1,1613 @@
-const navItems = ["Recall", "Quotes", "Settings"];
+type PageName = "Recall" | "Quotes" | "Settings";
+type QuoteContext = "quotes" | "recall";
+
+interface Quote {
+  ID: number;
+  GlobalID: string;
+  AuthorUserID: string;
+  AuthorName: string;
+  SourceUserID: string;
+  SourceName: string;
+  Content: string;
+  Tags: string[];
+  Version: number;
+  IsOwnedByMe: boolean;
+  CreatedAt: string;
+  UpdatedAt: string;
+}
+
+interface UserProfile {
+  UserID: string;
+  DisplayName: string;
+  CreatedAt: string;
+  UpdatedAt: string;
+}
+
+interface ProviderConfig {
+  Host: string;
+  Port: number;
+  HTTPS: boolean;
+  APIKey: string;
+  Model: string;
+}
+
+interface SearchConfig {
+  MaxResults: number;
+  MinRelevance: number;
+}
+
+interface SettingsPayload {
+  Provider: ProviderConfig;
+  Search: SearchConfig;
+}
+
+interface BootstrapState {
+  productName: string;
+  greeting: string;
+  profile: UserProfile | null;
+  settings: {
+    Provider: ProviderConfig;
+    Search: SearchConfig;
+  };
+  paths: {
+    rootDir: string;
+    dataDir: string;
+    configDir: string;
+    stateDir: string;
+    dbPath: string;
+    logPath: string;
+  };
+  pages: string[];
+  docs: Record<string, string>;
+}
+
+interface RecallResult {
+  question: string;
+  keywords: string[];
+  quotes: Quote[];
+  response: string;
+}
+
+interface ImportResult {
+  Inserted: number;
+  Updated: number;
+  Duplicates: number;
+  Stale: number;
+}
+
+interface DesktopBackend {
+  BootstrapState(): Promise<BootstrapState>;
+  ListQuotes(): Promise<Quote[]>;
+  AddQuote(content: string): Promise<Quote>;
+  RefineQuoteDraft(content: string): Promise<string>;
+  UpdateQuote(id: number, content: string): Promise<Quote>;
+  DeleteQuotes(ids: number[]): Promise<void>;
+  PreviewQuoteExport(ids: number[]): Promise<string>;
+  SelectQuoteExportFile(): Promise<string>;
+  ExportQuotesToFile(ids: number[], path: string): Promise<void>;
+  SelectQuoteImportFile(): Promise<string>;
+  ImportQuotesFromFile(path: string): Promise<ImportResult>;
+  SaveUserProfile(name: string): Promise<UserProfile>;
+  SaveSettings(settings: SettingsPayload): Promise<SettingsPayload>;
+  FetchModels(settings: ProviderConfig): Promise<string[]>;
+  RunRecall(question: string): Promise<RecallResult>;
+}
+
+declare global {
+  interface Window {
+    go?: {
+      backend?: {
+        App?: DesktopBackend;
+      };
+    };
+  }
+}
+
+type OverlayState =
+  | { type: "namePrompt"; name: string; busy: boolean; status: string; isError: boolean }
+  | {
+      type: "quoteEditor";
+      mode: "add" | "edit";
+      quoteId: number | null;
+      content: string;
+      busy: boolean;
+      status: string;
+      isError: boolean;
+      previewOriginal: string;
+      previewRefined: string;
+    }
+  | { type: "deleteQuotes"; context: QuoteContext; ids: number[]; busy: boolean; status: string; isError: boolean }
+  | { type: "shareQuotes"; context: QuoteContext; ids: number[]; path: string; payload: string; busy: boolean; status: string; isError: boolean }
+  | { type: "importQuotes"; path: string; busy: boolean; status: string; isError: boolean; result: ImportResult | null };
+
+interface SettingsFormState {
+  host: string;
+  port: string;
+  https: boolean;
+  apiKey: string;
+  model: string;
+  maxResults: string;
+  minRelevance: string;
+  models: string[];
+}
+
+interface AppState {
+  bootstrapped: boolean;
+  fatalError: string;
+  page: PageName;
+  bootstrap: BootstrapState | null;
+  quotes: Quote[];
+  quotesLoading: boolean;
+  quotesError: string;
+  quotesCursor: number;
+  quotesSelected: Set<number>;
+  recallQuestion: string;
+  recallKeywords: string[];
+  recallQuotes: Quote[];
+  recallResponse: string;
+  recallBusy: boolean;
+  recallError: string;
+  recallCursor: number;
+  recallSelected: Set<number>;
+  settings: SettingsFormState;
+  settingsBusy: boolean;
+  settingsStatus: string;
+  settingsIsError: boolean;
+  overlay: OverlayState | null;
+}
+
+const state: AppState = {
+  bootstrapped: false,
+  fatalError: "",
+  page: "Recall",
+  bootstrap: null,
+  quotes: [],
+  quotesLoading: false,
+  quotesError: "",
+  quotesCursor: 0,
+  quotesSelected: new Set<number>(),
+  recallQuestion: "",
+  recallKeywords: [],
+  recallQuotes: [],
+  recallResponse: "",
+  recallBusy: false,
+  recallError: "",
+  recallCursor: 0,
+  recallSelected: new Set<number>(),
+  settings: emptySettingsForm(),
+  settingsBusy: false,
+  settingsStatus: "",
+  settingsIsError: false,
+  overlay: null,
+};
+
+let rootEl: HTMLElement | null = null;
+let handlersInstalled = false;
+let bootPromise: Promise<void> | null = null;
+
+const navItems: PageName[] = ["Recall", "Quotes", "Settings"];
 
 export function renderApp(root: HTMLElement): void {
-  root.innerHTML = `
+  rootEl = root;
+  if (!handlersInstalled) {
+    installHandlers(root);
+    handlersInstalled = true;
+  }
+  render();
+  if (!bootPromise) {
+    bootPromise = initialize();
+  }
+}
+
+async function initialize(): Promise<void> {
+  try {
+    const bootstrap = await backend().BootstrapState();
+    state.bootstrap = bootstrap;
+    state.bootstrapped = true;
+    state.page = "Recall";
+    state.settings = settingsFormFromBootstrap(bootstrap);
+    if (!bootstrap.profile?.DisplayName) {
+      state.overlay = {
+        type: "namePrompt",
+        name: "",
+        busy: false,
+        status: "",
+        isError: false,
+      };
+    }
+    render();
+    await loadQuotes();
+  } catch (error) {
+    state.bootstrapped = true;
+    state.fatalError = getErrorMessage(error);
+    render();
+  }
+}
+
+function installHandlers(root: HTMLElement): void {
+  root.addEventListener("click", (event) => {
+    void handleClick(event);
+  });
+  root.addEventListener("input", handleInput);
+  root.addEventListener("change", handleChange);
+  root.addEventListener("submit", (event) => {
+    void handleSubmit(event);
+  });
+  window.addEventListener("keydown", (event) => {
+    void handleKeydown(event);
+  });
+}
+
+async function handleClick(event: MouseEvent): Promise<void> {
+  const target = event.target;
+  if (!(target instanceof HTMLElement)) {
+    return;
+  }
+
+  const actionEl = target.closest<HTMLElement>("[data-action]");
+  if (!actionEl) {
+    return;
+  }
+
+  const action = actionEl.dataset.action ?? "";
+  switch (action) {
+    case "nav":
+      await switchPage(actionEl.dataset.page as PageName);
+      return;
+    case "quotes-refresh":
+      await loadQuotes();
+      return;
+    case "quote-add":
+      openQuoteEditor("add");
+      return;
+    case "quote-import":
+      openImportOverlay();
+      return;
+    case "quote-edit-current":
+      openCurrentQuoteEditor(actionEl.dataset.context as QuoteContext);
+      return;
+    case "quote-delete-current":
+      openDeleteOverlay(actionEl.dataset.context as QuoteContext);
+      return;
+    case "quote-share-current":
+      await openShareOverlay(actionEl.dataset.context as QuoteContext);
+      return;
+    case "set-cursor":
+      if (target.closest("input, button, label")) {
+        return;
+      }
+      setCursor(actionEl.dataset.context as QuoteContext, Number(actionEl.dataset.index ?? "0"));
+      return;
+    case "profile-save":
+      await saveProfileName();
+      return;
+    case "quote-editor-save":
+      await saveQuoteEditor();
+      return;
+    case "quote-editor-refine":
+      await refineQuoteEditor();
+      return;
+    case "quote-editor-apply-refined":
+      applyRefinedDraft();
+      return;
+    case "quote-editor-reject-refined":
+      rejectRefinedDraft();
+      return;
+    case "overlay-close":
+      closeOverlay();
+      return;
+    case "delete-confirm":
+      await confirmDelete();
+      return;
+    case "share-browse":
+      await chooseSharePath();
+      return;
+    case "share-save":
+      await saveSharePayload();
+      return;
+    case "import-browse":
+      await chooseImportPath();
+      return;
+    case "import-run":
+      await importQuotes();
+      return;
+    case "settings-fetch-models":
+      await fetchModels();
+      return;
+    case "settings-save":
+      await saveSettings();
+      return;
+    case "recall-run":
+      await runRecall();
+      return;
+    default:
+      return;
+  }
+}
+
+function handleInput(event: Event): void {
+  const target = event.target;
+  if (!(target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement)) {
+    return;
+  }
+
+  const bind = target.dataset.bind ?? "";
+  switch (bind) {
+    case "recall-question":
+      state.recallQuestion = target.value;
+      return;
+    case "profile-name":
+      if (state.overlay?.type === "namePrompt") {
+        state.overlay.name = target.value;
+      }
+      return;
+    case "quote-editor-content":
+      if (state.overlay?.type === "quoteEditor") {
+        state.overlay.content = target.value;
+      }
+      return;
+    case "share-path":
+      if (state.overlay?.type === "shareQuotes") {
+        state.overlay.path = target.value;
+      }
+      return;
+    case "import-path":
+      if (state.overlay?.type === "importQuotes") {
+        state.overlay.path = target.value;
+      }
+      return;
+    case "settings-host":
+      state.settings.host = target.value;
+      return;
+    case "settings-port":
+      state.settings.port = target.value;
+      return;
+    case "settings-api-key":
+      state.settings.apiKey = target.value;
+      return;
+    case "settings-max-results":
+      state.settings.maxResults = target.value;
+      return;
+    case "settings-min-relevance":
+      state.settings.minRelevance = target.value;
+      return;
+    default:
+      return;
+  }
+}
+
+function handleChange(event: Event): void {
+  const target = event.target;
+  if (!(target instanceof HTMLInputElement || target instanceof HTMLSelectElement)) {
+    return;
+  }
+
+  const bind = target.dataset.bind ?? "";
+  switch (bind) {
+    case "quote-selected":
+      toggleSelection(target.dataset.context as QuoteContext, Number(target.dataset.id ?? "0"), (target as HTMLInputElement).checked);
+      return;
+    case "settings-https":
+      if (target instanceof HTMLInputElement) {
+        state.settings.https = target.checked;
+      }
+      return;
+    case "settings-model":
+      state.settings.model = target.value;
+      return;
+    default:
+      return;
+  }
+}
+
+async function handleSubmit(event: Event): Promise<void> {
+  const target = event.target;
+  if (!(target instanceof HTMLFormElement)) {
+    return;
+  }
+  event.preventDefault();
+  switch (target.dataset.form) {
+    case "recall":
+      await runRecall();
+      return;
+    case "profile":
+      await saveProfileName();
+      return;
+    default:
+      return;
+  }
+}
+
+async function handleKeydown(event: KeyboardEvent): Promise<void> {
+  const active = document.activeElement;
+
+  if (event.key === "Escape" && state.overlay && state.overlay.type !== "namePrompt") {
+    event.preventDefault();
+    closeOverlay();
+    return;
+  }
+
+  if (event.ctrlKey && event.key.toLowerCase() === "s") {
+    if (state.overlay?.type === "quoteEditor") {
+      event.preventDefault();
+      await saveQuoteEditor();
+      return;
+    }
+    if (!state.overlay && state.page === "Settings") {
+      event.preventDefault();
+      await saveSettings();
+    }
+    return;
+  }
+
+  if (event.ctrlKey && event.key.toLowerCase() === "r" && state.overlay?.type === "quoteEditor") {
+    event.preventDefault();
+    await refineQuoteEditor();
+    return;
+  }
+
+  if (
+    event.key === "Enter" &&
+    !event.shiftKey &&
+    active instanceof HTMLInputElement &&
+    active.dataset.bind === "recall-question"
+  ) {
+    event.preventDefault();
+    await runRecall();
+  }
+}
+
+async function switchPage(page: PageName): Promise<void> {
+  state.page = page;
+  render();
+  if (page === "Quotes") {
+    await loadQuotes();
+  }
+}
+
+async function loadQuotes(): Promise<void> {
+  state.quotesLoading = true;
+  state.quotesError = "";
+  render();
+  try {
+    const quotes = await backend().ListQuotes();
+    state.quotes = quotes;
+    state.quotesCursor = clampCursor(state.quotesCursor, quotes);
+    state.quotesSelected = clampSelection(state.quotesSelected, quotes);
+    state.quotesError = "";
+  } catch (error) {
+    state.quotesError = getErrorMessage(error);
+  } finally {
+    state.quotesLoading = false;
+    render();
+  }
+}
+
+function openQuoteEditor(mode: "add" | "edit", quote?: Quote): void {
+  state.overlay = {
+    type: "quoteEditor",
+    mode,
+    quoteId: quote?.ID ?? null,
+    content: quote?.Content ?? "",
+    busy: false,
+    status: "",
+    isError: false,
+    previewOriginal: "",
+    previewRefined: "",
+  };
+  render();
+}
+
+function openCurrentQuoteEditor(context: QuoteContext): void {
+  const quote = selectedOrCurrentQuotes(context)[0];
+  if (!quote) {
+    return;
+  }
+  openQuoteEditor("edit", quote);
+}
+
+function openDeleteOverlay(context: QuoteContext): void {
+  const ids = selectedOrCurrentQuotes(context).map((quote) => quote.ID);
+  if (ids.length === 0) {
+    return;
+  }
+  state.overlay = {
+    type: "deleteQuotes",
+    context,
+    ids,
+    busy: false,
+    status: "",
+    isError: false,
+  };
+  render();
+}
+
+async function openShareOverlay(context: QuoteContext): Promise<void> {
+  const selected = selectedOrCurrentQuotes(context);
+  if (selected.length === 0) {
+    return;
+  }
+  state.overlay = {
+    type: "shareQuotes",
+    context,
+    ids: selected.map((quote) => quote.ID),
+    path: "",
+    payload: "",
+    busy: true,
+    status: "",
+    isError: false,
+  };
+  render();
+  try {
+    const payload = await backend().PreviewQuoteExport(selected.map((quote) => quote.ID));
+    if (state.overlay?.type !== "shareQuotes") {
+      return;
+    }
+    state.overlay.payload = payload;
+    state.overlay.busy = false;
+    state.overlay.status = "Share payload ready. Save it to a file and transfer it manually.";
+    state.overlay.isError = false;
+  } catch (error) {
+    if (state.overlay?.type !== "shareQuotes") {
+      return;
+    }
+    state.overlay.busy = false;
+    state.overlay.status = getErrorMessage(error);
+    state.overlay.isError = true;
+  }
+  render();
+}
+
+function openImportOverlay(): void {
+  state.overlay = {
+    type: "importQuotes",
+    path: "",
+    busy: false,
+    status: "",
+    isError: false,
+    result: null,
+  };
+  render();
+}
+
+async function saveProfileName(): Promise<void> {
+  if (state.overlay?.type !== "namePrompt" || state.overlay.busy) {
+    return;
+  }
+  const name = state.overlay.name.trim();
+  if (!name) {
+    state.overlay.status = "Please enter a name to continue.";
+    state.overlay.isError = true;
+    render();
+    return;
+  }
+
+  state.overlay.busy = true;
+  state.overlay.status = "";
+  render();
+
+  try {
+    const profile = await backend().SaveUserProfile(name);
+    if (state.bootstrap) {
+      state.bootstrap.profile = profile;
+      state.bootstrap.greeting = `Hi! ${profile.DisplayName}`;
+    }
+    state.overlay = null;
+  } catch (error) {
+    if (state.overlay?.type === "namePrompt") {
+      state.overlay.busy = false;
+      state.overlay.status = getErrorMessage(error);
+      state.overlay.isError = true;
+    }
+  }
+  render();
+}
+
+async function saveQuoteEditor(): Promise<void> {
+  if (state.overlay?.type !== "quoteEditor" || state.overlay.busy) {
+    return;
+  }
+  const content = state.overlay.content.trim();
+  if (!content) {
+    state.overlay.status = "Nothing to save.";
+    state.overlay.isError = true;
+    render();
+    return;
+  }
+
+  state.overlay.busy = true;
+  state.overlay.status = "";
+  render();
+
+  try {
+    const quote =
+      state.overlay.mode === "add"
+        ? await backend().AddQuote(content)
+        : await backend().UpdateQuote(state.overlay.quoteId ?? 0, content);
+    state.overlay = null;
+    applyQuoteUpdate(quote);
+    await loadQuotes();
+  } catch (error) {
+    if (state.overlay?.type === "quoteEditor") {
+      state.overlay.busy = false;
+      state.overlay.status = getErrorMessage(error);
+      state.overlay.isError = true;
+    }
+    render();
+  }
+}
+
+async function refineQuoteEditor(): Promise<void> {
+  if (state.overlay?.type !== "quoteEditor" || state.overlay.busy) {
+    return;
+  }
+  const content = state.overlay.content.trim();
+  if (!content) {
+    state.overlay.status = "Nothing to refine.";
+    state.overlay.isError = true;
+    render();
+    return;
+  }
+
+  state.overlay.busy = true;
+  state.overlay.status = "";
+  render();
+
+  try {
+    const refined = await backend().RefineQuoteDraft(content);
+    if (state.overlay?.type !== "quoteEditor") {
+      return;
+    }
+    state.overlay.busy = false;
+    state.overlay.previewOriginal = content;
+    state.overlay.previewRefined = refined;
+    state.overlay.status = "";
+    state.overlay.isError = false;
+  } catch (error) {
+    if (state.overlay?.type === "quoteEditor") {
+      state.overlay.busy = false;
+      state.overlay.status = getErrorMessage(error);
+      state.overlay.isError = true;
+    }
+  }
+  render();
+}
+
+function applyRefinedDraft(): void {
+  if (state.overlay?.type !== "quoteEditor") {
+    return;
+  }
+  state.overlay.content = state.overlay.previewRefined;
+  state.overlay.previewOriginal = "";
+  state.overlay.previewRefined = "";
+  state.overlay.status = "Refined draft applied. Review it, then save.";
+  state.overlay.isError = false;
+  render();
+}
+
+function rejectRefinedDraft(): void {
+  if (state.overlay?.type !== "quoteEditor") {
+    return;
+  }
+  state.overlay.previewOriginal = "";
+  state.overlay.previewRefined = "";
+  state.overlay.status = "Refined draft discarded.";
+  state.overlay.isError = false;
+  render();
+}
+
+async function confirmDelete(): Promise<void> {
+  if (state.overlay?.type !== "deleteQuotes" || state.overlay.busy) {
+    return;
+  }
+  state.overlay.busy = true;
+  state.overlay.status = "";
+  render();
+
+  try {
+    await backend().DeleteQuotes(state.overlay.ids);
+    removeQuotes(state.overlay.ids);
+    state.overlay = null;
+    await loadQuotes();
+  } catch (error) {
+    if (state.overlay?.type === "deleteQuotes") {
+      state.overlay.busy = false;
+      state.overlay.status = getErrorMessage(error);
+      state.overlay.isError = true;
+    }
+    render();
+  }
+}
+
+async function chooseSharePath(): Promise<void> {
+  if (state.overlay?.type !== "shareQuotes" || state.overlay.busy) {
+    return;
+  }
+  try {
+    const path = await backend().SelectQuoteExportFile();
+    if (path && state.overlay?.type === "shareQuotes") {
+      state.overlay.path = path;
+      render();
+    }
+  } catch (error) {
+    if (state.overlay?.type === "shareQuotes") {
+      state.overlay.status = getErrorMessage(error);
+      state.overlay.isError = true;
+      render();
+    }
+  }
+}
+
+async function saveSharePayload(): Promise<void> {
+  if (state.overlay?.type !== "shareQuotes" || state.overlay.busy) {
+    return;
+  }
+  const path = state.overlay.path.trim();
+  if (!path) {
+    state.overlay.status = "Choose a file path for the export.";
+    state.overlay.isError = true;
+    render();
+    return;
+  }
+  if (!state.overlay.payload.trim()) {
+    state.overlay.status = "Export payload is not ready yet.";
+    state.overlay.isError = true;
+    render();
+    return;
+  }
+
+  state.overlay.busy = true;
+  state.overlay.status = "";
+  render();
+
+  try {
+    await backend().ExportQuotesToFile(state.overlay.ids, path);
+    if (state.overlay?.type === "shareQuotes") {
+      state.overlay.busy = false;
+      state.overlay.status = `Saved share payload to ${path}`;
+      state.overlay.isError = false;
+      render();
+    }
+  } catch (error) {
+    if (state.overlay?.type === "shareQuotes") {
+      state.overlay.busy = false;
+      state.overlay.status = getErrorMessage(error);
+      state.overlay.isError = true;
+      render();
+    }
+  }
+}
+
+async function chooseImportPath(): Promise<void> {
+  if (state.overlay?.type !== "importQuotes" || state.overlay.busy) {
+    return;
+  }
+  try {
+    const path = await backend().SelectQuoteImportFile();
+    if (path && state.overlay?.type === "importQuotes") {
+      state.overlay.path = path;
+      render();
+    }
+  } catch (error) {
+    if (state.overlay?.type === "importQuotes") {
+      state.overlay.status = getErrorMessage(error);
+      state.overlay.isError = true;
+      render();
+    }
+  }
+}
+
+async function importQuotes(): Promise<void> {
+  if (state.overlay?.type !== "importQuotes" || state.overlay.busy) {
+    return;
+  }
+  const path = state.overlay.path.trim();
+  if (!path) {
+    state.overlay.status = "Choose a file to import.";
+    state.overlay.isError = true;
+    render();
+    return;
+  }
+
+  state.overlay.busy = true;
+  state.overlay.status = "";
+  state.overlay.result = null;
+  render();
+
+  try {
+    const result = await backend().ImportQuotesFromFile(path);
+    if (state.overlay?.type !== "importQuotes") {
+      return;
+    }
+    state.overlay.busy = false;
+    state.overlay.result = result;
+    state.overlay.status = `Imported quotes. inserted=${result.Inserted} updated=${result.Updated} duplicates=${result.Duplicates} stale=${result.Stale}`;
+    state.overlay.isError = false;
+    await loadQuotes();
+  } catch (error) {
+    if (state.overlay?.type === "importQuotes") {
+      state.overlay.busy = false;
+      state.overlay.status = getErrorMessage(error);
+      state.overlay.isError = true;
+      render();
+    }
+  }
+}
+
+async function runRecall(): Promise<void> {
+  if (state.recallBusy) {
+    return;
+  }
+  const question = state.recallQuestion.trim();
+  if (!question) {
+    state.recallError = "Ask a question first.";
+    render();
+    return;
+  }
+
+  state.recallBusy = true;
+  state.recallError = "";
+  state.recallKeywords = [];
+  state.recallQuotes = [];
+  state.recallResponse = "";
+  state.recallCursor = 0;
+  state.recallSelected = new Set<number>();
+  render();
+
+  try {
+    const result = await backend().RunRecall(question);
+    state.recallKeywords = result.keywords;
+    state.recallQuotes = result.quotes;
+    state.recallResponse = result.response;
+    state.recallCursor = 0;
+    state.recallSelected = new Set<number>();
+    state.recallQuestion = "";
+  } catch (error) {
+    state.recallError = getErrorMessage(error);
+  } finally {
+    state.recallBusy = false;
+    render();
+  }
+}
+
+async function fetchModels(): Promise<void> {
+  if (state.settingsBusy) {
+    return;
+  }
+  let provider: ProviderConfig;
+  try {
+    provider = providerConfigFromForm(state.settings);
+  } catch (error) {
+    state.settingsStatus = getErrorMessage(error);
+    state.settingsIsError = true;
+    render();
+    return;
+  }
+
+  state.settingsBusy = true;
+  state.settingsStatus = "";
+  render();
+
+  try {
+    const models = await backend().FetchModels(provider);
+    state.settings.models = models;
+    if (models.includes(state.settings.model)) {
+      state.settings.model = state.settings.model;
+    } else if (models.length > 0) {
+      state.settings.model = models[0];
+    }
+    state.settingsStatus = models.length > 0 ? `Fetched ${models.length} models.` : "No models returned.";
+    state.settingsIsError = false;
+  } catch (error) {
+    state.settingsStatus = getErrorMessage(error);
+    state.settingsIsError = true;
+  } finally {
+    state.settingsBusy = false;
+    render();
+  }
+}
+
+async function saveSettings(): Promise<void> {
+  if (state.settingsBusy) {
+    return;
+  }
+  let payload: SettingsPayload;
+  try {
+    payload = settingsPayloadFromForm(state.settings);
+  } catch (error) {
+    state.settingsStatus = getErrorMessage(error);
+    state.settingsIsError = true;
+    render();
+    return;
+  }
+
+  state.settingsBusy = true;
+  state.settingsStatus = "";
+  render();
+
+  try {
+    const saved = await backend().SaveSettings(payload);
+    state.settings = settingsFormFromPayload(saved, state.settings.models);
+    if (state.bootstrap) {
+      state.bootstrap.settings = saved;
+    }
+    state.settingsStatus = "Saved.";
+    state.settingsIsError = false;
+  } catch (error) {
+    state.settingsStatus = getErrorMessage(error);
+    state.settingsIsError = true;
+  } finally {
+    state.settingsBusy = false;
+    render();
+  }
+}
+
+function closeOverlay(): void {
+  if (!state.overlay) {
+    return;
+  }
+  if (state.overlay.type === "namePrompt") {
+    return;
+  }
+  if ("busy" in state.overlay && state.overlay.busy) {
+    return;
+  }
+  state.overlay = null;
+  render();
+}
+
+function setCursor(context: QuoteContext, index: number): void {
+  if (context === "quotes") {
+    state.quotesCursor = clampCursor(index, state.quotes);
+  } else {
+    state.recallCursor = clampCursor(index, state.recallQuotes);
+  }
+  render();
+}
+
+function toggleSelection(context: QuoteContext, id: number, checked: boolean): void {
+  const selected = context === "quotes" ? state.quotesSelected : state.recallSelected;
+  if (checked) {
+    selected.add(id);
+  } else {
+    selected.delete(id);
+  }
+}
+
+function selectedOrCurrentQuotes(context: QuoteContext): Quote[] {
+  const quotes = context === "quotes" ? state.quotes : state.recallQuotes;
+  const cursor = context === "quotes" ? state.quotesCursor : state.recallCursor;
+  const selected = context === "quotes" ? state.quotesSelected : state.recallSelected;
+  const chosen = quotes.filter((quote) => selected.has(quote.ID));
+  if (chosen.length > 0) {
+    return chosen;
+  }
+  return quotes[cursor] ? [quotes[cursor]] : [];
+}
+
+function applyQuoteUpdate(updated: Quote): void {
+  state.quotes = patchQuoteList(state.quotes, updated);
+  state.recallQuotes = patchQuoteList(state.recallQuotes, updated);
+  render();
+}
+
+function removeQuotes(ids: number[]): void {
+  const remove = new Set(ids);
+  state.quotes = state.quotes.filter((quote) => !remove.has(quote.ID));
+  state.recallQuotes = state.recallQuotes.filter((quote) => !remove.has(quote.ID));
+  state.quotesSelected = new Set([...state.quotesSelected].filter((id) => !remove.has(id)));
+  state.recallSelected = new Set([...state.recallSelected].filter((id) => !remove.has(id)));
+  state.quotesCursor = clampCursor(state.quotesCursor, state.quotes);
+  state.recallCursor = clampCursor(state.recallCursor, state.recallQuotes);
+  render();
+}
+
+function render(): void {
+  if (!rootEl) {
+    return;
+  }
+  rootEl.innerHTML = renderShell();
+}
+
+function renderShell(): string {
+  if (!state.bootstrapped) {
+    return `
+      <div class="shell shell-loading">
+        <div class="splash">
+          <div class="brand">iRecall</div>
+          <div class="muted">Loading desktop workspace…</div>
+        </div>
+      </div>
+    `;
+  }
+
+  if (state.fatalError) {
+    return `
+      <div class="shell shell-loading">
+        <div class="splash splash-error">
+          <div class="brand">iRecall</div>
+          <div class="status status-error">${escapeHtml(state.fatalError)}</div>
+        </div>
+      </div>
+    `;
+  }
+
+  const greeting = state.bootstrap?.profile?.DisplayName ? `Hi! ${state.bootstrap.profile.DisplayName}` : "";
+
+  return `
     <div class="shell">
       <header class="titlebar">
-        <div class="brand">iRecall</div>
+        <div class="brand-lockup">
+          <div class="brand">${escapeHtml(state.bootstrap?.productName ?? "iRecall")}</div>
+          <div class="muted subtle">Local-first quote recall desktop</div>
+        </div>
         <div class="titlebar-right">
-          <div class="greeting">Hi! Desktop User</div>
+          <div class="greeting">${escapeHtml(greeting)}</div>
           <nav class="tabs" aria-label="Primary">
             ${navItems
-              .map((item, index) => `<button class="tab${index === 0 ? " active" : ""}">${item}</button>`)
+              .map(
+                (item) => `
+                  <button
+                    class="tab${state.page === item ? " active" : ""}"
+                    data-action="nav"
+                    data-page="${item}"
+                    type="button"
+                  >${item}</button>
+                `,
+              )
               .join("")}
           </nav>
         </div>
       </header>
 
       <main class="layout">
-        <section class="panel page-shell">
-          <div class="section-header">Desktop Shell Scaffold</div>
-          <p class="lede">
-            This Wails frontend is intentionally lightweight. It mirrors the current iRecall product structure
-            and takes its behavior from <code>docs/UI_DESIGN.md</code>.
-          </p>
-          <div class="cards">
-            <article class="card">
-              <h2>Recall</h2>
-              <p>Question input, keyword line, grounded answer, and reference quotes pane.</p>
-            </article>
-            <article class="card">
-              <h2>Quotes</h2>
-              <p>Quote library with add, edit, delete, import, and export/share flows.</p>
-            </article>
-            <article class="card">
-              <h2>Settings</h2>
-              <p>Provider and search configuration with explicit save and model fetch actions.</p>
-            </article>
-          </div>
-          <div class="panel inset">
-            <div class="section-header">Next Integration Steps</div>
-            <ol>
-              <li>Bind the frontend shell to <code>desktop/backend.App</code> bootstrap state.</li>
-              <li>Implement page modules that follow the contracts in <code>docs/UI_DESIGN.md</code>.</li>
-              <li>Replace file-path text inputs with desktop-native file pickers for import/export.</li>
-            </ol>
-          </div>
-        </section>
+        ${renderPage()}
       </main>
+
+      ${state.overlay ? renderOverlay(state.overlay) : ""}
     </div>
   `;
+}
+
+function renderPage(): string {
+  switch (state.page) {
+    case "Recall":
+      return renderRecallPage();
+    case "Quotes":
+      return renderQuotesPage();
+    case "Settings":
+      return renderSettingsPage();
+  }
+}
+
+function renderRecallPage(): string {
+  const selected = selectedOrCurrentQuotes("recall");
+  const response = state.recallResponse.trim()
+    ? escapeHtml(state.recallResponse)
+    : '<span class="muted">Grounded response will appear here.</span>';
+  const keywords =
+    state.recallKeywords.length > 0
+      ? state.recallKeywords.map((keyword) => `<span class="keyword-chip">${escapeHtml(keyword)}</span>`).join("")
+      : '<span class="muted">Keywords: —</span>';
+
+  return `
+    <section class="page page-recall">
+      <div class="panel page-panel">
+        <div class="section-heading">
+          <div>
+            <div class="section-title">Recall</div>
+            <div class="muted">Ask a question, ground the answer in quotes, then manage the reference set.</div>
+          </div>
+          <div class="toolbar">
+            <button class="button" data-action="quote-add" type="button">Add Quote</button>
+            <button class="button" data-action="quote-edit-current" data-context="recall" type="button" ${selected.length === 0 ? "disabled" : ""}>Edit</button>
+            <button class="button button-danger" data-action="quote-delete-current" data-context="recall" type="button" ${selected.length === 0 ? "disabled" : ""}>Delete</button>
+            <button class="button" data-action="quote-share-current" data-context="recall" type="button" ${selected.length === 0 ? "disabled" : ""}>Share</button>
+          </div>
+        </div>
+
+        <form class="question-bar" data-form="recall">
+          <input
+            class="text-input text-input-lg"
+            data-bind="recall-question"
+            placeholder="Ask anything..."
+            value="${escapeAttribute(state.recallQuestion)}"
+          />
+          <button class="button button-primary" data-action="recall-run" type="submit" ${state.recallBusy ? "disabled" : ""}>
+            ${state.recallBusy ? "Thinking…" : "Ask"}
+          </button>
+        </form>
+
+        <div class="keyword-row">
+          <span class="muted">Keywords:</span>
+          <div class="keyword-list">${keywords}</div>
+        </div>
+
+        <div class="recall-grid">
+          <section class="panel subpanel">
+            <div class="subpanel-header">
+              <div class="section-title">Response</div>
+              <div class="muted">${state.recallBusy ? "Generating grounded answer…" : "Uses the current reference quotes."}</div>
+            </div>
+            <pre class="response-box">${response}</pre>
+          </section>
+
+          <section class="panel subpanel">
+            <div class="subpanel-header">
+              <div class="section-title">Reference Quotes</div>
+              <div class="muted">${selected.length > 0 ? `${selected.length} selected` : `${state.recallQuotes.length} loaded`}</div>
+            </div>
+            ${renderQuoteList("recall", state.recallQuotes, state.recallCursor, state.recallSelected, false)}
+          </section>
+        </div>
+
+        ${state.recallError ? `<div class="status status-error">${escapeHtml(state.recallError)}</div>` : ""}
+      </div>
+    </section>
+  `;
+}
+
+function renderQuotesPage(): string {
+  const selected = selectedOrCurrentQuotes("quotes");
+  let content = "";
+  if (state.quotesLoading) {
+    content = '<div class="empty-state">Loading quotes…</div>';
+  } else if (state.quotesError) {
+    content = `<div class="status status-error">${escapeHtml(state.quotesError)}</div>`;
+  } else {
+    content = renderQuoteList("quotes", state.quotes, state.quotesCursor, state.quotesSelected, true);
+  }
+
+  return `
+    <section class="page page-quotes">
+      <div class="panel page-panel">
+        <div class="section-heading">
+          <div>
+            <div class="section-title">Quotes</div>
+            <div class="muted">Manage the local quote library, import shared payloads, and export selected notes.</div>
+          </div>
+          <div class="toolbar">
+            <button class="button button-primary" data-action="quote-add" type="button">Add Quote</button>
+            <button class="button" data-action="quote-import" type="button">Import</button>
+            <button class="button" data-action="quotes-refresh" type="button">Refresh</button>
+            <button class="button" data-action="quote-edit-current" data-context="quotes" type="button" ${selected.length === 0 ? "disabled" : ""}>Edit</button>
+            <button class="button button-danger" data-action="quote-delete-current" data-context="quotes" type="button" ${selected.length === 0 ? "disabled" : ""}>Delete</button>
+            <button class="button" data-action="quote-share-current" data-context="quotes" type="button" ${selected.length === 0 ? "disabled" : ""}>Share</button>
+          </div>
+        </div>
+        <div class="meta-row">
+          <span class="muted">Stored Quotes:</span>
+          <span>${state.quotes.length}</span>
+          <span class="muted">Selection:</span>
+          <span>${selected.length > 0 ? selected.length : state.quotes.length > 0 ? 1 : 0}</span>
+        </div>
+        ${content}
+      </div>
+    </section>
+  `;
+}
+
+function renderSettingsPage(): string {
+  const modelSelect =
+    state.settings.models.length > 0
+      ? `
+        <select class="select-input" data-bind="settings-model">
+          ${state.settings.models
+            .map(
+              (model) => `
+                <option value="${escapeAttribute(model)}"${model === state.settings.model ? " selected" : ""}>${escapeHtml(model)}</option>
+              `,
+            )
+            .join("")}
+        </select>
+      `
+      : `
+        <div class="readonly-model">
+          <span>${escapeHtml(state.settings.model || "(none)")}</span>
+          <span class="muted">Fetch models first</span>
+        </div>
+      `;
+
+  return `
+    <section class="page page-settings">
+      <div class="panel page-panel">
+        <div class="section-heading">
+          <div>
+            <div class="section-title">Settings</div>
+            <div class="muted">Configure the OpenAI-compatible endpoint and quote retrieval behavior.</div>
+          </div>
+          <div class="toolbar">
+            <button class="button" data-action="settings-fetch-models" type="button" ${state.settingsBusy ? "disabled" : ""}>
+              ${state.settingsBusy ? "Fetching…" : "Fetch Models"}
+            </button>
+            <button class="button button-primary" data-action="settings-save" type="button" ${state.settingsBusy ? "disabled" : ""}>Save</button>
+          </div>
+        </div>
+
+        <div class="settings-grid">
+          <section class="panel subpanel">
+            <div class="section-title">LLM Provider</div>
+            <label class="field">
+              <span>Host / IP</span>
+              <input class="text-input" data-bind="settings-host" value="${escapeAttribute(state.settings.host)}" />
+            </label>
+            <label class="field">
+              <span>Port</span>
+              <input class="text-input" data-bind="settings-port" value="${escapeAttribute(state.settings.port)}" />
+            </label>
+            <label class="field checkbox-field">
+              <input type="checkbox" data-bind="settings-https"${state.settings.https ? " checked" : ""} />
+              <span>Use HTTPS</span>
+            </label>
+            <label class="field">
+              <span>API Key</span>
+              <input class="text-input" data-bind="settings-api-key" type="password" value="${escapeAttribute(state.settings.apiKey)}" />
+            </label>
+            <label class="field">
+              <span>Model</span>
+              ${modelSelect}
+            </label>
+          </section>
+
+          <section class="panel subpanel">
+            <div class="section-title">Search</div>
+            <label class="field">
+              <span>Max ref quotes</span>
+              <input class="text-input" data-bind="settings-max-results" value="${escapeAttribute(state.settings.maxResults)}" />
+            </label>
+            <label class="field">
+              <span>Min relevance</span>
+              <input class="text-input" data-bind="settings-min-relevance" value="${escapeAttribute(state.settings.minRelevance)}" />
+            </label>
+            <div class="settings-hint muted">
+              Saving updates both the persisted settings and the live engine configuration for the desktop session.
+            </div>
+          </section>
+        </div>
+
+        ${state.settingsStatus ? `<div class="status ${state.settingsIsError ? "status-error" : "status-ok"}">${escapeHtml(state.settingsStatus)}</div>` : ""}
+      </div>
+    </section>
+  `;
+}
+
+function renderQuoteList(
+  context: QuoteContext,
+  quotes: Quote[],
+  cursor: number,
+  selected: Set<number>,
+  showTags: boolean,
+): string {
+  if (quotes.length === 0) {
+    return `<div class="empty-state">${context === "quotes" ? "No quotes yet. Add one or import a shared payload." : "No reference quotes for this question yet."}</div>`;
+  }
+
+  return `
+    <div class="quote-list">
+      ${quotes
+        .map((quote, index) => {
+          const sourceLine =
+            !quote.IsOwnedByMe && quote.SourceName
+              ? `<div class="quote-meta"><span class="muted">From:</span> <span class="meta-accent">${escapeHtml(quote.SourceName)}</span></div>`
+              : "";
+          const tagsLine = showTags
+            ? `
+              <div class="quote-meta">
+                <span class="muted">Tags:</span>
+                <span>${quote.Tags.length > 0 ? escapeHtml(quote.Tags.join(" · ")) : "(none)"}</span>
+              </div>
+            `
+            : "";
+          return `
+            <article class="quote-card${index === cursor ? " is-current" : ""}" data-action="set-cursor" data-context="${context}" data-index="${index}">
+              <div class="quote-topline">
+                <label class="selection-toggle">
+                  <input
+                    type="checkbox"
+                    data-bind="quote-selected"
+                    data-context="${context}"
+                    data-id="${quote.ID}"
+                    ${selected.has(quote.ID) ? "checked" : ""}
+                  />
+                  <span>${selected.has(quote.ID) ? "[x]" : "[ ]"}</span>
+                </label>
+                <div class="quote-version">v${quote.Version}</div>
+              </div>
+              <div class="quote-content">${escapeHtml(quote.Content)}</div>
+              ${sourceLine}
+              ${tagsLine}
+            </article>
+          `;
+        })
+        .join("")}
+    </div>
+  `;
+}
+
+function renderOverlay(overlay: OverlayState): string {
+  switch (overlay.type) {
+    case "namePrompt":
+      return `
+        <div class="overlay-backdrop">
+          <div class="modal">
+            <div class="modal-title">Set Your Name</div>
+            <p class="modal-copy">
+              Your name is attached to quotes you share and shown when other users receive your quotes.
+            </p>
+            <form class="modal-form" data-form="profile">
+              <label class="field">
+                <span>Display Name</span>
+                <input class="text-input text-input-lg" data-bind="profile-name" value="${escapeAttribute(overlay.name)}" placeholder="Your name" />
+              </label>
+              ${overlay.status ? `<div class="status ${overlay.isError ? "status-error" : "status-ok"}">${escapeHtml(overlay.status)}</div>` : ""}
+              <div class="modal-actions">
+                <button class="button button-primary" data-action="profile-save" type="submit" ${overlay.busy ? "disabled" : ""}>
+                  ${overlay.busy ? "Saving…" : "Save name and continue"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      `;
+    case "quoteEditor":
+      return `
+        <div class="overlay-backdrop">
+          <div class="modal modal-wide">
+            <div class="modal-title">${overlay.mode === "add" ? "Add Quote" : "Edit Quote"}</div>
+            ${
+              overlay.previewRefined
+                ? `
+                  <div class="compare-grid">
+                    <section class="panel compare-panel">
+                      <div class="section-title">Current Draft</div>
+                      <pre class="compare-body">${escapeHtml(overlay.previewOriginal)}</pre>
+                    </section>
+                    <section class="panel compare-panel">
+                      <div class="section-title">Refined Draft</div>
+                      <pre class="compare-body">${escapeHtml(overlay.previewRefined)}</pre>
+                    </section>
+                  </div>
+                `
+                : `
+                  <label class="field">
+                    <span>Quote Content</span>
+                    <textarea class="text-area" data-bind="quote-editor-content" rows="10" placeholder="Type or paste your note here.">${escapeHtml(overlay.content)}</textarea>
+                  </label>
+                `
+            }
+            <div class="muted modal-copy">
+              ${
+                overlay.previewRefined
+                  ? "Compare the current draft with the suggested rewrite before applying it."
+                  : "Tags are regenerated automatically by the shared core logic."
+              }
+            </div>
+            ${overlay.status ? `<div class="status ${overlay.isError ? "status-error" : "status-ok"}">${escapeHtml(overlay.status)}</div>` : ""}
+            <div class="modal-actions">
+              ${
+                overlay.previewRefined
+                  ? `
+                    <button class="button button-primary" data-action="quote-editor-apply-refined" type="button">Apply refined draft</button>
+                    <button class="button" data-action="quote-editor-reject-refined" type="button">Keep editing current draft</button>
+                  `
+                  : `
+                    <button class="button button-primary" data-action="quote-editor-save" type="button" ${overlay.busy ? "disabled" : ""}>
+                      ${overlay.busy ? "Saving…" : "Save"}
+                    </button>
+                    <button class="button" data-action="quote-editor-refine" type="button" ${overlay.busy ? "disabled" : ""}>
+                      ${overlay.busy ? "Working…" : "Refine"}
+                    </button>
+                    <button class="button" data-action="overlay-close" type="button" ${overlay.busy ? "disabled" : ""}>Cancel</button>
+                  `
+              }
+            </div>
+          </div>
+        </div>
+      `;
+    case "deleteQuotes":
+      return `
+        <div class="overlay-backdrop">
+          <div class="modal">
+            <div class="modal-title modal-title-danger">Delete Quotes</div>
+            <div class="modal-copy">This permanently removes the selected quote entries from the local library.</div>
+            <div class="summary-list">
+              ${selectedQuotesByIds(overlay.context, overlay.ids)
+                .map((quote, index) => `<div class="summary-item">[${index + 1}] ${escapeHtml(truncate(quote.Content, 140))}</div>`)
+                .join("")}
+            </div>
+            ${overlay.status ? `<div class="status ${overlay.isError ? "status-error" : "status-ok"}">${escapeHtml(overlay.status)}</div>` : ""}
+            <div class="modal-actions">
+              <button class="button button-danger" data-action="delete-confirm" type="button" ${overlay.busy ? "disabled" : ""}>
+                ${overlay.busy ? "Deleting…" : "Delete"}
+              </button>
+              <button class="button" data-action="overlay-close" type="button" ${overlay.busy ? "disabled" : ""}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      `;
+    case "shareQuotes":
+      return `
+        <div class="overlay-backdrop">
+          <div class="modal modal-wide">
+            <div class="modal-title">Share Quotes</div>
+            <div class="summary-list">
+              ${selectedQuotesByIds(overlay.context, overlay.ids)
+                .map((quote, index) => `<div class="summary-item">[${index + 1}] v${quote.Version} ${escapeHtml(truncate(quote.Content, 120))}</div>`)
+                .join("")}
+            </div>
+            <label class="field">
+              <span>Save To</span>
+              <div class="path-row">
+                <input class="text-input" data-bind="share-path" value="${escapeAttribute(overlay.path)}" placeholder="/path/to/irecall-share.json" />
+                <button class="button" data-action="share-browse" type="button" ${overlay.busy ? "disabled" : ""}>Browse</button>
+              </div>
+            </label>
+            <div class="muted modal-copy">Export to a JSON file and transfer it manually to the recipient.</div>
+            <div class="payload-box"><pre>${escapeHtml(overlay.payload || "Preparing export payload…")}</pre></div>
+            ${overlay.status ? `<div class="status ${overlay.isError ? "status-error" : "status-ok"}">${escapeHtml(overlay.status)}</div>` : ""}
+            <div class="modal-actions">
+              <button class="button button-primary" data-action="share-save" type="button" ${overlay.busy ? "disabled" : ""}>
+                ${overlay.busy ? "Working…" : "Save export file"}
+              </button>
+              <button class="button" data-action="overlay-close" type="button" ${overlay.busy ? "disabled" : ""}>Close</button>
+            </div>
+          </div>
+        </div>
+      `;
+    case "importQuotes":
+      return `
+        <div class="overlay-backdrop">
+          <div class="modal">
+            <div class="modal-title">Import Quotes</div>
+            <div class="modal-copy">Import a quote share JSON file exported from another iRecall instance.</div>
+            <label class="field">
+              <span>Import From</span>
+              <div class="path-row">
+                <input class="text-input" data-bind="import-path" value="${escapeAttribute(overlay.path)}" placeholder="/path/to/irecall-share.json" />
+                <button class="button" data-action="import-browse" type="button" ${overlay.busy ? "disabled" : ""}>Browse</button>
+              </div>
+            </label>
+            ${
+              overlay.result
+                ? `
+                  <div class="result-grid">
+                    <div><span class="muted">Inserted:</span> ${overlay.result.Inserted}</div>
+                    <div><span class="muted">Updated:</span> ${overlay.result.Updated}</div>
+                    <div><span class="muted">Duplicates:</span> ${overlay.result.Duplicates}</div>
+                    <div><span class="muted">Stale:</span> ${overlay.result.Stale}</div>
+                  </div>
+                `
+                : ""
+            }
+            ${overlay.status ? `<div class="status ${overlay.isError ? "status-error" : "status-ok"}">${escapeHtml(overlay.status)}</div>` : ""}
+            <div class="modal-actions">
+              <button class="button button-primary" data-action="import-run" type="button" ${overlay.busy ? "disabled" : ""}>
+                ${overlay.busy ? "Importing…" : "Import file"}
+              </button>
+              <button class="button" data-action="overlay-close" type="button" ${overlay.busy ? "disabled" : ""}>Close</button>
+            </div>
+          </div>
+        </div>
+      `;
+  }
+}
+
+function selectedQuotesByIds(context: QuoteContext, ids: number[]): Quote[] {
+  const source = context === "quotes" ? state.quotes : state.recallQuotes;
+  const wanted = new Set(ids);
+  return source.filter((quote) => wanted.has(quote.ID));
+}
+
+function settingsFormFromBootstrap(bootstrap: BootstrapState): SettingsFormState {
+  return settingsFormFromPayload(bootstrap.settings, []);
+}
+
+function settingsFormFromPayload(payload: SettingsPayload | BootstrapState["settings"], models: string[]): SettingsFormState {
+  return {
+    host: payload.Provider.Host,
+    port: String(payload.Provider.Port),
+    https: payload.Provider.HTTPS,
+    apiKey: payload.Provider.APIKey,
+    model: payload.Provider.Model,
+    maxResults: String(payload.Search.MaxResults),
+    minRelevance: String(payload.Search.MinRelevance),
+    models,
+  };
+}
+
+function emptySettingsForm(): SettingsFormState {
+  return {
+    host: "",
+    port: "11434",
+    https: false,
+    apiKey: "",
+    model: "",
+    maxResults: "5",
+    minRelevance: "0",
+    models: [],
+  };
+}
+
+function providerConfigFromForm(form: SettingsFormState): ProviderConfig {
+  const port = Number.parseInt(form.port.trim(), 10);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    throw new Error("Port must be a number between 1 and 65535.");
+  }
+  return {
+    Host: form.host.trim(),
+    Port: port,
+    HTTPS: form.https,
+    APIKey: form.apiKey,
+    Model: form.model,
+  };
+}
+
+function settingsPayloadFromForm(form: SettingsFormState): SettingsPayload {
+  const provider = providerConfigFromForm(form);
+  const maxResults = Number.parseInt(form.maxResults.trim(), 10);
+  if (!Number.isInteger(maxResults) || maxResults < 1 || maxResults > 20) {
+    throw new Error("Max ref quotes must be between 1 and 20.");
+  }
+  const minRelevance = Number.parseFloat(form.minRelevance.trim());
+  if (Number.isNaN(minRelevance)) {
+    throw new Error("Min relevance must be a decimal number.");
+  }
+  return {
+    Provider: provider,
+    Search: {
+      MaxResults: maxResults,
+      MinRelevance: minRelevance,
+    },
+  };
+}
+
+function patchQuoteList(list: Quote[], updated: Quote): Quote[] {
+  return list.map((quote) => (quote.ID === updated.ID ? updated : quote));
+}
+
+function clampCursor(cursor: number, quotes: Quote[]): number {
+  if (quotes.length === 0) {
+    return 0;
+  }
+  return Math.min(Math.max(cursor, 0), quotes.length - 1);
+}
+
+function clampSelection(selected: Set<number>, quotes: Quote[]): Set<number> {
+  const valid = new Set(quotes.map((quote) => quote.ID));
+  return new Set([...selected].filter((id) => valid.has(id)));
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function escapeAttribute(value: string): string {
+  return escapeHtml(value);
+}
+
+function truncate(value: string, max: number): string {
+  if (value.length <= max) {
+    return value;
+  }
+  return `${value.slice(0, max - 1)}…`;
+}
+
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return String(error);
+}
+
+function backend(): DesktopBackend {
+  const app = window.go?.backend?.App;
+  if (!app) {
+    throw new Error("Wails backend bridge is unavailable.");
+  }
+  return app;
 }
