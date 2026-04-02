@@ -80,7 +80,7 @@ func (p DeleteQuotesPage) Update(msg tea.Msg) (DeleteQuotesPage, tea.Cmd) {
 func (p DeleteQuotesPage) View() string {
 	title := styles.Bold.Foreground(styles.ColorError).Render(" Delete Quotes ")
 	copy := styles.QuoteItem.Render(p.summary())
-	help := styles.HelpBar.Render("Enter: Confirm delete   Esc: Cancel")
+	help := styles.HelpBar.Render("enter: Confirm delete   esc: Cancel")
 	if p.busy {
 		help = styles.HelpBar.Render("Deleting...")
 	}

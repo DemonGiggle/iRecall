@@ -204,11 +204,11 @@ func (p QuoteEditorPage) Update(msg tea.Msg) (QuoteEditorPage, tea.Cmd) {
 }
 
 func (p QuoteEditorPage) View() string {
-	helpLine := "  Ctrl+S: Save   Ctrl+R: Refine   Esc: Cancel"
+	helpLine := "  ctrl+s: Save   ctrl+r: Refine   esc: Cancel"
 	if p.busy {
 		helpLine = "  " + p.spinner.View() + " Working..."
 	} else if p.preview {
-		helpLine = "  Enter: Accept Refined Draft   Esc: Reject and Continue Editing"
+		helpLine = "  enter: Accept Refined Draft   esc: Reject and Continue Editing"
 	}
 
 	var statusLine string

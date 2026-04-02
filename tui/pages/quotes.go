@@ -97,7 +97,7 @@ func (p QuotesPage) Update(msg tea.Msg) (QuotesPage, tea.Cmd) {
 }
 
 func (p QuotesPage) View() string {
-	helpLine := styles.HelpBar.Render("↑/↓: Move   X: Select   E: Edit   D: Delete   R: Refresh   PgUp/PgDn: Page")
+	helpLine := styles.HelpBar.Render("↑/↓: Move   x: Select   e: Edit   d: Delete   r: Refresh   pgup/pgdn: Page")
 
 	var body string
 	switch {
@@ -106,7 +106,7 @@ func (p QuotesPage) View() string {
 	case p.errMsg != "":
 		body = styles.StatusErr.Render("  " + p.errMsg)
 	case len(p.quotes) == 0:
-		body = styles.Muted.Render("  No quotes yet. Press Ctrl+N on the Recall page to add one.")
+		body = styles.Muted.Render("  No quotes yet. Press ctrl+n on the Recall page to add one.")
 	default:
 		body = p.viewport.View()
 	}

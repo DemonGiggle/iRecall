@@ -180,7 +180,7 @@ func (p RecallPage) Update(msg tea.Msg) (RecallPage, tea.Cmd) {
 
 func (p RecallPage) View() string {
 	helpLine := styles.HelpBar.Render(
-		"Enter: Ask   Ctrl+N: Add Quote   ↑/↓: Move quote   X: Select   E: Edit   D: Delete   Tab/Shift+Tab: Switch Page",
+		"enter: Ask   ctrl+n: Add Quote   ↑/↓: Move quote   x: Select   e: Edit   d: Delete   tab/shift+tab: Switch Page",
 	)
 	if p.busy {
 		helpLine = styles.HelpBar.Render(p.spinner.View() + " Thinking...")

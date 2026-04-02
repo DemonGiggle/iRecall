@@ -19,7 +19,7 @@ The current TUI has three pages plus a modal overlay:
 - `Recall`: ask questions, see extracted keywords, streamed answers, and matched reference notes
 - `Quotes`: browse every stored quote and its tags
 - `Settings`: configure host, port, HTTPS, API key, model, and search limits
-- `Add Quote` modal: open from the Recall page with `Ctrl+N`
+- `Add Quote` modal: open from the Recall page with `ctrl+n`
 
 Global navigation:
 
@@ -27,40 +27,40 @@ Global navigation:
 | --- | --- |
 | `Tab` | Cycle `Recall -> Quotes -> Settings -> Recall` |
 | `Shift+Tab` | Cycle `Recall <- Quotes <- Settings <- Recall` |
-| `Ctrl+C` | Quit |
+| `ctrl+c` | Quit |
 
 Recall page:
 
 | Key | Action |
 | --- | --- |
-| `Enter` | Run recall workflow for the current question |
-| `Ctrl+N` | Open the Add Quote modal |
+| `enter` | Run recall workflow for the current question |
+| `ctrl+n` | Open the Add Quote modal |
 
 Quotes page:
 
 | Key | Action |
 | --- | --- |
-| `R` | Reload stored quotes |
-| `Up` / `Down` | Scroll |
-| `PgUp` / `PgDn` | Page scroll |
+| `r` | Reload stored quotes |
+| `up` / `down` | Scroll |
+| `pgup` / `pgdn` | Page scroll |
 
 Settings page:
 
 | Key | Action |
 | --- | --- |
-| `Up` / `Down` | Move focus between fields |
-| `Space` | Toggle HTTPS when focused |
-| `Enter` | Fetch models when the button is focused |
-| `Left` / `Right` | Cycle fetched models when the model field is focused |
-| `Ctrl+S` | Save settings |
+| `up` / `down` | Move focus between fields |
+| `space` | Toggle HTTPS when focused |
+| `enter` | Fetch models when the button is focused |
+| `left` / `right` | Cycle fetched models when the model field is focused |
+| `ctrl+s` | Save settings |
 
 Add Quote modal:
 
 | Key | Action |
 | --- | --- |
-| `Ctrl+R` | Ask the LLM to refine the current draft, then preview the suggestion |
-| `Ctrl+S` | Save the note |
-| `Esc` | Close the modal if no save is in progress |
+| `ctrl+r` | Ask the LLM to refine the current draft, then preview the suggestion |
+| `ctrl+s` | Save the note |
+| `esc` | Close the modal if no save is in progress |
 
 ## Quick Start
 
@@ -78,16 +78,16 @@ Useful flags:
 
 On first launch:
 
-1. Open `Settings` with `Tab`.
+1. Open `Settings` with `tab`.
 2. Enter the provider host, port, HTTPS preference, API key if needed, and a model name.
 3. Optionally use `Fetch Models` to populate the model selector from `/v1/models`.
-4. Save with `Ctrl+S`.
+4. Save with `ctrl+s`.
 
 After that:
 
 1. Go back to `Recall`.
-2. Press `Ctrl+N` to add notes.
-3. Ask questions with `Enter`.
+2. Press `ctrl+n` to add notes.
+3. Ask questions with `enter`.
 
 ## Provider Compatibility
 
