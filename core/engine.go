@@ -223,7 +223,7 @@ func (e *Engine) ExtractTags(ctx context.Context, text string) ([]string, error)
 		{
 			Role: "system",
 			Content: `You are a JSON keyword extractor. ` +
-				`Output ONLY a valid JSON array of 3 to 8 short lowercase keyword strings. ` +
+				`Output ONLY a valid JSON array of 6 to 12 short lowercase keyword strings. ` +
 				`No explanation, no markdown, no code fences, no extra text — just the JSON array. ` +
 				`Example output: ["emmc", "flash memory", "partition", "offset"]`,
 		},
@@ -233,7 +233,7 @@ func (e *Engine) ExtractTags(ctx context.Context, text string) ([]string, error)
 		},
 	}
 	zero := 0.0
-	maxTok := 150
+	maxTok := 220
 	raw, err := e.llm.Chat(ctx, msgs, nil, llm.ChatOptions{Temperature: &zero, MaxTokens: &maxTok})
 	if err != nil {
 		slog.Error("engine: extract tags LLM call failed", "error", err)

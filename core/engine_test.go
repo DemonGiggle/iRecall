@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -129,6 +130,65 @@ func TestRefineQuoteDraft(t *testing.T) {
 	}
 	if gotRequest.Messages[1].Content == "" || gotRequest.Messages[1].Content == "messy draft note" {
 		t.Fatalf("unexpected user prompt content = %q", gotRequest.Messages[1].Content)
+	}
+}
+
+func TestExtractTagsRequestsBroaderTagSet(t *testing.T) {
+	t.Parallel()
+
+	var gotRequest struct {
+		Model    string `json:"model"`
+		Messages []struct {
+			Role    string `json:"role"`
+			Content string `json:"content"`
+		} `json:"messages"`
+		MaxTokens int `json:"max_tokens"`
+		Stream    bool `json:"stream"`
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/chat/completions" {
+			t.Fatalf("path = %q, want /v1/chat/completions", r.URL.Path)
+		}
+		if err := json.NewDecoder(r.Body).Decode(&gotRequest); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"choices": []map[string]any{
+				{
+					"message": map[string]string{
+						"content": `["distributed systems","consensus","raft","leader election","quorum","replication","fault tolerance"]`,
+					},
+				},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	engine := newTestEngine(t, srv.Listener.Addr().String())
+
+	tags, err := engine.ExtractTags(context.Background(), "Raft relies on leader election, replication, and quorum to keep a distributed system consistent during failures.")
+	if err != nil {
+		t.Fatalf("ExtractTags() error = %v", err)
+	}
+	if len(tags) != 7 {
+		t.Fatalf("tag count = %d, want 7", len(tags))
+	}
+	if gotRequest.Model != "test-model" {
+		t.Fatalf("model = %q, want test-model", gotRequest.Model)
+	}
+	if gotRequest.Stream {
+		t.Fatal("stream = true, want false")
+	}
+	if gotRequest.MaxTokens != 220 {
+		t.Fatalf("max_tokens = %d, want 220", gotRequest.MaxTokens)
+	}
+	if len(gotRequest.Messages) != 2 {
+		t.Fatalf("message count = %d, want 2", len(gotRequest.Messages))
+	}
+	if !strings.Contains(gotRequest.Messages[0].Content, "6 to 12 short lowercase keyword strings") {
+		t.Fatalf("system prompt = %q, want broader tag range", gotRequest.Messages[0].Content)
 	}
 }
 

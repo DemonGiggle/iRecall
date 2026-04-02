@@ -7,7 +7,7 @@ iRecall is a Bubble Tea TUI backed by a small Go core. The core owns persistence
 The current application flow is:
 
 1. Store a note in SQLite.
-2. Ask the configured LLM for 3 to 8 tags.
+2. Ask the configured LLM for 6 to 12 tags.
 3. Save tags and update the FTS index.
 4. For recall, ask the LLM for 3 to 6 search keywords.
 5. Search the note corpus with SQLite FTS5.
