@@ -91,6 +91,14 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					cmds = append(cmds, a.quotes.Reload())
 				}
 				return a, tea.Batch(cmds...)
+			case "shift+tab":
+				// Cycle backward: Recall ← Quotes ← Settings ← Recall.
+				next := activePage((int(a.page) - 1 + int(pageCount)) % int(pageCount))
+				a.page = next
+				if next == pageQuotes {
+					cmds = append(cmds, a.quotes.Reload())
+				}
+				return a, tea.Batch(cmds...)
 			}
 		}
 		if msg.String() == "ctrl+c" {

@@ -263,7 +263,7 @@ func (p SettingsPage) View() string {
 		}
 	}
 
-	helpLine := styles.HelpBar.Render("↑/↓: Move   ←/→: Cycle Model   Space: Toggle   Enter: Fetch   Ctrl+S: Save   Tab: Switch Page")
+	helpLine := styles.HelpBar.Render("↑/↓: Move   ←/→: Cycle Model   Space: Toggle   Enter: Fetch   Ctrl+S: Save   Tab/Shift+Tab: Switch Page")
 
 	return styles.Panel.Width(p.width - 4).Render(
 		lipgloss.JoinVertical(lipgloss.Left,

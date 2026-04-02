@@ -26,6 +26,7 @@ Global navigation:
 | Key | Action |
 | --- | --- |
 | `Tab` | Cycle `Recall -> Quotes -> Settings -> Recall` |
+| `Shift+Tab` | Cycle `Recall <- Quotes <- Settings <- Recall` |
 | `Ctrl+C` | Quit |
 
 Recall page:
