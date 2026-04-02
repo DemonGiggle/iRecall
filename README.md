@@ -128,6 +128,7 @@ Notes:
 
 - Settings are currently stored in the SQLite `settings` table, not in a JSON config file.
 - The config directory is created up front but is not yet used for persisted configuration.
+- Use `irecall -data-path /path/to/instance` to run an isolated local instance. That root will contain `data/irecall.db`, `config/`, and `state/irecall.log`.
 
 ## Project Layout
 

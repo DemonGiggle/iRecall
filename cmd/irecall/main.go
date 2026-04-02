@@ -18,12 +18,17 @@ var version = "dev"
 
 func main() {
 	debugFlag := flag.Bool("debug", false, "enable debug logging")
+	dataPathFlag := flag.String("data-path", "", "store database, config, and logs under this root path")
 	versionFlag := flag.Bool("version", false, "print version and exit")
 	flag.Parse()
 
 	if *versionFlag {
 		fmt.Println("iRecall", version)
 		os.Exit(0)
+	}
+
+	if *dataPathFlag != "" {
+		config.SetRootPath(*dataPathFlag)
 	}
 
 	if err := config.EnsureDirs(); err != nil {

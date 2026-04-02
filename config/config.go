@@ -7,9 +7,25 @@ import (
 
 const appName = "irecall"
 
+var rootOverride string
+
+// SetRootPath overrides the default XDG directories and stores all app files
+// beneath the provided root path.
+func SetRootPath(root string) {
+	rootOverride = root
+}
+
+// RootPath returns the active override root path, if any.
+func RootPath() string {
+	return rootOverride
+}
+
 // DataDir returns the XDG data directory for iRecall.
 // Falls back to ~/.local/share/irecall.
 func DataDir() string {
+	if rootOverride != "" {
+		return filepath.Join(rootOverride, "data")
+	}
 	if d := os.Getenv("XDG_DATA_HOME"); d != "" {
 		return filepath.Join(d, appName)
 	}
@@ -20,6 +36,9 @@ func DataDir() string {
 // ConfigDir returns the XDG config directory for iRecall.
 // Falls back to ~/.config/irecall.
 func ConfigDir() string {
+	if rootOverride != "" {
+		return filepath.Join(rootOverride, "config")
+	}
 	if d := os.Getenv("XDG_CONFIG_HOME"); d != "" {
 		return filepath.Join(d, appName)
 	}
@@ -30,6 +49,9 @@ func ConfigDir() string {
 // StateDir returns the XDG state directory for iRecall.
 // Falls back to ~/.local/state/irecall.
 func StateDir() string {
+	if rootOverride != "" {
+		return filepath.Join(rootOverride, "state")
+	}
 	if d := os.Getenv("XDG_STATE_HOME"); d != "" {
 		return filepath.Join(d, appName)
 	}
