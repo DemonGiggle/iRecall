@@ -60,6 +60,8 @@ func (p QuotesPage) Update(msg tea.Msg) (QuotesPage, tea.Cmd) {
 
 	case tea.KeyMsg:
 		switch msg.String() {
+		case "ctrl+n":
+			return p, func() tea.Msg { return OpenQuoteEditorMsg{Mode: QuoteEditorModeAdd} }
 		case "r":
 			p.loading = true
 			p.errMsg = ""
@@ -102,7 +104,7 @@ func (p QuotesPage) Update(msg tea.Msg) (QuotesPage, tea.Cmd) {
 }
 
 func (p QuotesPage) View() string {
-	helpLine := styles.HelpBar.Render("↑/↓: Move   x: Select   e: Edit   d: Delete   s: Share   r: Refresh   pgup/pgdn: Page")
+	helpLine := styles.HelpBar.Render("ctrl+n: Add Quote   ↑/↓: Move   x: Select   e: Edit   d: Delete   s: Share   r: Refresh   pgup/pgdn: Page")
 
 	var body string
 	switch {
@@ -111,7 +113,7 @@ func (p QuotesPage) View() string {
 	case p.errMsg != "":
 		body = styles.StatusErr.Render("  " + p.errMsg)
 	case len(p.quotes) == 0:
-		body = styles.Muted.Render("  No quotes yet. Press ctrl+n on the Recall page to add one.")
+		body = styles.Muted.Render("  No quotes yet. Press ctrl+n to add one.")
 	default:
 		body = p.viewport.View()
 	}

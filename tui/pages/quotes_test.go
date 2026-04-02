@@ -51,3 +51,29 @@ func TestQuotesPageShareUsesSelectedOrCurrentQuote(t *testing.T) {
 		t.Fatalf("quotes page help missing share hint:\n%s", page.View())
 	}
 }
+
+func TestQuotesPageCanOpenAddQuoteModal(t *testing.T) {
+	t.Parallel()
+
+	page := NewQuotesPage(nil, 120, 40)
+	page.loading = false
+
+	model, cmd := page.Update(tea.KeyMsg{Type: tea.KeyCtrlN})
+	page = model
+	if cmd == nil {
+		t.Fatal("add quote command = nil, want command")
+	}
+
+	msg := cmd()
+	open, ok := msg.(OpenQuoteEditorMsg)
+	if !ok {
+		t.Fatalf("msg type = %T, want OpenQuoteEditorMsg", msg)
+	}
+	if open.Mode != QuoteEditorModeAdd {
+		t.Fatalf("editor mode = %v, want %v", open.Mode, QuoteEditorModeAdd)
+	}
+
+	if !containsAllText(page.View(), "ctrl+n: Add Quote") {
+		t.Fatalf("quotes page help missing add quote hint:\n%s", page.View())
+	}
+}

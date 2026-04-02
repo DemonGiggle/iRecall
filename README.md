@@ -51,6 +51,7 @@ Quotes page:
 
 | Key | Action |
 | --- | --- |
+| `ctrl+n` | Open the Add Quote modal |
 | `r` | Reload stored quotes |
 | `up` / `down` | Scroll |
 | `x` | Select or unselect the current quote |
