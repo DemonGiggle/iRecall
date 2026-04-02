@@ -55,6 +55,7 @@ type QuoteEditorPage struct {
 	statusMsg string
 	isErr     bool
 	clearAt   time.Time
+	original  string
 	refined   string
 
 	width  int
@@ -102,6 +103,7 @@ func (p QuoteEditorPage) Update(msg tea.Msg) (QuoteEditorPage, tea.Cmd) {
 			case "enter":
 				p.textarea.SetValue(p.refined)
 				p.preview = false
+				p.original = ""
 				p.refined = ""
 				p.statusMsg = "Refined draft applied. Review and keep editing."
 				p.isErr = false
@@ -110,6 +112,7 @@ func (p QuoteEditorPage) Update(msg tea.Msg) (QuoteEditorPage, tea.Cmd) {
 				return p, nil
 			case "esc":
 				p.preview = false
+				p.original = ""
 				p.refined = ""
 				p.statusMsg = "Refined draft discarded."
 				p.isErr = false
@@ -177,6 +180,7 @@ func (p QuoteEditorPage) Update(msg tea.Msg) (QuoteEditorPage, tea.Cmd) {
 			p.clearAt = time.Now().Add(4 * time.Second)
 		} else {
 			p.preview = true
+			p.original = p.textarea.Value()
 			p.refined = msg.Refined
 			p.statusMsg = ""
 			p.isErr = false
@@ -224,8 +228,8 @@ func (p QuoteEditorPage) View() string {
 
 	body := p.textarea.View()
 	if p.preview {
-		body = styles.Panel.Width(p.width - 16).Render(p.refined)
-		hint = styles.Muted.Render("  Preview the refined draft before applying it to your note.")
+		body = p.previewComparisonView()
+		hint = styles.Muted.Render("  Compare your current draft with the suggested rewrite before applying it.")
 	}
 
 	inner := lipgloss.JoinVertical(lipgloss.Left,
@@ -268,6 +272,7 @@ func (p *QuoteEditorPage) Reset(mode QuoteEditorMode, quote *core.Quote) {
 	p.isErr = false
 	p.busy = false
 	p.preview = false
+	p.original = ""
 	p.refined = ""
 	p.clearAt = time.Time{}
 	p.editingID = 0
@@ -297,4 +302,24 @@ func (p *QuoteEditorPage) refineQuote(content string) tea.Cmd {
 		refined, err := engine.RefineQuoteDraft(context.Background(), content)
 		return QuoteRefineDoneMsg{Refined: refined, Err: err}
 	}
+}
+
+func (p QuoteEditorPage) previewComparisonView() string {
+	panelWidth := (p.width - 20) / 2
+	if panelWidth < 24 {
+		panelWidth = 24
+	}
+
+	current := styles.PanelActive.Width(panelWidth).Render(
+		styles.SectionHeader.Render("Current Draft") + "\n" + strings.TrimSpace(p.original),
+	)
+	refined := styles.Panel.Width(panelWidth).Render(
+		styles.SectionHeader.Render("Refined Draft") + "\n" + strings.TrimSpace(p.refined),
+	)
+
+	if p.width < 90 {
+		return lipgloss.JoinVertical(lipgloss.Left, current, "", refined)
+	}
+
+	return lipgloss.JoinHorizontal(lipgloss.Top, current, "  ", refined)
 }

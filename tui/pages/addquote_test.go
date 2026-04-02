@@ -1,6 +1,7 @@
 package pages
 
 import (
+	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -25,6 +26,10 @@ func TestQuoteEditorPreviewAcceptAndReject(t *testing.T) {
 	if page.textarea.Value() != "original draft" {
 		t.Fatalf("textarea = %q, want original draft", page.textarea.Value())
 	}
+	view := page.View()
+	if !containsAll(view, "Current Draft", "original draft", "Refined Draft", "refined draft") {
+		t.Fatalf("preview comparison missing expected content:\n%s", view)
+	}
 
 	model, _ = page.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	page = model
@@ -47,4 +52,13 @@ func TestQuoteEditorPreviewAcceptAndReject(t *testing.T) {
 	if page.textarea.Value() != "accepted draft" {
 		t.Fatalf("textarea after accept = %q, want accepted draft", page.textarea.Value())
 	}
+}
+
+func containsAll(s string, parts ...string) bool {
+	for _, part := range parts {
+		if !strings.Contains(s, part) {
+			return false
+		}
+	}
+	return true
 }
