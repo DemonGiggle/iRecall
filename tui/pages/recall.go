@@ -158,6 +158,15 @@ func (p RecallPage) Update(msg tea.Msg) (RecallPage, tea.Cmd) {
 				return p, func() tea.Msg { return OpenDeleteQuotesMsg{Quotes: selected} }
 			}
 			return p, nil
+		case "s":
+			if p.focus != focusReferenceQuotes {
+				break
+			}
+			selected := p.quoteFns.selectedQuotes(p.quotes)
+			if len(selected) > 0 {
+				return p, func() tea.Msg { return OpenQuoteShareMsg{Quotes: selected} }
+			}
+			return p, nil
 		}
 
 	case TokenMsg:
@@ -245,7 +254,7 @@ func (p RecallPage) View() string {
 	refHelp := "ctrl+j: Focus input"
 	if p.focus == focusReferenceQuotes {
 		refLabel = styles.Bold.Foreground(styles.ColorAccent).Render("Reference Quotes")
-		refHelp = "ctrl+j: Focus input   ↑/↓: Move   x: Select   e: Edit   d: Delete"
+		refHelp = "ctrl+j: Focus input   ↑/↓: Move   x: Select   e: Edit   d: Delete   s: Share"
 	}
 	refStyle := styles.Panel
 	if p.focus == focusReferenceQuotes {

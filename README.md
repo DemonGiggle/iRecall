@@ -45,6 +45,7 @@ When the Reference Quotes panel is focused:
 | `x` | Select or unselect the current quote |
 | `e` | Edit the current quote |
 | `d` | Delete the current selection |
+| `s` | Export the current or selected quotes in the Share Quotes modal |
 
 Quotes page:
 
@@ -52,6 +53,10 @@ Quotes page:
 | --- | --- |
 | `r` | Reload stored quotes |
 | `up` / `down` | Scroll |
+| `x` | Select or unselect the current quote |
+| `e` | Edit the current quote |
+| `d` | Delete the current selection |
+| `s` | Export the current or selected quotes in the Share Quotes modal |
 | `pgup` / `pgdn` | Page scroll |
 
 Settings page:
@@ -71,6 +76,13 @@ Add Quote modal:
 | `ctrl+r` | Ask the LLM to refine the current draft, then preview the suggestion |
 | `ctrl+s` | Save the note |
 | `esc` | Close the modal if no save is in progress |
+
+Share Quotes modal:
+
+| Key | Action |
+| --- | --- |
+| `ctrl+s` / `enter` | Save the exported JSON payload to the file path in the modal |
+| `esc` | Close the modal |
 
 ## Quick Start
 

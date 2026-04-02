@@ -1,7 +1,9 @@
 package tui
 
 import (
+	"context"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -48,6 +50,41 @@ func TestAppStartsWithProfilePromptWhenNameMissing(t *testing.T) {
 
 	if app.overlay != overlayUserProfilePrompt {
 		t.Fatalf("overlay = %v, want %v", app.overlay, overlayUserProfilePrompt)
+	}
+}
+
+func TestAppOpensAndClosesQuoteShareOverlay(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp(t)
+	quotes, err := app.engine.ListQuotes(context.Background())
+	if err != nil {
+		t.Fatalf("ListQuotes() error = %v", err)
+	}
+	if len(quotes) != 1 {
+		t.Fatalf("quote count = %d, want 1", len(quotes))
+	}
+
+	model, cmd := app.Update(pages.OpenQuoteShareMsg{Quotes: quotes})
+	app, _ = model.(App)
+	if app.overlay != overlayQuoteShare {
+		t.Fatalf("overlay after open = %v, want %v", app.overlay, overlayQuoteShare)
+	}
+	if cmd == nil {
+		t.Fatal("share init command = nil, want command")
+	}
+
+	msg := cmd()
+	model, _ = app.Update(msg)
+	app, _ = model.(App)
+	if !containsAllText(app.View(), "Share Quotes", "Export Payload", "\"schema_version\": 1") {
+		t.Fatalf("share overlay view missing expected content:\n%s", app.View())
+	}
+
+	model, _ = app.Update(pages.CloseQuoteShareMsg{})
+	app, _ = model.(App)
+	if app.overlay != overlayNone {
+		t.Fatalf("overlay after close = %v, want %v", app.overlay, overlayNone)
 	}
 }
 
@@ -115,4 +152,13 @@ func updateAppWithKey(t *testing.T, app App, key tea.KeyType) App {
 	}
 
 	return next
+}
+
+func containsAllText(s string, parts ...string) bool {
+	for _, part := range parts {
+		if !strings.Contains(s, part) {
+			return false
+		}
+	}
+	return true
 }

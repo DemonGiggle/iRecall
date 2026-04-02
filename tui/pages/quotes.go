@@ -88,6 +88,11 @@ func (p QuotesPage) Update(msg tea.Msg) (QuotesPage, tea.Cmd) {
 			if len(selected) > 0 {
 				return p, func() tea.Msg { return OpenDeleteQuotesMsg{Quotes: selected} }
 			}
+		case "s":
+			selected := p.quoteFns.selectedQuotes(p.quotes)
+			if len(selected) > 0 {
+				return p, func() tea.Msg { return OpenQuoteShareMsg{Quotes: selected} }
+			}
 		}
 	}
 
@@ -97,7 +102,7 @@ func (p QuotesPage) Update(msg tea.Msg) (QuotesPage, tea.Cmd) {
 }
 
 func (p QuotesPage) View() string {
-	helpLine := styles.HelpBar.Render("↑/↓: Move   x: Select   e: Edit   d: Delete   r: Refresh   pgup/pgdn: Page")
+	helpLine := styles.HelpBar.Render("↑/↓: Move   x: Select   e: Edit   d: Delete   s: Share   r: Refresh   pgup/pgdn: Page")
 
 	var body string
 	switch {

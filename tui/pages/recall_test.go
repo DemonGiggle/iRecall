@@ -47,7 +47,7 @@ func TestRecallPageFocusJumpAndReferenceHints(t *testing.T) {
 	}
 
 	view := page.View()
-	if !containsAllText(view, "ctrl+j: Focus input", "↑/↓: Move", "x: Select", "Reference Quotes") {
+	if !containsAllText(view, "ctrl+j: Focus input", "↑/↓: Move", "x: Select", "s: Share", "Reference Quotes") {
 		t.Fatalf("reference panel hints missing expected content:\n%s", view)
 	}
 
@@ -58,6 +58,42 @@ func TestRecallPageFocusJumpAndReferenceHints(t *testing.T) {
 	}
 	if !page.input.Focused() {
 		t.Fatal("input should be focused after returning from reference quotes")
+	}
+}
+
+func TestRecallPageShareRequiresReferenceFocus(t *testing.T) {
+	t.Parallel()
+
+	page := NewRecallPage(nil, 120, 40)
+	page.quotes = []core.Quote{
+		{ID: 1, Content: "first quote"},
+		{ID: 2, Content: "second quote"},
+	}
+	page.refreshReferencePanel()
+
+	model, cmd := page.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("s")})
+	page = model
+	if cmd != nil {
+		if _, ok := cmd().(OpenQuoteShareMsg); ok {
+			t.Fatal("share command while input focused = OpenQuoteShareMsg, want no share")
+		}
+	}
+
+	model, _ = page.Update(tea.KeyMsg{Type: tea.KeyCtrlJ})
+	page = model
+
+	model, cmd = page.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("s")})
+	page = model
+	if cmd == nil {
+		t.Fatal("share command on reference focus = nil, want command")
+	}
+	msg := cmd()
+	open, ok := msg.(OpenQuoteShareMsg)
+	if !ok {
+		t.Fatalf("msg type = %T, want OpenQuoteShareMsg", msg)
+	}
+	if len(open.Quotes) != 1 || open.Quotes[0].ID != 1 {
+		t.Fatalf("shared quotes = %+v, want current quote 1", open.Quotes)
 	}
 }
 

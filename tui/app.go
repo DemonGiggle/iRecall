@@ -24,6 +24,7 @@ const (
 	overlayUserProfilePrompt
 	overlayQuoteEditor
 	overlayDeleteQuotes
+	overlayQuoteShare
 )
 
 // App is the root Bubbletea model. It owns page routing and global key handling.
@@ -41,6 +42,7 @@ type App struct {
 	settings_    pages.SettingsPage
 	quoteEditor  pages.QuoteEditorPage
 	deleteQuotes pages.DeleteQuotesPage
+	quoteShare   pages.QuoteSharePage
 
 	width  int
 	height int
@@ -63,6 +65,7 @@ func NewApp(engine *core.Engine, settings *core.Settings, profile *core.UserProf
 		settings_:    pages.NewSettingsPage(engine, width, height-3, settings),
 		quoteEditor:  pages.NewQuoteEditorPage(engine, width, height),
 		deleteQuotes: pages.NewDeleteQuotesPage(engine, width, height),
+		quoteShare:   pages.NewQuoteSharePage(engine, width, height),
 		width:        width,
 		height:       height,
 	}
@@ -88,6 +91,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.userProfile.SetSize(msg.Width, msg.Height)
 		a.quoteEditor.SetSize(msg.Width, msg.Height)
 		a.deleteQuotes.SetSize(msg.Width, msg.Height)
+		a.quoteShare.SetSize(msg.Width, msg.Height)
 		return a, nil
 
 	case tea.KeyMsg:
@@ -143,6 +147,11 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.deleteQuotes.Reset(msg.Quotes)
 		return a, a.deleteQuotes.Init()
 
+	case pages.OpenQuoteShareMsg:
+		a.overlay = overlayQuoteShare
+		a.quoteShare.Reset(msg.Quotes)
+		return a, a.quoteShare.Init()
+
 	case pages.CloseDeleteQuotesMsg:
 		a.overlay = overlayNone
 		if len(msg.DeletedIDs) > 0 {
@@ -151,6 +160,10 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		cmds = append(cmds, a.quotes.Reload())
 		return a, tea.Batch(cmds...)
+
+	case pages.CloseQuoteShareMsg:
+		a.overlay = overlayNone
+		return a, nil
 
 	case pages.QuotesLoadedMsg:
 		var cmd tea.Cmd
@@ -175,6 +188,12 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if a.overlay == overlayDeleteQuotes {
 		var cmd tea.Cmd
 		a.deleteQuotes, cmd = a.deleteQuotes.Update(msg)
+		cmds = append(cmds, cmd)
+		return a, tea.Batch(cmds...)
+	}
+	if a.overlay == overlayQuoteShare {
+		var cmd tea.Cmd
+		a.quoteShare, cmd = a.quoteShare.Update(msg)
 		cmds = append(cmds, cmd)
 		return a, tea.Batch(cmds...)
 	}
@@ -232,6 +251,14 @@ func (a App) View() string {
 		return lipgloss.Place(a.width, a.height,
 			lipgloss.Center, lipgloss.Center,
 			a.deleteQuotes.View(),
+			lipgloss.WithWhitespaceChars(" "),
+			lipgloss.WithWhitespaceForeground(styles.ColorMuted),
+		)
+	}
+	if a.overlay == overlayQuoteShare {
+		return lipgloss.Place(a.width, a.height,
+			lipgloss.Center, lipgloss.Center,
+			a.quoteShare.View(),
 			lipgloss.WithWhitespaceChars(" "),
 			lipgloss.WithWhitespaceForeground(styles.ColorMuted),
 		)
