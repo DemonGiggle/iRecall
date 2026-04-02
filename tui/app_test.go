@@ -53,6 +53,17 @@ func TestAppStartsWithProfilePromptWhenNameMissing(t *testing.T) {
 	}
 }
 
+func TestAppHeaderShowsUserGreeting(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp(t)
+
+	view := app.View()
+	if !containsAllText(view, "Hi! Alice", "Recall", "Quotes", "Settings") {
+		t.Fatalf("header missing expected greeting:\n%s", view)
+	}
+}
+
 func TestAppOpensAndClosesQuoteShareOverlay(t *testing.T) {
 	t.Parallel()
 

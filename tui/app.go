@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"strings"
+
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/gigol/irecall/core"
@@ -269,6 +271,10 @@ func (a App) View() string {
 
 func (a App) headerView() string {
 	title := styles.TitleBar.Render("iRecall")
+	greeting := ""
+	if a.profile != nil && strings.TrimSpace(a.profile.DisplayName) != "" {
+		greeting = styles.HelpBar.Render("Hi! " + strings.TrimSpace(a.profile.DisplayName))
+	}
 
 	tab := func(label string, p activePage) string {
 		if a.page == p {
@@ -281,10 +287,14 @@ func (a App) headerView() string {
 		tab("Quotes", pageQuotes) + sep +
 		tab("Settings", pageSettings)
 
-	spacer := lipgloss.NewStyle().Width(a.width - lipgloss.Width(title) - lipgloss.Width(tabs) - 4)
+	right := tabs
+	if greeting != "" {
+		right = greeting + "  " + tabs
+	}
+	spacer := lipgloss.NewStyle().Width(a.width - lipgloss.Width(title) - lipgloss.Width(right) - 4)
 	return lipgloss.JoinHorizontal(lipgloss.Top,
 		title,
 		spacer.Render(""),
-		styles.HelpBar.Render(tabs),
+		right,
 	)
 }
