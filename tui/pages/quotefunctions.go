@@ -126,6 +126,10 @@ func renderQuoteFunctionList(quotes []core.Quote, selection quoteSelection, inne
 		content := lipgloss.NewStyle().Width(innerW - 10).Render(q.Content)
 		sb.WriteString(prefix + check + " " + number + " " + content + "\n")
 
+		if !q.IsOwnedByMe && q.SourceName != "" {
+			sb.WriteString(styles.Muted.Render("    From: ") + styles.Accent.Render(q.SourceName) + "\n")
+		}
+
 		if showTags {
 			if len(q.Tags) > 0 {
 				tagStr := strings.Join(q.Tags, "  ·  ")

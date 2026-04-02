@@ -10,7 +10,14 @@ func TestStoreQuoteLifecycleAndSearch(t *testing.T) {
 
 	store := openTestStore(t)
 
-	quoteID, err := store.InsertQuote("Go channels coordinate concurrent goroutines.")
+	quoteID, err := store.InsertQuote("Go channels coordinate concurrent goroutines.", QuoteIdentity{
+		GlobalID:     "quote-1",
+		AuthorUserID: "user-1",
+		AuthorName:   "Alice",
+		SourceUserID: "user-1",
+		SourceName:   "Alice",
+		Version:      1,
+	})
 	if err != nil {
 		t.Fatalf("insert quote: %v", err)
 	}
@@ -48,6 +55,9 @@ func TestStoreQuoteLifecycleAndSearch(t *testing.T) {
 	if len(listed) != 1 {
 		t.Fatalf("listed quote count = %d, want 1", len(listed))
 	}
+	if listed[0].GlobalID != "quote-1" {
+		t.Fatalf("global id = %q, want quote-1", listed[0].GlobalID)
+	}
 	if listed[0].Tags != "concurrency,golang" && listed[0].Tags != "golang,concurrency" {
 		t.Fatalf("listed tags = %q, want concurrency and golang", listed[0].Tags)
 	}
@@ -80,6 +90,48 @@ func TestStoreSettingsRoundTrip(t *testing.T) {
 	}
 	if got != `{"provider":{"host":"localhost"}}` {
 		t.Fatalf("setting value = %q", got)
+	}
+}
+
+func TestStoreUserProfileRoundTripAndBackfill(t *testing.T) {
+	t.Parallel()
+
+	store := openTestStore(t)
+	if _, err := store.InsertQuote("legacy quote", QuoteIdentity{}); err != nil {
+		t.Fatalf("insert legacy quote: %v", err)
+	}
+
+	profile := UserProfileRow{
+		UserID:      "user-1",
+		DisplayName: "Alice",
+		CreatedAt:   100,
+		UpdatedAt:   100,
+	}
+	if err := store.SaveUserProfile(profile); err != nil {
+		t.Fatalf("save user profile: %v", err)
+	}
+
+	got, err := store.GetUserProfile()
+	if err != nil {
+		t.Fatalf("get user profile: %v", err)
+	}
+	if got.UserID != profile.UserID || got.DisplayName != profile.DisplayName {
+		t.Fatalf("user profile = %+v, want %+v", got, profile)
+	}
+
+	if err := store.BackfillQuoteIdentity(profile.UserID, profile.DisplayName, 200, func() string { return "uuid-1" }); err != nil {
+		t.Fatalf("backfill quote identity: %v", err)
+	}
+
+	quotes, err := store.ListQuotes()
+	if err != nil {
+		t.Fatalf("list quotes: %v", err)
+	}
+	if len(quotes) != 1 {
+		t.Fatalf("quote count = %d, want 1", len(quotes))
+	}
+	if quotes[0].GlobalID != "uuid-1" || quotes[0].AuthorName != "Alice" || quotes[0].SourceName != "Alice" {
+		t.Fatalf("backfilled quote = %+v", quotes[0])
 	}
 }
 

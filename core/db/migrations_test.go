@@ -38,6 +38,7 @@ func TestRunMigrationsFreshDatabase(t *testing.T) {
 	assertTableExists(t, db, "quotes_fts")
 	assertTableExists(t, db, "settings")
 	assertTableExists(t, db, "schema_migrations")
+	assertTableExists(t, db, "user_profile")
 
 	if got := countRows(t, db, "schema_migrations"); got != len(migrations) {
 		t.Fatalf("schema_migrations row count = %d, want %d", got, len(migrations))
@@ -69,11 +70,11 @@ func TestRunMigrationsImportsLegacySchemaVersion(t *testing.T) {
 		t.Fatalf("run migrations: %v", err)
 	}
 
-	if got := countRows(t, db, "schema_migrations"); got != 1 {
-		t.Fatalf("schema_migrations row count = %d, want 1", got)
+	if got := countRows(t, db, "schema_migrations"); got != len(migrations) {
+		t.Fatalf("schema_migrations row count = %d, want %d", got, len(migrations))
 	}
-	if got := countRows(t, db, "schema_version"); got != 1 {
-		t.Fatalf("schema_version row count = %d, want 1", got)
+	if got := countRows(t, db, "schema_version"); got != len(migrations) {
+		t.Fatalf("schema_version row count = %d, want %d", got, len(migrations))
 	}
 
 	var name string
@@ -82,6 +83,12 @@ func TestRunMigrationsImportsLegacySchemaVersion(t *testing.T) {
 	}
 	if name != "legacy_v1" {
 		t.Fatalf("imported migration name = %q, want %q", name, "legacy_v1")
+	}
+	if err := db.QueryRow(`SELECT name FROM schema_migrations WHERE version = 2`).Scan(&name); err != nil {
+		t.Fatalf("query migration v2 name: %v", err)
+	}
+	if name != "quote_identity_and_user_profile" {
+		t.Fatalf("migration v2 name = %q", name)
 	}
 }
 

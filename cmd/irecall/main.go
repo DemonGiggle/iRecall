@@ -59,9 +59,20 @@ func main() {
 		settings = defaults
 	}
 	engine.UpdateSettings(settings)
+	profile, err := engine.LoadUserProfile(nil) //nolint: staticcheck
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "irecall: cannot load user profile: %v\n", err)
+		engine.Close()
+		os.Exit(1)
+	}
+	if err := engine.BootstrapQuoteIdentity(nil); err != nil { //nolint: staticcheck
+		fmt.Fprintf(os.Stderr, "irecall: cannot bootstrap quote identity: %v\n", err)
+		engine.Close()
+		os.Exit(1)
+	}
 
 	// Start TUI.
-	app := tui.NewApp(engine, settings, 0, 0)
+	app := tui.NewApp(engine, settings, profile, 0, 0)
 	p := tea.NewProgram(app,
 		tea.WithAltScreen(),
 		tea.WithMouseCellMotion(),

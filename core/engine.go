@@ -10,14 +10,16 @@ import (
 
 	"github.com/gigol/irecall/core/db"
 	"github.com/gigol/irecall/core/llm"
+	"github.com/google/uuid"
 )
 
 // Engine is the central orchestrator. It owns the DB store and LLM client
 // and exposes the full recall workflow. No UI types are referenced here.
 type Engine struct {
-	store *db.Store
-	llm   *llm.Client
-	cfg   *Settings
+	store   *db.Store
+	llm     *llm.Client
+	cfg     *Settings
+	profile *UserProfile
 }
 
 // New creates an Engine from an open DB store and current settings.
@@ -49,6 +51,10 @@ func (e *Engine) UpdateSettings(s *Settings) {
 	e.llm = llm.NewClient(s.Provider)
 }
 
+func (e *Engine) UpdateUserProfile(profile *UserProfile) {
+	e.profile = profile
+}
+
 // --- Quote management ---
 
 // AddQuote stores a new quote and extracts tags via LLM.
@@ -61,7 +67,12 @@ func (e *Engine) AddQuote(ctx context.Context, content string) (*Quote, error) {
 
 	slog.Info("engine: adding quote", "content_len", len(content), "content_preview", truncate(content, 100))
 
-	id, err := e.store.InsertQuote(content)
+	identity, err := e.quoteIdentityForNewQuote()
+	if err != nil {
+		return nil, err
+	}
+
+	id, err := e.store.InsertQuote(content, identity)
 	if err != nil {
 		slog.Error("engine: failed to insert quote", "error", err)
 		return nil, fmt.Errorf("store quote: %w", err)
@@ -105,7 +116,7 @@ func (e *Engine) ListQuotes(ctx context.Context) ([]Quote, error) {
 		slog.Error("engine: list quotes failed", "error", err)
 		return nil, err
 	}
-	quotes := rowsToQuotes(rows)
+	quotes := rowsToQuotes(rows, e.localUserID())
 	slog.Debug("engine: listed quotes", "count", len(quotes))
 	return quotes, nil
 }
@@ -279,7 +290,7 @@ func (e *Engine) SearchQuotes(ctx context.Context, keywords []string) ([]Quote, 
 		slog.Error("engine: search failed", "error", err)
 		return nil, err
 	}
-	quotes := rowsToQuotes(rows)
+	quotes := rowsToQuotes(rows, e.localUserID())
 	slog.Info("engine: search complete", "result_count", len(quotes))
 	for i, q := range quotes {
 		slog.Debug("engine: search result", "index", i, "id", q.ID, "content_preview", truncate(q.Content, 80), "tags", q.Tags)
@@ -393,9 +404,71 @@ func (e *Engine) SaveSettings(ctx context.Context, s *Settings) error {
 	return nil
 }
 
+func (e *Engine) LoadUserProfile(ctx context.Context) (*UserProfile, error) {
+	slog.Debug("engine: loading user profile")
+	row, err := e.store.GetUserProfile()
+	if err != nil {
+		return nil, err
+	}
+	if row.UserID == "" {
+		profile := &UserProfile{
+			UserID:      uuid.NewString(),
+			DisplayName: "",
+			CreatedAt:   time.Now(),
+			UpdatedAt:   time.Now(),
+		}
+		if err := e.SaveUserProfile(ctx, profile); err != nil {
+			return nil, err
+		}
+		return profile, nil
+	}
+	profile := &UserProfile{
+		UserID:      row.UserID,
+		DisplayName: row.DisplayName,
+		CreatedAt:   time.Unix(row.CreatedAt, 0),
+		UpdatedAt:   time.Unix(row.UpdatedAt, 0),
+	}
+	e.profile = profile
+	return profile, nil
+}
+
+func (e *Engine) SaveUserProfile(ctx context.Context, profile *UserProfile) error {
+	_ = ctx
+	now := time.Now()
+	if profile.UserID == "" {
+		profile.UserID = uuid.NewString()
+	}
+	if profile.CreatedAt.IsZero() {
+		profile.CreatedAt = now
+	}
+	profile.DisplayName = strings.TrimSpace(profile.DisplayName)
+	profile.UpdatedAt = now
+	if err := e.store.SaveUserProfile(db.UserProfileRow{
+		UserID:      profile.UserID,
+		DisplayName: profile.DisplayName,
+		CreatedAt:   profile.CreatedAt.Unix(),
+		UpdatedAt:   profile.UpdatedAt.Unix(),
+	}); err != nil {
+		return err
+	}
+	if err := e.store.UpdateOwnedQuoteNames(profile.UserID, profile.DisplayName); err != nil {
+		return err
+	}
+	e.profile = profile
+	return nil
+}
+
+func (e *Engine) BootstrapQuoteIdentity(ctx context.Context) error {
+	_ = ctx
+	if e.profile == nil {
+		return fmt.Errorf("user profile not loaded")
+	}
+	return e.store.BackfillQuoteIdentity(e.profile.UserID, e.profile.DisplayName, time.Now().Unix(), uuid.NewString)
+}
+
 // --- Helpers ---
 
-func rowsToQuotes(rows []db.QuoteRow) []Quote {
+func rowsToQuotes(rows []db.QuoteRow, localUserID string) []Quote {
 	out := make([]Quote, len(rows))
 	for i, r := range rows {
 		tags := []string{}
@@ -403,11 +476,18 @@ func rowsToQuotes(rows []db.QuoteRow) []Quote {
 			tags = strings.Split(r.Tags, ",")
 		}
 		out[i] = Quote{
-			ID:        r.ID,
-			Content:   r.Content,
-			Tags:      tags,
-			CreatedAt: time.Unix(r.CreatedAt, 0),
-			UpdatedAt: time.Unix(r.UpdatedAt, 0),
+			ID:           r.ID,
+			GlobalID:     r.GlobalID,
+			AuthorUserID: r.AuthorUserID,
+			AuthorName:   r.AuthorName,
+			SourceUserID: r.SourceUserID,
+			SourceName:   r.SourceName,
+			Content:      r.Content,
+			Tags:         tags,
+			Version:      r.Version,
+			IsOwnedByMe:  localUserID != "" && r.AuthorUserID == localUserID,
+			CreatedAt:    time.Unix(r.CreatedAt, 0),
+			UpdatedAt:    time.Unix(r.UpdatedAt, 0),
 		}
 	}
 	return out
@@ -418,8 +498,29 @@ func (e *Engine) loadQuote(id int64) (*Quote, error) {
 	if err != nil {
 		return nil, err
 	}
-	quotes := rowsToQuotes([]db.QuoteRow{row})
+	quotes := rowsToQuotes([]db.QuoteRow{row}, e.localUserID())
 	return &quotes[0], nil
+}
+
+func (e *Engine) localUserID() string {
+	if e.profile == nil {
+		return ""
+	}
+	return e.profile.UserID
+}
+
+func (e *Engine) quoteIdentityForNewQuote() (db.QuoteIdentity, error) {
+	if e.profile == nil || e.profile.UserID == "" {
+		return db.QuoteIdentity{}, fmt.Errorf("user profile not loaded")
+	}
+	return db.QuoteIdentity{
+		GlobalID:     uuid.NewString(),
+		AuthorUserID: e.profile.UserID,
+		AuthorName:   e.profile.DisplayName,
+		SourceUserID: e.profile.UserID,
+		SourceName:   e.profile.DisplayName,
+		Version:      1,
+	}, nil
 }
 
 // parseJSONStringArray parses a JSON string array, with comma-split fallback.

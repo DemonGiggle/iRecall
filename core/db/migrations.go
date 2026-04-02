@@ -19,6 +19,11 @@ var migrations = []migration{
 		name:    "initial_schema",
 		up:      upInitialSchema,
 	},
+	{
+		version: 2,
+		name:    "quote_identity_and_user_profile",
+		up:      upQuoteIdentityAndUserProfile,
+	},
 }
 
 const initialSchemaSQL = `
@@ -254,6 +259,32 @@ func applyMigration(db *sql.DB, m migration) error {
 func upInitialSchema(tx *sql.Tx) error {
 	if _, err := tx.Exec(initialSchemaSQL); err != nil {
 		return err
+	}
+	return nil
+}
+
+func upQuoteIdentityAndUserProfile(tx *sql.Tx) error {
+	stmts := []string{
+		`ALTER TABLE quotes ADD COLUMN global_id TEXT`,
+		`ALTER TABLE quotes ADD COLUMN author_user_id TEXT`,
+		`ALTER TABLE quotes ADD COLUMN author_name TEXT`,
+		`ALTER TABLE quotes ADD COLUMN source_user_id TEXT`,
+		`ALTER TABLE quotes ADD COLUMN source_name TEXT`,
+		`ALTER TABLE quotes ADD COLUMN version INTEGER NOT NULL DEFAULT 1`,
+		`ALTER TABLE quotes ADD COLUMN shared_at INTEGER`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_quotes_global_id ON quotes(global_id)`,
+		`CREATE TABLE IF NOT EXISTS user_profile (
+			user_id      TEXT PRIMARY KEY,
+			display_name TEXT NOT NULL,
+			created_at   INTEGER NOT NULL,
+			updated_at   INTEGER NOT NULL
+		)`,
+	}
+
+	for _, stmt := range stmts {
+		if _, err := tx.Exec(stmt); err != nil {
+			return err
+		}
 	}
 	return nil
 }

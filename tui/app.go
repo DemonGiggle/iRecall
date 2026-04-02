@@ -21,6 +21,7 @@ type overlayKind int
 
 const (
 	overlayNone overlayKind = iota
+	overlayUserProfilePrompt
 	overlayQuoteEditor
 	overlayDeleteQuotes
 )
@@ -29,10 +30,12 @@ const (
 type App struct {
 	engine   *core.Engine
 	settings *core.Settings
+	profile  *core.UserProfile
 
 	page    activePage
 	overlay overlayKind
 
+	userProfile  pages.UserProfilePromptPage
 	recall       pages.RecallPage
 	quotes       pages.QuotesPage
 	settings_    pages.SettingsPage
@@ -43,12 +46,18 @@ type App struct {
 	height int
 }
 
-func NewApp(engine *core.Engine, settings *core.Settings, width, height int) App {
+func NewApp(engine *core.Engine, settings *core.Settings, profile *core.UserProfile, width, height int) App {
+	overlay := overlayNone
+	if profile == nil || profile.DisplayName == "" {
+		overlay = overlayUserProfilePrompt
+	}
 	return App{
 		engine:       engine,
 		settings:     settings,
+		profile:      profile,
 		page:         pageRecall,
-		overlay:      overlayNone,
+		overlay:      overlay,
+		userProfile:  pages.NewUserProfilePromptPage(engine, width, height, profile),
 		recall:       pages.NewRecallPage(engine, width, height-3),
 		quotes:       pages.NewQuotesPage(engine, width, height-3),
 		settings_:    pages.NewSettingsPage(engine, width, height-3, settings),
@@ -60,6 +69,9 @@ func NewApp(engine *core.Engine, settings *core.Settings, width, height int) App
 }
 
 func (a App) Init() tea.Cmd {
+	if a.overlay == overlayUserProfilePrompt {
+		return a.userProfile.Init()
+	}
 	return a.recall.Init()
 }
 
@@ -73,6 +85,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.recall.SetSize(msg.Width, msg.Height-3)
 		a.quotes.SetSize(msg.Width, msg.Height-3)
 		a.settings_.SetSize(msg.Width, msg.Height-3)
+		a.userProfile.SetSize(msg.Width, msg.Height)
 		a.quoteEditor.SetSize(msg.Width, msg.Height)
 		a.deleteQuotes.SetSize(msg.Width, msg.Height)
 		return a, nil
@@ -106,6 +119,11 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	// Overlay lifecycle.
+	case pages.CloseUserProfilePromptMsg:
+		a.overlay = overlayNone
+		a.profile = msg.Profile
+		return a, nil
+
 	case pages.OpenQuoteEditorMsg:
 		a.overlay = overlayQuoteEditor
 		a.quoteEditor.Reset(msg.Mode, msg.Quote)
@@ -142,6 +160,12 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	// Route messages to the active overlay or page.
+	if a.overlay == overlayUserProfilePrompt {
+		var cmd tea.Cmd
+		a.userProfile, cmd = a.userProfile.Update(msg)
+		cmds = append(cmds, cmd)
+		return a, tea.Batch(cmds...)
+	}
 	if a.overlay == overlayQuoteEditor {
 		var cmd tea.Cmd
 		a.quoteEditor, cmd = a.quoteEditor.Update(msg)
@@ -188,6 +212,14 @@ func (a App) View() string {
 
 	base := lipgloss.JoinVertical(lipgloss.Left, header, body)
 
+	if a.overlay == overlayUserProfilePrompt {
+		return lipgloss.Place(a.width, a.height,
+			lipgloss.Center, lipgloss.Center,
+			a.userProfile.View(),
+			lipgloss.WithWhitespaceChars(" "),
+			lipgloss.WithWhitespaceForeground(styles.ColorMuted),
+		)
+	}
 	if a.overlay == overlayQuoteEditor {
 		return lipgloss.Place(a.width, a.height,
 			lipgloss.Center, lipgloss.Center,

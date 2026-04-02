@@ -4,11 +4,25 @@ import "time"
 
 // Quote is a single user-captured note with associated tags.
 type Quote struct {
-	ID        int64
-	Content   string
-	Tags      []string
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	ID           int64
+	GlobalID     string
+	AuthorUserID string
+	AuthorName   string
+	SourceUserID string
+	SourceName   string
+	Content      string
+	Tags         []string
+	Version      int64
+	IsOwnedByMe  bool
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
+}
+
+type UserProfile struct {
+	UserID      string
+	DisplayName string
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
 }
 
 // Settings holds all persisted user preferences.

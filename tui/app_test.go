@@ -40,6 +40,17 @@ func TestAppTabNavigationAndQuotesReload(t *testing.T) {
 	}
 }
 
+func TestAppStartsWithProfilePromptWhenNameMissing(t *testing.T) {
+	t.Parallel()
+
+	settings := core.DefaultSettings()
+	app := NewApp(nil, settings, &core.UserProfile{UserID: "user-1", DisplayName: ""}, 120, 40)
+
+	if app.overlay != overlayUserProfilePrompt {
+		t.Fatalf("overlay = %v, want %v", app.overlay, overlayUserProfilePrompt)
+	}
+}
+
 func newTestApp(t *testing.T) App {
 	t.Helper()
 
@@ -54,12 +65,21 @@ func newTestApp(t *testing.T) App {
 
 	settings := core.DefaultSettings()
 	engine := core.New(store, settings)
+	profile := &core.UserProfile{UserID: "user-1", DisplayName: "Alice"}
+	engine.UpdateUserProfile(profile)
 
-	if _, err := store.InsertQuote("Test quote for page reload."); err != nil {
+	if _, err := store.InsertQuote("Test quote for page reload.", db.QuoteIdentity{
+		GlobalID:     "quote-1",
+		AuthorUserID: profile.UserID,
+		AuthorName:   profile.DisplayName,
+		SourceUserID: profile.UserID,
+		SourceName:   profile.DisplayName,
+		Version:      1,
+	}); err != nil {
 		t.Fatalf("insert quote: %v", err)
 	}
 
-	return NewApp(engine, settings, 120, 40)
+	return NewApp(engine, settings, profile, 120, 40)
 }
 
 func updateAppWithKey(t *testing.T, app App, key tea.KeyType) App {
