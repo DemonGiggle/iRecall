@@ -35,6 +35,16 @@ Recall page:
 | --- | --- |
 | `enter` | Run recall workflow for the current question |
 | `ctrl+n` | Open the Add Quote modal |
+| `ctrl+j` | Jump focus between the input and the Reference Quotes panel |
+
+When the Reference Quotes panel is focused:
+
+| Key | Action |
+| --- | --- |
+| `up` / `down` | Move between retrieved quotes |
+| `x` | Select or unselect the current quote |
+| `e` | Edit the current quote |
+| `d` | Delete the current selection |
 
 Quotes page:
 

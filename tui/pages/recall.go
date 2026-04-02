@@ -40,6 +40,7 @@ type RecallPage struct {
 	spinner   spinner.Model
 	busy      bool
 	statusMsg string
+	focus     recallFocus
 
 	quotes   []core.Quote
 	keywords []string
@@ -49,6 +50,13 @@ type RecallPage struct {
 	width  int
 	height int
 }
+
+type recallFocus int
+
+const (
+	focusInput recallFocus = iota
+	focusReferenceQuotes
+)
 
 func NewRecallPage(engine *core.Engine, width, height int) RecallPage {
 	ti := textinput.New()
@@ -66,6 +74,7 @@ func NewRecallPage(engine *core.Engine, width, height int) RecallPage {
 		spinner:  sp,
 		width:    width,
 		height:   height,
+		focus:    focusInput,
 		quoteFns: newQuoteSelection(),
 	}
 	p.recalcLayout()
@@ -82,10 +91,19 @@ func (p RecallPage) Update(msg tea.Msg) (RecallPage, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
+		case "ctrl+j":
+			p.toggleFocus()
+			return p, nil
+		}
+
+		switch msg.String() {
 		case "ctrl+n":
 			return p, func() tea.Msg { return OpenQuoteEditorMsg{Mode: QuoteEditorModeAdd} }
 
 		case "enter":
+			if p.focus != focusInput {
+				break
+			}
 			if p.busy || strings.TrimSpace(p.input.Value()) == "" {
 				break
 			}
@@ -101,18 +119,30 @@ func (p RecallPage) Update(msg tea.Msg) (RecallPage, tea.Cmd) {
 			p.statusMsg = ""
 			return p, tea.Batch(p.spinner.Tick, p.runRecall(question))
 		case "up":
+			if p.focus != focusReferenceQuotes {
+				break
+			}
 			p.quoteFns.move(-1, p.quotes)
 			p.refreshReferencePanel()
 			return p, nil
 		case "down":
+			if p.focus != focusReferenceQuotes {
+				break
+			}
 			p.quoteFns.move(1, p.quotes)
 			p.refreshReferencePanel()
 			return p, nil
 		case "x":
+			if p.focus != focusReferenceQuotes {
+				break
+			}
 			p.quoteFns.toggleCurrent(p.quotes)
 			p.refreshReferencePanel()
 			return p, nil
 		case "e":
+			if p.focus != focusReferenceQuotes {
+				break
+			}
 			if q := p.quoteFns.current(p.quotes); q != nil {
 				quote := *q
 				return p, func() tea.Msg {
@@ -120,6 +150,9 @@ func (p RecallPage) Update(msg tea.Msg) (RecallPage, tea.Cmd) {
 				}
 			}
 		case "d":
+			if p.focus != focusReferenceQuotes {
+				break
+			}
 			selected := p.quoteFns.selectedQuotes(p.quotes)
 			if len(selected) > 0 {
 				return p, func() tea.Msg { return OpenDeleteQuotesMsg{Quotes: selected} }
@@ -168,25 +201,33 @@ func (p RecallPage) Update(msg tea.Msg) (RecallPage, tea.Cmd) {
 
 	// Delegate key events to sub-components when not intercepted above.
 	var cmd tea.Cmd
-	p.input, cmd = p.input.Update(msg)
-	cmds = append(cmds, cmd)
+	if p.focus == focusInput {
+		p.input, cmd = p.input.Update(msg)
+		cmds = append(cmds, cmd)
+	}
 	p.response, cmd = p.response.Update(msg)
 	cmds = append(cmds, cmd)
-	p.refPanel, cmd = p.refPanel.Update(msg)
-	cmds = append(cmds, cmd)
+	if p.focus == focusReferenceQuotes {
+		p.refPanel, cmd = p.refPanel.Update(msg)
+		cmds = append(cmds, cmd)
+	}
 
 	return p, tea.Batch(cmds...)
 }
 
 func (p RecallPage) View() string {
 	helpLine := styles.HelpBar.Render(
-		"enter: Ask   ctrl+n: Add Quote   ↑/↓: Move quote   x: Select   e: Edit   d: Delete   tab/shift+tab: Switch Page",
+		"enter: Ask   ctrl+n: Add Quote   ctrl+j: Jump focus   tab/shift+tab: Switch Page",
 	)
 	if p.busy {
 		helpLine = styles.HelpBar.Render(p.spinner.View() + " Thinking...")
 	}
 
-	inputBox := styles.PanelActive.Width(p.width - 4).Render(p.input.View())
+	inputStyle := styles.Panel
+	if p.focus == focusInput {
+		inputStyle = styles.PanelActive
+	}
+	inputBox := inputStyle.Width(p.width - 4).Render(p.input.View())
 
 	var keywordsLine string
 	if len(p.keywords) > 0 {
@@ -201,9 +242,18 @@ func (p RecallPage) View() string {
 		Render(responseLabel + "\n" + p.response.View())
 
 	refLabel := styles.Accent.Render("Reference Quotes")
-	refBox := styles.Panel.Width(p.width - 4).
-		Height(p.refPanel.Height + 3).
-		Render(refLabel + "\n" + p.refPanel.View())
+	refHelp := "ctrl+j: Focus input"
+	if p.focus == focusReferenceQuotes {
+		refLabel = styles.Bold.Foreground(styles.ColorAccent).Render("Reference Quotes")
+		refHelp = "ctrl+j: Focus input   ↑/↓: Move   x: Select   e: Edit   d: Delete"
+	}
+	refStyle := styles.Panel
+	if p.focus == focusReferenceQuotes {
+		refStyle = styles.PanelActive
+	}
+	refBox := refStyle.Width(p.width - 4).
+		Height(p.refPanel.Height + 5).
+		Render(refLabel + "\n" + p.refPanel.View() + "\n\n" + styles.HelpBar.Render(refHelp))
 
 	var status string
 	if p.statusMsg != "" {
@@ -230,9 +280,9 @@ func (p *RecallPage) recalcLayout() {
 	innerW := p.width - 6 // account for panel borders + padding
 	// Divide remaining vertical space between response and ref panels.
 	// Height() is inner (before borders), so Panel.Height(n) renders n+2 outer lines.
-	// Fixed overhead: 3 (input) + 1 (keywords) + 1 (help) + 5 (resp panel) + 5 (ref panel) + 1 (status) = 16
+	// Fixed overhead: 3 (input) + 1 (keywords) + 1 (help) + 5 (resp panel) + 7 (ref panel incl. local help) + 1 (status) = 18
 	// Target body = p.height so total app = header(1) + p.height = T-2, no overflow.
-	remaining := p.height - 16
+	remaining := p.height - 18
 	responseH := remaining * 2 / 3
 	refH := remaining - responseH
 	if responseH < 3 {
@@ -248,6 +298,16 @@ func (p *RecallPage) recalcLayout() {
 func (p *RecallPage) refreshReferencePanel() {
 	p.quoteFns.clamp(p.quotes)
 	p.refPanel.SetContent(renderQuoteFunctionList(p.quotes, p.quoteFns, p.refPanel.Width, false))
+}
+
+func (p *RecallPage) toggleFocus() {
+	if p.focus == focusInput {
+		p.focus = focusReferenceQuotes
+		p.input.Blur()
+		return
+	}
+	p.focus = focusInput
+	p.input.Focus()
 }
 
 // runRecall starts the full recall pipeline as a tea.Cmd.
