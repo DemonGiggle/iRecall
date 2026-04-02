@@ -77,6 +77,22 @@ func (s *Store) InsertQuote(content string, identity QuoteIdentity) (int64, erro
 	return id, nil
 }
 
+func (s *Store) InsertImportedQuote(content string, identity QuoteIdentity, createdAt, updatedAt int64) (int64, error) {
+	slog.Info("db: inserting imported quote", "content_len", len(content), "global_id", identity.GlobalID)
+	res, err := s.db.Exec(
+		`INSERT INTO quotes(
+			content, global_id, author_user_id, author_name, source_user_id, source_name, version, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		content, identity.GlobalID, identity.AuthorUserID, identity.AuthorName,
+		identity.SourceUserID, identity.SourceName, identity.Version, createdAt, updatedAt,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("insert imported quote: %w", err)
+	}
+	id, _ := res.LastInsertId()
+	return id, nil
+}
+
 // UpdateQuoteFTS refreshes the FTS index for a quote with its current tags.
 // Must be called after tag associations are saved.
 func (s *Store) UpdateQuoteFTS(id int64, tags []string) error {
@@ -131,6 +147,19 @@ func (s *Store) UpdateQuoteContent(id int64, content string) error {
 	return nil
 }
 
+func (s *Store) UpdateImportedQuote(id int64, content string, identity QuoteIdentity, createdAt, updatedAt int64) error {
+	_, err := s.db.Exec(
+		`UPDATE quotes
+		 SET content = ?, author_user_id = ?, author_name = ?, source_user_id = ?, source_name = ?, version = ?, created_at = ?, updated_at = ?
+		 WHERE id = ?`,
+		content, identity.AuthorUserID, identity.AuthorName, identity.SourceUserID, identity.SourceName, identity.Version, createdAt, updatedAt, id,
+	)
+	if err != nil {
+		return fmt.Errorf("update imported quote: %w", err)
+	}
+	return nil
+}
+
 // ListQuotes returns all quotes with their tags, newest first.
 func (s *Store) ListQuotes() ([]QuoteRow, error) {
 	slog.Debug("db: listing all quotes")
@@ -164,6 +193,25 @@ func (s *Store) GetQuote(id int64) (QuoteRow, error) {
 			return QuoteRow{}, fmt.Errorf("quote %d not found", id)
 		}
 		return QuoteRow{}, fmt.Errorf("get quote: %w", err)
+	}
+	return out, nil
+}
+
+func (s *Store) GetQuoteByGlobalID(globalID string) (QuoteRow, error) {
+	slog.Debug("db: fetching quote by global id", "global_id", globalID)
+	row := s.db.QueryRow(baseQuoteSelect+`
+		WHERE q.global_id = ?
+		GROUP BY q.id
+	`, globalID)
+	var out QuoteRow
+	if err := row.Scan(
+		&out.ID, &out.GlobalID, &out.AuthorUserID, &out.AuthorName, &out.SourceUserID, &out.SourceName, &out.Version,
+		&out.Content, &out.CreatedAt, &out.UpdatedAt, &out.Tags,
+	); err != nil {
+		if err == sql.ErrNoRows {
+			return QuoteRow{}, sql.ErrNoRows
+		}
+		return QuoteRow{}, fmt.Errorf("get quote by global id: %w", err)
 	}
 	return out, nil
 }

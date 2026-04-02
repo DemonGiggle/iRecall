@@ -110,8 +110,9 @@ Do not share raw DB rows. Share a transport envelope:
 
 ```go
 type SharedQuoteEnvelope struct {
-    SchemaVersion int              `json:"schema_version"`
-    Quote         SharedQuoteEntry `json:"quote"`
+    SchemaVersion int                `json:"schema_version"`
+    ExportedAt    time.Time          `json:"exported_at"`
+    Quotes        []SharedQuoteEntry `json:"quotes"`
 }
 
 type SharedQuoteEntry struct {
@@ -128,7 +129,31 @@ type SharedQuoteEntry struct {
 }
 ```
 
-`SchemaVersion` is required so the share format can evolve independently of the DB schema.
+`SchemaVersion` is required so the share format can evolve independently of the quote `Version` field.
+
+### Schema compatibility rules
+
+1. `quote.version` tracks changes to a quote lineage.
+2. `schema_version` tracks changes to the export/import file format.
+3. These two version numbers are unrelated and must never be conflated.
+
+Importer policy:
+
+1. If `schema_version` is supported, import normally.
+2. If `schema_version` is newer than this app supports, reject the payload with a clear error.
+3. If `schema_version` is older, route through a version-specific importer if still supported.
+4. Unknown JSON fields should be ignored when the schema version itself is supported.
+
+Recommended implementation pattern:
+
+```go
+switch env.SchemaVersion {
+case 1:
+    return importV1(env)
+default:
+    return fmt.Errorf("unsupported share schema version: %d", env.SchemaVersion)
+}
+```
 
 ## Update Semantics
 
