@@ -11,6 +11,7 @@ iRecall is a terminal-first personal knowledge recall tool written in Go. It sto
 - Browse all stored notes on a dedicated Quotes page
 - Configure provider connection details and search settings from the Settings page
 - Persist notes and settings locally with XDG-style data/state directories
+- Include a Wails-oriented desktop scaffold that reuses the same Go core and UI contract
 
 ## Interface
 
@@ -160,6 +161,10 @@ iRecall/
 ├── core/             # Engine, data models, DB layer, LLM client
 │   ├── db/
 │   └── llm/
+├── desktop/          # Wails-oriented desktop scaffold
+│   ├── backend/
+│   └── frontend/
+├── docs/             # Shared UI and platform design references
 ├── tui/              # Bubble Tea application and pages
 │   ├── pages/
 │   └── styles/
@@ -183,4 +188,5 @@ Current implementation notes:
 
 - Search uses `MaxResults` today.
 - `MinRelevance` is captured and persisted in settings, but it is not yet applied to the FTS query.
-- The app is TUI-only at the moment; there is no web or native UI in the repository.
+- `docs/UI_DESIGN.md` is the shared UI contract for future clients.
+- `desktop/` contains the current Wails-oriented desktop scaffold and backend service layer.

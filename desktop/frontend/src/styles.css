@@ -1,0 +1,153 @@
+:root {
+  color-scheme: dark;
+  --bg: #0f172a;
+  --panel: #111827;
+  --panel-2: #1f2937;
+  --border: #374151;
+  --primary: #7c3aed;
+  --accent: #a78bfa;
+  --muted: #6b7280;
+  --fg: #f9fafb;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Segoe UI", "Inter", sans-serif;
+  background:
+    radial-gradient(circle at top left, rgba(124, 58, 237, 0.24), transparent 28%),
+    linear-gradient(180deg, #111827 0%, #0f172a 100%);
+  color: var(--fg);
+  min-height: 100vh;
+}
+
+#app {
+  min-height: 100vh;
+}
+
+.shell {
+  min-height: 100vh;
+  display: grid;
+  grid-template-rows: auto 1fr;
+}
+
+.titlebar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 24px;
+  padding: 20px 28px 12px;
+}
+
+.brand {
+  color: var(--primary);
+  font-size: 1.6rem;
+  font-weight: 700;
+}
+
+.titlebar-right {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
+.greeting {
+  color: var(--muted);
+}
+
+.tabs {
+  display: flex;
+  gap: 10px;
+}
+
+.tab {
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  padding: 8px 12px;
+  border-radius: 10px;
+  cursor: default;
+}
+
+.tab.active {
+  color: var(--accent);
+  border-color: rgba(167, 139, 250, 0.35);
+  background: rgba(124, 58, 237, 0.18);
+}
+
+.layout {
+  padding: 8px 28px 28px;
+}
+
+.panel {
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: rgba(17, 24, 39, 0.92);
+  padding: 22px;
+}
+
+.page-shell {
+  display: grid;
+  gap: 18px;
+}
+
+.section-header {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.lede {
+  margin: 0;
+  color: #d1d5db;
+  max-width: 70ch;
+}
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.card,
+.inset {
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: rgba(31, 41, 55, 0.7);
+  padding: 18px;
+}
+
+.card h2 {
+  margin: 0 0 10px;
+  color: var(--fg);
+  font-size: 1.05rem;
+}
+
+.card p,
+.inset li {
+  color: #d1d5db;
+  line-height: 1.5;
+}
+
+.inset ol {
+  margin: 0;
+  padding-left: 18px;
+}
+
+code {
+  color: var(--accent);
+}
+
+@media (max-width: 900px) {
+  .titlebar,
+  .titlebar-right {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .cards {
+    grid-template-columns: 1fr;
+  }
+}
