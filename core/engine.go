@@ -163,6 +163,46 @@ func (e *Engine) UpdateQuote(ctx context.Context, id int64, content string) (*Qu
 	return e.loadQuote(id)
 }
 
+// RefineQuoteDraft asks the LLM to rewrite a draft quote for clarity while preserving intent.
+func (e *Engine) RefineQuoteDraft(ctx context.Context, content string) (string, error) {
+	content = strings.TrimSpace(content)
+	if content == "" {
+		return "", fmt.Errorf("quote content is empty")
+	}
+
+	slog.Info("engine: refining quote draft", "content_len", len(content), "content_preview", truncate(content, 100))
+
+	msgs := []llm.Message{
+		{
+			Role: "system",
+			Content: `You refine personal notes for clarity and readability. ` +
+				`Keep the original meaning, facts, and intent. ` +
+				`Do not add new information. ` +
+				`Return only the rewritten note text with no explanation, no markdown, and no surrounding quotes.`,
+		},
+		{
+			Role:    "user",
+			Content: "Rewrite this note so it reads more clearly while preserving its meaning:\n\n" + content,
+		},
+	}
+
+	zero := 0.0
+	maxTok := 400
+	refined, err := e.llm.Chat(ctx, msgs, nil, llm.ChatOptions{Temperature: &zero, MaxTokens: &maxTok})
+	if err != nil {
+		slog.Error("engine: refine quote draft LLM call failed", "error", err)
+		return "", err
+	}
+
+	refined = strings.TrimSpace(refined)
+	if refined == "" {
+		return "", fmt.Errorf("provider returned empty refined note")
+	}
+
+	slog.Info("engine: refined quote draft", "response_len", len(refined))
+	return refined, nil
+}
+
 // --- Recall workflow ---
 
 // ExtractTags asks the LLM to produce keyword tags for a piece of text.

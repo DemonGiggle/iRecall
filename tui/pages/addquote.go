@@ -37,6 +37,12 @@ type QuoteEditorDoneMsg struct {
 	Err   error
 }
 
+// QuoteRefineDoneMsg signals the result of a draft refinement request.
+type QuoteRefineDoneMsg struct {
+	Refined string
+	Err     error
+}
+
 // QuoteEditorPage is a modal overlay for adding or editing a quote.
 type QuoteEditorPage struct {
 	engine    *core.Engine
@@ -45,9 +51,11 @@ type QuoteEditorPage struct {
 	mode      QuoteEditorMode
 	editingID int64
 	busy      bool
+	preview   bool
 	statusMsg string
 	isErr     bool
 	clearAt   time.Time
+	refined   string
 
 	width  int
 	height int
@@ -89,6 +97,28 @@ func (p QuoteEditorPage) Update(msg tea.Msg) (QuoteEditorPage, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
+		if p.preview {
+			switch msg.String() {
+			case "enter":
+				p.textarea.SetValue(p.refined)
+				p.preview = false
+				p.refined = ""
+				p.statusMsg = "Refined draft applied. Review and keep editing."
+				p.isErr = false
+				p.clearAt = time.Now().Add(3 * time.Second)
+				p.textarea.Focus()
+				return p, nil
+			case "esc":
+				p.preview = false
+				p.refined = ""
+				p.statusMsg = "Refined draft discarded."
+				p.isErr = false
+				p.clearAt = time.Now().Add(2 * time.Second)
+				p.textarea.Focus()
+				return p, nil
+			}
+		}
+
 		switch msg.String() {
 		case "esc":
 			if !p.busy {
@@ -108,6 +138,20 @@ func (p QuoteEditorPage) Update(msg tea.Msg) (QuoteEditorPage, tea.Cmd) {
 			p.busy = true
 			p.statusMsg = ""
 			cmds = append(cmds, p.spinner.Tick, p.persistQuote(content))
+		case "ctrl+r":
+			if p.busy {
+				break
+			}
+			content := strings.TrimSpace(p.textarea.Value())
+			if content == "" {
+				p.statusMsg = "Nothing to refine."
+				p.isErr = true
+				p.clearAt = time.Now().Add(2 * time.Second)
+				break
+			}
+			p.busy = true
+			p.statusMsg = ""
+			cmds = append(cmds, p.spinner.Tick, p.refineQuote(content))
 		}
 
 	case QuoteEditorDoneMsg:
@@ -123,6 +167,21 @@ func (p QuoteEditorPage) Update(msg tea.Msg) (QuoteEditorPage, tea.Cmd) {
 			cmds = append(cmds, tea.Tick(2*time.Second, func(time.Time) tea.Msg {
 				return CloseQuoteEditorMsg{SavedQuote: msg.Quote}
 			}))
+		}
+
+	case QuoteRefineDoneMsg:
+		p.busy = false
+		if msg.Err != nil {
+			p.statusMsg = "Error: " + msg.Err.Error()
+			p.isErr = true
+			p.clearAt = time.Now().Add(4 * time.Second)
+		} else {
+			p.preview = true
+			p.refined = msg.Refined
+			p.statusMsg = ""
+			p.isErr = false
+			p.clearAt = time.Time{}
+			p.textarea.Blur()
 		}
 
 	case spinner.TickMsg:
@@ -141,9 +200,11 @@ func (p QuoteEditorPage) Update(msg tea.Msg) (QuoteEditorPage, tea.Cmd) {
 }
 
 func (p QuoteEditorPage) View() string {
-	helpLine := "  Ctrl+S: Save   Esc: Cancel"
+	helpLine := "  Ctrl+S: Save   Ctrl+R: Refine   Esc: Cancel"
 	if p.busy {
-		helpLine = "  " + p.spinner.View() + " Saving..."
+		helpLine = "  " + p.spinner.View() + " Working..."
+	} else if p.preview {
+		helpLine = "  Enter: Accept Refined Draft   Esc: Reject and Continue Editing"
 	}
 
 	var statusLine string
@@ -161,9 +222,15 @@ func (p QuoteEditorPage) View() string {
 		title = " Edit Quote "
 	}
 
+	body := p.textarea.View()
+	if p.preview {
+		body = styles.Panel.Width(p.width - 16).Render(p.refined)
+		hint = styles.Muted.Render("  Preview the refined draft before applying it to your note.")
+	}
+
 	inner := lipgloss.JoinVertical(lipgloss.Left,
 		"\n",
-		p.textarea.View(),
+		body,
 		"\n",
 		hint,
 		statusLine,
@@ -200,6 +267,8 @@ func (p *QuoteEditorPage) Reset(mode QuoteEditorMode, quote *core.Quote) {
 	p.statusMsg = ""
 	p.isErr = false
 	p.busy = false
+	p.preview = false
+	p.refined = ""
 	p.clearAt = time.Time{}
 	p.editingID = 0
 	if quote != nil {
@@ -219,5 +288,13 @@ func (p *QuoteEditorPage) persistQuote(content string) tea.Cmd {
 		}
 		q, err := engine.AddQuote(context.Background(), content)
 		return QuoteEditorDoneMsg{Quote: q, Err: err}
+	}
+}
+
+func (p *QuoteEditorPage) refineQuote(content string) tea.Cmd {
+	engine := p.engine
+	return func() tea.Msg {
+		refined, err := engine.RefineQuoteDraft(context.Background(), content)
+		return QuoteRefineDoneMsg{Refined: refined, Err: err}
 	}
 }

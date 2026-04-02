@@ -58,6 +58,7 @@ Add Quote modal:
 
 | Key | Action |
 | --- | --- |
+| `Ctrl+R` | Ask the LLM to refine the current draft, then preview the suggestion |
 | `Ctrl+S` | Save the note |
 | `Esc` | Close the modal if no save is in progress |
 
