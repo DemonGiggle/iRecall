@@ -1,6 +1,12 @@
 type PageName = "Recall" | "Quotes" | "Settings";
 type QuoteContext = "quotes" | "recall";
 
+interface FocusSnapshot {
+  selector: string;
+  selectionStart: number | null;
+  selectionEnd: number | null;
+}
+
 interface Quote {
   ID: number;
   GlobalID: string;
@@ -125,6 +131,7 @@ interface SettingsFormState {
   port: string;
   https: boolean;
   apiKey: string;
+  modelFilter: string;
   model: string;
   maxResults: string;
   minRelevance: string;
@@ -364,6 +371,11 @@ function handleInput(event: Event): void {
       return;
     case "settings-api-key":
       state.settings.apiKey = target.value;
+      return;
+    case "settings-model-filter":
+      state.settings.modelFilter = target.value;
+      syncSelectedModel(state.settings);
+      render();
       return;
     case "settings-max-results":
       state.settings.maxResults = target.value;
@@ -891,11 +903,7 @@ async function fetchModels(): Promise<void> {
   try {
     const models = await backend().FetchModels(provider);
     state.settings.models = models;
-    if (models.includes(state.settings.model)) {
-      state.settings.model = state.settings.model;
-    } else if (models.length > 0) {
-      state.settings.model = models[0];
-    }
+    syncSelectedModel(state.settings);
     state.settingsStatus = models.length > 0 ? `Fetched ${models.length} models.` : "No models returned.";
     state.settingsIsError = false;
   } catch (error) {
@@ -1006,7 +1014,39 @@ function render(): void {
   if (!rootEl) {
     return;
   }
+  const focusSnapshot = captureFocusSnapshot();
   rootEl.innerHTML = renderShell();
+  restoreFocusSnapshot(focusSnapshot);
+}
+
+function captureFocusSnapshot(): FocusSnapshot | null {
+  const active = document.activeElement;
+  if (!(active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement || active instanceof HTMLSelectElement)) {
+    return null;
+  }
+  const bind = active.dataset.bind;
+  if (!bind) {
+    return null;
+  }
+  return {
+    selector: `[data-bind="${bind}"]`,
+    selectionStart: active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement ? active.selectionStart : null,
+    selectionEnd: active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement ? active.selectionEnd : null,
+  };
+}
+
+function restoreFocusSnapshot(snapshot: FocusSnapshot | null): void {
+  if (!rootEl || !snapshot) {
+    return;
+  }
+  const next = rootEl.querySelector<HTMLElement>(snapshot.selector);
+  if (!(next instanceof HTMLInputElement || next instanceof HTMLTextAreaElement || next instanceof HTMLSelectElement)) {
+    return;
+  }
+  next.focus({ preventScroll: true });
+  if ((next instanceof HTMLInputElement || next instanceof HTMLTextAreaElement) && snapshot.selectionStart !== null && snapshot.selectionEnd !== null) {
+    next.setSelectionRange(snapshot.selectionStart, snapshot.selectionEnd);
+  }
 }
 
 function renderShell(): string {
@@ -1188,11 +1228,12 @@ function renderQuotesPage(): string {
 }
 
 function renderSettingsPage(): string {
+  const filteredModels = getFilteredModels(state.settings);
   const modelSelect =
-    state.settings.models.length > 0
+    state.settings.models.length > 0 && filteredModels.length > 0
       ? `
         <select class="select-input" data-bind="settings-model">
-          ${state.settings.models
+          ${filteredModels
             .map(
               (model) => `
                 <option value="${escapeAttribute(model)}"${model === state.settings.model ? " selected" : ""}>${escapeHtml(model)}</option>
@@ -1204,7 +1245,7 @@ function renderSettingsPage(): string {
       : `
         <div class="readonly-model">
           <span>${escapeHtml(state.settings.model || "(none)")}</span>
-          <span class="muted">Fetch models first</span>
+          <span class="muted">${state.settings.models.length === 0 ? "Fetch models first" : "No matches"}</span>
         </div>
       `;
 
@@ -1242,6 +1283,10 @@ function renderSettingsPage(): string {
             <label class="field">
               <span>API Key</span>
               <input class="text-input" data-bind="settings-api-key" type="password" value="${escapeAttribute(state.settings.apiKey)}" />
+            </label>
+            <label class="field">
+              <span>Filter</span>
+              <input class="text-input" data-bind="settings-model-filter" value="${escapeAttribute(state.settings.modelFilter)}" placeholder="Type to filter models" />
             </label>
             <label class="field">
               <span>Model</span>
@@ -1503,16 +1548,19 @@ function settingsFormFromBootstrap(bootstrap: BootstrapState): SettingsFormState
 }
 
 function settingsFormFromPayload(payload: SettingsPayload | BootstrapState["settings"], models: string[]): SettingsFormState {
-  return {
+  const form = {
     host: payload.Provider.Host,
     port: String(payload.Provider.Port),
     https: payload.Provider.HTTPS,
     apiKey: payload.Provider.APIKey,
+    modelFilter: "",
     model: payload.Provider.Model,
     maxResults: String(payload.Search.MaxResults),
     minRelevance: String(payload.Search.MinRelevance),
     models,
   };
+  syncSelectedModel(form);
+  return form;
 }
 
 function emptySettingsForm(): SettingsFormState {
@@ -1521,6 +1569,7 @@ function emptySettingsForm(): SettingsFormState {
     port: "11434",
     https: false,
     apiKey: "",
+    modelFilter: "",
     model: "",
     maxResults: "5",
     minRelevance: "0",
@@ -1559,6 +1608,27 @@ function settingsPayloadFromForm(form: SettingsFormState): SettingsPayload {
       MinRelevance: minRelevance,
     },
   };
+}
+
+function getFilteredModels(form: SettingsFormState): string[] {
+  const filter = form.modelFilter.trim().toLowerCase();
+  if (!filter) {
+    return form.models;
+  }
+  return form.models.filter((model) => model.toLowerCase().includes(filter));
+}
+
+function syncSelectedModel(form: SettingsFormState): void {
+  if (form.models.length === 0) {
+    return;
+  }
+  const filteredModels = getFilteredModels(form);
+  if (filteredModels.length === 0) {
+    return;
+  }
+  if (!filteredModels.includes(form.model)) {
+    form.model = filteredModels[0];
+  }
 }
 
 function patchQuoteList(list: Quote[], updated: Quote): Quote[] {

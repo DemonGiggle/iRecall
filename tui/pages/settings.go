@@ -35,6 +35,7 @@ const (
 	fieldHTTPS
 	fieldAPIKey
 	fieldFetchModels
+	fieldModelFilter
 	fieldModel
 	fieldMaxResults
 	fieldMinRelevance
@@ -78,6 +79,7 @@ func NewSettingsPage(engine *core.Engine, width, height int, s *core.Settings) S
 	inputs[fieldHost] = makeInput("e.g. localhost", false)
 	inputs[fieldPort] = makeInput("e.g. 11434", false)
 	inputs[fieldAPIKey] = makeInput("optional", true)
+	inputs[fieldModelFilter] = makeInput("type to filter", false)
 	inputs[fieldMaxResults] = makeInput("1–20", false)
 	inputs[fieldMinRelevance] = makeInput("0.0", false)
 
@@ -138,19 +140,35 @@ func (p SettingsPage) Update(msg tea.Msg) (SettingsPage, tea.Cmd) {
 			}
 
 		case "left":
-			if p.focused == fieldModel && len(p.models) > 0 {
-				p.modelIdx--
-				if p.modelIdx < 0 {
-					p.modelIdx = len(p.models) - 1
+			filtered := p.filteredModels()
+			if p.focused == fieldModel && len(filtered) > 0 {
+				current := p.SelectedModel()
+				idx := p.filteredIndex(current)
+				if idx < 0 {
+					p.modelIdx = p.indexForModel(filtered[len(filtered)-1])
+					break
 				}
+				idx--
+				if idx < 0 {
+					idx = len(filtered) - 1
+				}
+				p.modelIdx = p.indexForModel(filtered[idx])
 			}
 
 		case "right":
-			if p.focused == fieldModel && len(p.models) > 0 {
-				p.modelIdx++
-				if p.modelIdx >= len(p.models) {
-					p.modelIdx = 0
+			filtered := p.filteredModels()
+			if p.focused == fieldModel && len(filtered) > 0 {
+				current := p.SelectedModel()
+				idx := p.filteredIndex(current)
+				if idx < 0 {
+					p.modelIdx = p.indexForModel(filtered[0])
+					break
 				}
+				idx++
+				if idx >= len(filtered) {
+					idx = 0
+				}
+				p.modelIdx = p.indexForModel(filtered[idx])
 			}
 
 		case "ctrl+s":
@@ -176,18 +194,11 @@ func (p SettingsPage) Update(msg tea.Msg) (SettingsPage, tea.Cmd) {
 			p.isErr = false
 		} else {
 			p.models = msg.Models
-			// Try to preserve the previously selected model.
-			p.modelIdx = 0
-			prev := p.initialModel
+			prev := p.SelectedModel()
 			if prev == "" {
-				prev = p.SelectedModel()
+				prev = p.initialModel
 			}
-			for i, m := range msg.Models {
-				if m == prev {
-					p.modelIdx = i
-					break
-				}
-			}
+			p.syncModelSelection(prev)
 			p.statusMsg = fmt.Sprintf("Fetched %d models.", len(msg.Models))
 			p.isErr = false
 		}
@@ -203,7 +214,11 @@ func (p SettingsPage) Update(msg tea.Msg) (SettingsPage, tea.Cmd) {
 	// Update focused text input.
 	if p.isInputField(p.focused) {
 		var cmd tea.Cmd
+		prevFilter := p.inputs[fieldModelFilter].Value()
 		p.inputs[p.focused], cmd = p.inputs[p.focused].Update(msg)
+		if p.focused == fieldModelFilter && p.inputs[fieldModelFilter].Value() != prevFilter {
+			p.syncModelSelection(p.SelectedModel())
+		}
 		cmds = append(cmds, cmd)
 	}
 
@@ -245,6 +260,7 @@ func (p SettingsPage) View() string {
 		"",
 		row("", fetchBtn),
 		"",
+		row("Filter", p.inputView(fieldModelFilter)),
 		row("Model", modelView),
 	)
 
@@ -263,7 +279,7 @@ func (p SettingsPage) View() string {
 		}
 	}
 
-	helpLine := styles.HelpBar.Render("↑/↓: Move   ←/→: Cycle Model   space: Toggle   enter: Fetch   ctrl+s: Save   tab/shift+tab: Switch Page")
+	helpLine := styles.HelpBar.Render("↑/↓: Move   type: Filter   ←/→: Cycle Model   space: Toggle   enter: Fetch   ctrl+s: Save   tab/shift+tab: Switch Page")
 
 	return styles.Panel.Width(p.width - 4).Render(
 		lipgloss.JoinVertical(lipgloss.Left,
@@ -289,14 +305,32 @@ func (p *SettingsPage) modelSelectorView() string {
 		return styles.Muted.Render(name)
 	}
 
-	name := p.models[p.modelIdx]
-	pos := fmt.Sprintf(" (%d/%d)", p.modelIdx+1, len(p.models))
+	filtered := p.filteredModels()
+	if len(filtered) == 0 {
+		selected := p.SelectedModel()
+		if selected == "" {
+			selected = "(none)"
+		}
+		msg := "  No matches"
+		if p.focused == fieldModel {
+			return styles.Accent.Render(selected) + styles.Muted.Render(msg)
+		}
+		return selected + styles.Muted.Render(msg)
+	}
+
+	selected := p.SelectedModel()
+	filteredIdx := p.filteredIndex(selected)
+	if filteredIdx < 0 {
+		filteredIdx = 0
+		selected = filtered[0]
+	}
+	pos := fmt.Sprintf(" (%d/%d)", filteredIdx+1, len(filtered))
 
 	if p.focused == fieldModel {
-		return styles.Accent.Render("< "+name+" >") +
+		return styles.Accent.Render("< "+selected+" >") +
 			styles.Muted.Render(pos+"  ← / → to change")
 	}
-	return name + styles.Muted.Render(pos)
+	return selected + styles.Muted.Render(pos)
 }
 
 func (p *SettingsPage) SetSize(width, height int) {
@@ -308,10 +342,12 @@ func (p *SettingsPage) LoadFrom(s *core.Settings) {
 	p.inputs[fieldHost].SetValue(s.Provider.Host)
 	p.inputs[fieldPort].SetValue(strconv.Itoa(s.Provider.Port))
 	p.inputs[fieldAPIKey].SetValue(s.Provider.APIKey)
+	p.inputs[fieldModelFilter].SetValue("")
 	p.inputs[fieldMaxResults].SetValue(strconv.Itoa(s.Search.MaxResults))
 	p.inputs[fieldMinRelevance].SetValue(fmt.Sprintf("%.1f", s.Search.MinRelevance))
 	p.httpsOn = s.Provider.HTTPS
 	p.initialModel = s.Provider.Model
+	p.syncModelSelection(s.Provider.Model)
 }
 
 // SelectedModel returns the currently selected model name (if any).
@@ -380,7 +416,7 @@ func (p *SettingsPage) doFetchModels() tea.Cmd {
 
 func (p *SettingsPage) isInputField(f settingsField) bool {
 	return f == fieldHost || f == fieldPort || f == fieldAPIKey ||
-		f == fieldMaxResults || f == fieldMinRelevance
+		f == fieldModelFilter || f == fieldMaxResults || f == fieldMinRelevance
 }
 
 func (p *SettingsPage) cycleFocus(dir int) {
@@ -395,4 +431,54 @@ func (p *SettingsPage) cycleFocus(dir int) {
 
 func (p *SettingsPage) inputView(f settingsField) string {
 	return p.inputs[f].View()
+}
+
+func (p *SettingsPage) filteredModels() []string {
+	filter := strings.ToLower(strings.TrimSpace(p.inputs[fieldModelFilter].Value()))
+	if filter == "" {
+		return p.models
+	}
+	filtered := make([]string, 0, len(p.models))
+	for _, model := range p.models {
+		if strings.Contains(strings.ToLower(model), filter) {
+			filtered = append(filtered, model)
+		}
+	}
+	return filtered
+}
+
+func (p *SettingsPage) filteredIndex(model string) int {
+	for i, candidate := range p.filteredModels() {
+		if candidate == model {
+			return i
+		}
+	}
+	return -1
+}
+
+func (p *SettingsPage) indexForModel(model string) int {
+	for i, candidate := range p.models {
+		if candidate == model {
+			return i
+		}
+	}
+	return -1
+}
+
+func (p *SettingsPage) syncModelSelection(preferred string) {
+	if len(p.models) == 0 {
+		p.modelIdx = -1
+		return
+	}
+	if preferred != "" {
+		if idx := p.indexForModel(preferred); idx >= 0 && p.filteredIndex(preferred) >= 0 {
+			p.modelIdx = idx
+			return
+		}
+	}
+	filtered := p.filteredModels()
+	if len(filtered) == 0 {
+		return
+	}
+	p.modelIdx = p.indexForModel(filtered[0])
 }
