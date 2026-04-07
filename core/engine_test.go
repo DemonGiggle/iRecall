@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -142,7 +143,7 @@ func TestExtractTagsRequestsBroaderTagSet(t *testing.T) {
 			Role    string `json:"role"`
 			Content string `json:"content"`
 		} `json:"messages"`
-		MaxTokens int `json:"max_tokens"`
+		MaxTokens int  `json:"max_tokens"`
 		Stream    bool `json:"stream"`
 	}
 
@@ -181,14 +182,105 @@ func TestExtractTagsRequestsBroaderTagSet(t *testing.T) {
 	if gotRequest.Stream {
 		t.Fatal("stream = true, want false")
 	}
-	if gotRequest.MaxTokens != 220 {
-		t.Fatalf("max_tokens = %d, want 220", gotRequest.MaxTokens)
+	if gotRequest.MaxTokens != 384 {
+		t.Fatalf("max_tokens = %d, want 384", gotRequest.MaxTokens)
 	}
 	if len(gotRequest.Messages) != 2 {
 		t.Fatalf("message count = %d, want 2", len(gotRequest.Messages))
 	}
-	if !strings.Contains(gotRequest.Messages[0].Content, "6 to 12 short lowercase keyword strings") {
-		t.Fatalf("system prompt = %q, want broader tag range", gotRequest.Messages[0].Content)
+	if !strings.Contains(gotRequest.Messages[0].Content, "For short or simple text, return fewer tags when appropriate.") {
+		t.Fatalf("system prompt = %q, want flexible short-quote guidance", gotRequest.Messages[0].Content)
+	}
+}
+
+func TestExtractTagsRepairsWeakGenericResults(t *testing.T) {
+	t.Parallel()
+
+	var requestCount int
+	var gotRequests []struct {
+		Messages []struct {
+			Role    string `json:"role"`
+			Content string `json:"content"`
+		} `json:"messages"`
+		MaxTokens int `json:"max_tokens"`
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestCount++
+		var req struct {
+			Messages []struct {
+				Role    string `json:"role"`
+				Content string `json:"content"`
+			} `json:"messages"`
+			MaxTokens int `json:"max_tokens"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("decode request %d: %v", requestCount, err)
+		}
+		gotRequests = append(gotRequests, req)
+
+		w.Header().Set("Content-Type", "application/json")
+		content := `["quote","note","text","raft"]`
+		if requestCount == 2 {
+			content = `["raft","consensus","leader election","replication","quorum","fault tolerance"]`
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"choices": []map[string]any{
+				{
+					"message": map[string]string{
+						"content": content,
+					},
+				},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	engine := newTestEngine(t, srv.Listener.Addr().String())
+
+	tags, err := engine.ExtractTags(context.Background(), "Raft relies on leader election, replication, and quorum to keep a distributed system consistent during failures.")
+	if err != nil {
+		t.Fatalf("ExtractTags() error = %v", err)
+	}
+	want := []string{"raft", "consensus", "leader election", "replication", "quorum", "fault tolerance"}
+	if !reflect.DeepEqual(tags, want) {
+		t.Fatalf("ExtractTags() = %#v, want %#v", tags, want)
+	}
+	if requestCount != 2 {
+		t.Fatalf("request count = %d, want 2", requestCount)
+	}
+	if !strings.Contains(gotRequests[1].Messages[0].Content, "repairing a JSON keyword extractor result") {
+		t.Fatalf("repair prompt = %q, want repair instructions", gotRequests[1].Messages[0].Content)
+	}
+}
+
+func TestNormalizeTagsFiltersNoiseAndCapsCount(t *testing.T) {
+	t.Parallel()
+
+	input := []string{
+		"Quote", "raft", "RAFT", "text", "leader election", " ", "a",
+		"consensus", "replication", "quorum", "fault tolerance",
+		"distributed systems", "log replication", "state machine", "term", "commit index",
+		"heartbeat", "candidate", "follower", "leader", "safety", "liveness", "cluster",
+		"election timeout", "append entries", "majority", "durability", "availability",
+		"partition tolerance", "recovery", "failover", "membership changes", "snapshotting",
+	}
+
+	got, stats := normalizeTags(input)
+	if len(got) > maxExtractedTags {
+		t.Fatalf("tag count = %d, want <= %d", len(got), maxExtractedTags)
+	}
+	if stats.RemovedGeneric == 0 {
+		t.Fatal("expected generic tags to be removed")
+	}
+	if stats.RemovedDupes == 0 {
+		t.Fatal("expected duplicate tags to be removed")
+	}
+	if got[0] != "raft" {
+		t.Fatalf("first tag = %q, want raft", got[0])
+	}
+	if slices.Contains(got, "quote") || slices.Contains(got, "text") {
+		t.Fatalf("normalizeTags() kept generic tags: %#v", got)
 	}
 }
 

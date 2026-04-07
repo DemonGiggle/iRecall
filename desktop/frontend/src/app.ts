@@ -595,7 +595,8 @@ async function saveProfileName(): Promise<void> {
   }
 
   state.overlay.busy = true;
-  state.overlay.status = "";
+  state.overlay.status = state.overlay.mode === "add" ? "Saving quote and generating tags..." : "Saving quote and regenerating tags...";
+  state.overlay.isError = false;
   render();
 
   try {
@@ -628,7 +629,8 @@ async function saveQuoteEditor(): Promise<void> {
   }
 
   state.overlay.busy = true;
-  state.overlay.status = "";
+  state.overlay.status = "Refining draft...";
+  state.overlay.isError = false;
   render();
 
   try {

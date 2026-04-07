@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
 	"time"
 
@@ -20,6 +21,27 @@ type Engine struct {
 	llm     *llm.Client
 	cfg     *Settings
 	profile *UserProfile
+}
+
+const maxExtractedTags = 30
+
+var genericTagBlacklist = map[string]struct{}{
+	"content":     {},
+	"idea":        {},
+	"ideas":       {},
+	"info":        {},
+	"information": {},
+	"item":        {},
+	"items":       {},
+	"note":        {},
+	"notes":       {},
+	"quote":       {},
+	"quotes":      {},
+	"summary":     {},
+	"summaries":   {},
+	"text":        {},
+	"topic":       {},
+	"topics":      {},
 }
 
 // New creates an Engine from an open DB store and current settings.
@@ -223,7 +245,10 @@ func (e *Engine) ExtractTags(ctx context.Context, text string) ([]string, error)
 		{
 			Role: "system",
 			Content: `You are a JSON keyword extractor. ` +
-				`Output ONLY a valid JSON array of 6 to 12 short lowercase keyword strings. ` +
+				`Output ONLY a valid JSON array of short lowercase keyword strings. ` +
+				`Prefer broad, relevant coverage. ` +
+				`For dense or technical text, include a rich set of tags, usually up to 30. ` +
+				`For short or simple text, return fewer tags when appropriate. ` +
 				`No explanation, no markdown, no code fences, no extra text — just the JSON array. ` +
 				`Example output: ["emmc", "flash memory", "partition", "offset"]`,
 		},
@@ -233,7 +258,7 @@ func (e *Engine) ExtractTags(ctx context.Context, text string) ([]string, error)
 		},
 	}
 	zero := 0.0
-	maxTok := 220
+	maxTok := 384
 	raw, err := e.llm.Chat(ctx, msgs, nil, llm.ChatOptions{Temperature: &zero, MaxTokens: &maxTok})
 	if err != nil {
 		slog.Error("engine: extract tags LLM call failed", "error", err)
@@ -245,8 +270,53 @@ func (e *Engine) ExtractTags(ctx context.Context, text string) ([]string, error)
 		slog.Error("engine: parse tags failed", "raw", raw, "error", err)
 		return nil, err
 	}
-	slog.Info("engine: extracted tags", "tags", tags)
-	return tags, nil
+	normalized, stats := normalizeTags(tags)
+	if !shouldRepairTags(normalized, stats, text) {
+		slog.Info("engine: extracted tags", "tags", normalized)
+		return normalized, nil
+	}
+
+	repaired, repairErr := e.repairTags(ctx, text, normalized)
+	if repairErr != nil {
+		slog.Warn("engine: tag repair failed, keeping initial tags", "error", repairErr, "tags", normalized)
+		return normalized, nil
+	}
+	slog.Info("engine: repaired tags", "tags", repaired)
+	return repaired, nil
+}
+
+func (e *Engine) repairTags(ctx context.Context, text string, initial []string) ([]string, error) {
+	msgs := []llm.Message{
+		{
+			Role: "system",
+			Content: `You are repairing a JSON keyword extractor result. ` +
+				`Return ONLY a valid JSON array of short lowercase keyword strings. ` +
+				`Prefer high-signal tags: specific technologies, entities, actions, domains, and concepts. ` +
+				`Avoid generic labels such as "quote", "note", "text", "content", "topic", or "summary". ` +
+				`Return up to 30 tags. For short or simple text, fewer tags are appropriate.`,
+		},
+		{
+			Role: "user",
+			Content: "Improve these draft tags for the text below.\n\n" +
+				"Draft tags: " + mustMarshalJSONArray(initial) + "\n\n" +
+				"Text:\n" + text,
+		},
+	}
+	zero := 0.0
+	maxTok := 384
+	raw, err := e.llm.Chat(ctx, msgs, nil, llm.ChatOptions{Temperature: &zero, MaxTokens: &maxTok})
+	if err != nil {
+		return nil, err
+	}
+	tags, err := parseJSONStringArray(raw)
+	if err != nil {
+		return nil, err
+	}
+	normalized, _ := normalizeTags(tags)
+	if len(normalized) == 0 {
+		return nil, fmt.Errorf("repair produced no usable tags")
+	}
+	return normalized, nil
 }
 
 // ExtractKeywords asks the LLM to produce search keywords for a question.
@@ -556,6 +626,67 @@ func parseJSONStringArray(s string) ([]string, error) {
 		}
 	}
 	return tags, nil
+}
+
+type tagNormalizationStats struct {
+	OriginalCount  int
+	RemovedShort   int
+	RemovedGeneric int
+	RemovedDupes   int
+}
+
+func normalizeTags(tags []string) ([]string, tagNormalizationStats) {
+	stats := tagNormalizationStats{OriginalCount: len(tags)}
+	seen := make(map[string]struct{}, len(tags))
+	normalized := make([]string, 0, len(tags))
+	for _, tag := range tags {
+		tag = strings.ToLower(strings.TrimSpace(tag))
+		tag = strings.Join(strings.Fields(tag), " ")
+		tag = strings.Trim(tag, `"'`)
+		if len(tag) < 2 {
+			stats.RemovedShort++
+			continue
+		}
+		if _, blocked := genericTagBlacklist[tag]; blocked {
+			stats.RemovedGeneric++
+			continue
+		}
+		if _, ok := seen[tag]; ok {
+			stats.RemovedDupes++
+			continue
+		}
+		seen[tag] = struct{}{}
+		normalized = append(normalized, tag)
+	}
+	if len(normalized) > maxExtractedTags {
+		normalized = slices.Clone(normalized[:maxExtractedTags])
+	}
+	return normalized, stats
+}
+
+func shouldRepairTags(tags []string, stats tagNormalizationStats, text string) bool {
+	if len(tags) == 0 {
+		return true
+	}
+	textLen := len(strings.TrimSpace(text))
+	if textLen >= 80 && len(tags) < 5 {
+		return true
+	}
+	if textLen >= 200 && len(tags) < 8 {
+		return true
+	}
+	if stats.RemovedGeneric >= 2 && len(tags) < 8 {
+		return true
+	}
+	return false
+}
+
+func mustMarshalJSONArray(items []string) string {
+	data, err := json.Marshal(items)
+	if err != nil {
+		return "[]"
+	}
+	return string(data)
 }
 
 func stripMarkdownCodeFence(s string) string {

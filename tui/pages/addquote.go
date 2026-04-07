@@ -57,6 +57,7 @@ type QuoteEditorPage struct {
 	clearAt   time.Time
 	original  string
 	refined   string
+	busyLabel string
 
 	width  int
 	height int
@@ -139,7 +140,9 @@ func (p QuoteEditorPage) Update(msg tea.Msg) (QuoteEditorPage, tea.Cmd) {
 				break
 			}
 			p.busy = true
-			p.statusMsg = ""
+			p.busyLabel = "Saving quote and generating tags..."
+			p.statusMsg = p.busyLabel
+			p.isErr = false
 			cmds = append(cmds, p.spinner.Tick, p.persistQuote(content))
 		case "ctrl+r":
 			if p.busy {
@@ -153,12 +156,15 @@ func (p QuoteEditorPage) Update(msg tea.Msg) (QuoteEditorPage, tea.Cmd) {
 				break
 			}
 			p.busy = true
-			p.statusMsg = ""
+			p.busyLabel = "Refining draft..."
+			p.statusMsg = p.busyLabel
+			p.isErr = false
 			cmds = append(cmds, p.spinner.Tick, p.refineQuote(content))
 		}
 
 	case QuoteEditorDoneMsg:
 		p.busy = false
+		p.busyLabel = ""
 		if msg.Err != nil {
 			p.statusMsg = "Error: " + msg.Err.Error()
 			p.isErr = true
@@ -174,6 +180,7 @@ func (p QuoteEditorPage) Update(msg tea.Msg) (QuoteEditorPage, tea.Cmd) {
 
 	case QuoteRefineDoneMsg:
 		p.busy = false
+		p.busyLabel = ""
 		if msg.Err != nil {
 			p.statusMsg = "Error: " + msg.Err.Error()
 			p.isErr = true
@@ -206,7 +213,7 @@ func (p QuoteEditorPage) Update(msg tea.Msg) (QuoteEditorPage, tea.Cmd) {
 func (p QuoteEditorPage) View() string {
 	helpLine := "  ctrl+s: Save   ctrl+r: Refine   esc: Cancel"
 	if p.busy {
-		helpLine = "  " + p.spinner.View() + " Working..."
+		helpLine = "  " + p.spinner.View() + " " + p.busyLabel
 	} else if p.preview {
 		helpLine = "  enter: Accept Refined Draft   esc: Reject and Continue Editing"
 	}
