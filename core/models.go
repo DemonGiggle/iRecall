@@ -57,6 +57,7 @@ type ImportResult struct {
 type Settings struct {
 	Provider ProviderConfig
 	Search   SearchConfig
+	Theme    string
 }
 
 // SearchConfig controls how candidate quotes are retrieved.
@@ -77,5 +78,6 @@ func DefaultSettings() *Settings {
 			MaxResults:   5,
 			MinRelevance: 0.0,
 		},
+		Theme: "violet",
 	}
 }

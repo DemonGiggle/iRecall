@@ -37,6 +37,7 @@ const (
 	fieldFetchModels
 	fieldModelFilter
 	fieldModel
+	fieldTheme
 	fieldMaxResults
 	fieldMinRelevance
 	fieldCount // sentinel
@@ -52,6 +53,8 @@ type SettingsPage struct {
 	models       []string // available model IDs
 	modelIdx     int      // currently selected index (-1 = none)
 	initialModel string   // model name from settings (before fetch)
+	themes       []string
+	themeIdx     int
 
 	focused   settingsField
 	spinner   spinner.Model
@@ -100,6 +103,8 @@ func NewSettingsPage(engine *core.Engine, width, height int, s *core.Settings) S
 		inputs:       inputs,
 		httpsOn:      s.Provider.HTTPS,
 		initialModel: s.Provider.Model,
+		themes:       styles.ThemeNames(),
+		themeIdx:     themeIndex(styles.ThemeNames(), s.Theme),
 		modelIdx:     -1,
 		focused:      fieldHost,
 		spinner:      sp,
@@ -154,6 +159,13 @@ func (p SettingsPage) Update(msg tea.Msg) (SettingsPage, tea.Cmd) {
 				}
 				p.modelIdx = p.indexForModel(filtered[idx])
 			}
+			if p.focused == fieldTheme && len(p.themes) > 0 {
+				p.themeIdx--
+				if p.themeIdx < 0 {
+					p.themeIdx = len(p.themes) - 1
+				}
+				styles.ApplyTheme(p.SelectedTheme())
+			}
 
 		case "right":
 			filtered := p.filteredModels()
@@ -169,6 +181,13 @@ func (p SettingsPage) Update(msg tea.Msg) (SettingsPage, tea.Cmd) {
 					idx = 0
 				}
 				p.modelIdx = p.indexForModel(filtered[idx])
+			}
+			if p.focused == fieldTheme && len(p.themes) > 0 {
+				p.themeIdx++
+				if p.themeIdx >= len(p.themes) {
+					p.themeIdx = 0
+				}
+				styles.ApplyTheme(p.SelectedTheme())
 			}
 
 		case "ctrl+s":
@@ -262,6 +281,7 @@ func (p SettingsPage) View() string {
 		"",
 		row("Filter", p.inputView(fieldModelFilter)),
 		row("Model", modelView),
+		row("Theme", p.themeSelectorView()),
 	)
 
 	searchSection := lipgloss.JoinVertical(lipgloss.Left,
@@ -279,7 +299,7 @@ func (p SettingsPage) View() string {
 		}
 	}
 
-	helpLine := styles.HelpBar.Render("↑/↓: Move   type: Filter   ←/→: Cycle Model   space: Toggle   enter: Fetch   ctrl+s: Save   tab/shift+tab: Switch Page")
+	helpLine := styles.HelpBar.Render("↑/↓: Move   type: Filter   ←/→: Cycle Model/Theme   space: Toggle   enter: Fetch   ctrl+s: Save   tab/shift+tab: Switch Page")
 
 	return styles.Panel.Width(p.width - 4).Render(
 		lipgloss.JoinVertical(lipgloss.Left,
@@ -333,6 +353,19 @@ func (p *SettingsPage) modelSelectorView() string {
 	return selected + styles.Muted.Render(pos)
 }
 
+func (p *SettingsPage) themeSelectorView() string {
+	if len(p.themes) == 0 {
+		return styles.Muted.Render("(none)")
+	}
+	name := p.SelectedTheme()
+	pos := fmt.Sprintf(" (%d/%d)", p.themeIdx+1, len(p.themes))
+	if p.focused == fieldTheme {
+		return styles.Accent.Render("< "+name+" >") +
+			styles.Muted.Render(pos+"  ← / → to change")
+	}
+	return name + styles.Muted.Render(pos)
+}
+
 func (p *SettingsPage) SetSize(width, height int) {
 	p.width = width
 	p.height = height
@@ -347,6 +380,8 @@ func (p *SettingsPage) LoadFrom(s *core.Settings) {
 	p.inputs[fieldMinRelevance].SetValue(fmt.Sprintf("%.1f", s.Search.MinRelevance))
 	p.httpsOn = s.Provider.HTTPS
 	p.initialModel = s.Provider.Model
+	p.themeIdx = themeIndex(p.themes, s.Theme)
+	styles.ApplyTheme(p.SelectedTheme())
 	p.syncModelSelection(s.Provider.Model)
 }
 
@@ -356,6 +391,16 @@ func (p *SettingsPage) SelectedModel() string {
 		return p.models[p.modelIdx]
 	}
 	return p.initialModel
+}
+
+func (p *SettingsPage) SelectedTheme() string {
+	if len(p.themes) == 0 {
+		return styles.CurrentThemeName()
+	}
+	if p.themeIdx < 0 || p.themeIdx >= len(p.themes) {
+		return p.themes[0]
+	}
+	return p.themes[p.themeIdx]
 }
 
 // CurrentSettings builds a Settings from the form values.
@@ -384,6 +429,7 @@ func (p *SettingsPage) CurrentSettings() (*core.Settings, error) {
 			MaxResults:   maxResults,
 			MinRelevance: minRel,
 		},
+		Theme: p.SelectedTheme(),
 	}, nil
 }
 
@@ -431,6 +477,18 @@ func (p *SettingsPage) cycleFocus(dir int) {
 
 func (p *SettingsPage) inputView(f settingsField) string {
 	return p.inputs[f].View()
+}
+
+func themeIndex(themes []string, name string) int {
+	if len(themes) == 0 {
+		return -1
+	}
+	for i, theme := range themes {
+		if theme == name {
+			return i
+		}
+	}
+	return 0
 }
 
 func (p *SettingsPage) filteredModels() []string {

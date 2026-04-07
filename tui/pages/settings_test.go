@@ -5,6 +5,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/gigol/irecall/core"
+	"github.com/gigol/irecall/tui/styles"
 )
 
 func TestSettingsPageFilterNarrowsModelSelection(t *testing.T) {
@@ -55,5 +56,29 @@ func TestSettingsPageFilterNoMatchesKeepsExistingSelection(t *testing.T) {
 	}
 	if got := len(page.filteredModels()); got != 0 {
 		t.Fatalf("len(filteredModels()) = %d, want 0", got)
+	}
+}
+
+func TestSettingsPageThemeSelectionUpdatesCurrentSettingsAndPreview(t *testing.T) {
+	settings := core.DefaultSettings()
+	settings.Theme = "violet"
+	page := NewSettingsPage(nil, 120, 40, settings)
+	page.focused = fieldTheme
+
+	model, _ := page.Update(tea.KeyMsg{Type: tea.KeyRight})
+	page = model
+
+	if got := page.SelectedTheme(); got != "forest" {
+		t.Fatalf("SelectedTheme() = %q, want forest", got)
+	}
+	if got := styles.CurrentThemeName(); got != "forest" {
+		t.Fatalf("CurrentThemeName() = %q, want forest", got)
+	}
+	current, err := page.CurrentSettings()
+	if err != nil {
+		t.Fatalf("CurrentSettings() error = %v", err)
+	}
+	if current.Theme != "forest" {
+		t.Fatalf("CurrentSettings().Theme = %q, want forest", current.Theme)
 	}
 }

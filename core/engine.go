@@ -453,6 +453,9 @@ func (e *Engine) LoadSettings(ctx context.Context) (*Settings, error) {
 		slog.Error("engine: unmarshal settings failed, using defaults", "error", err, "raw", val)
 		return DefaultSettings(), nil
 	}
+	if strings.TrimSpace(s.Theme) == "" {
+		s.Theme = DefaultSettings().Theme
+	}
 	slog.Info("engine: settings loaded", "host", s.Provider.Host, "port", s.Provider.Port, "model", s.Provider.Model)
 	return &s, nil
 }

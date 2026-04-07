@@ -53,6 +53,7 @@ type App struct {
 }
 
 func NewApp(engine *core.Engine, settings *core.Settings, profile *core.UserProfile, width, height int) App {
+	styles.ApplyTheme(settings.Theme)
 	overlay := overlayNone
 	if profile == nil || profile.DisplayName == "" {
 		overlay = overlayUserProfilePrompt

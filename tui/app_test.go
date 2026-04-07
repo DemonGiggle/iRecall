@@ -10,6 +10,7 @@ import (
 	"github.com/gigol/irecall/core"
 	"github.com/gigol/irecall/core/db"
 	"github.com/gigol/irecall/tui/pages"
+	"github.com/gigol/irecall/tui/styles"
 )
 
 func TestAppTabNavigationAndQuotesReload(t *testing.T) {
@@ -61,6 +62,19 @@ func TestAppHeaderShowsUserGreeting(t *testing.T) {
 	view := app.View()
 	if !containsAllText(view, "Hi! Alice", "Recall", "Quotes", "Settings") {
 		t.Fatalf("header missing expected greeting:\n%s", view)
+	}
+}
+
+func TestAppAppliesThemeFromSettings(t *testing.T) {
+	settings := core.DefaultSettings()
+	settings.Theme = "ocean"
+	app := NewApp(nil, settings, &core.UserProfile{UserID: "user-1", DisplayName: "Alice"}, 120, 40)
+
+	if app.settings.Theme != "ocean" {
+		t.Fatalf("settings theme = %q, want ocean", app.settings.Theme)
+	}
+	if styles.CurrentThemeName() != "ocean" {
+		t.Fatalf("CurrentThemeName() = %q, want ocean", styles.CurrentThemeName())
 	}
 }
 
