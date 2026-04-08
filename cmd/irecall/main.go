@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"runtime/debug"
+	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/gigol/irecall/config"
@@ -27,7 +29,7 @@ func main() {
 	flag.Parse()
 
 	if *versionFlag {
-		fmt.Println("iRecall", version)
+		fmt.Println("iRecall", binaryVersion())
 		os.Exit(0)
 	}
 
@@ -109,7 +111,52 @@ func usageText(fs *flag.FlagSet, program string) string {
 	buf.WriteString("\nExamples:\n")
 	fmt.Fprintf(&buf, "  %s\n", program)
 	fmt.Fprintf(&buf, "  %s -debug\n", program)
+	fmt.Fprintf(&buf, "  %s --version\n", program)
 	fmt.Fprintf(&buf, "  %s -data-path /tmp/irecall-alice\n", program)
 	fmt.Fprintf(&buf, "  %s -data-path /tmp/irecall-bob\n", program)
 	return buf.String()
+}
+
+func binaryVersion() string {
+	if v := strings.TrimSpace(version); v != "" && v != "dev" {
+		return v
+	}
+
+	info, ok := debug.ReadBuildInfo()
+	if !ok {
+		return "dev"
+	}
+
+	var tag string
+	var revision string
+	var modified string
+	for _, setting := range info.Settings {
+		switch setting.Key {
+		case "vcs.tag":
+			tag = strings.TrimSpace(setting.Value)
+		case "vcs.revision":
+			revision = strings.TrimSpace(setting.Value)
+		case "vcs.modified":
+			modified = strings.TrimSpace(setting.Value)
+		}
+	}
+
+	if tag != "" {
+		if modified == "true" {
+			return tag + "-dirty"
+		}
+		return tag
+	}
+
+	if revision != "" {
+		if len(revision) > 12 {
+			revision = revision[:12]
+		}
+		if modified == "true" {
+			return revision + "-dirty"
+		}
+		return revision
+	}
+
+	return "dev"
 }
