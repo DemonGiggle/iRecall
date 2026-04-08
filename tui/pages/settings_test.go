@@ -1,9 +1,11 @@
 package pages
 
 import (
+	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/gigol/irecall/config"
 	"github.com/gigol/irecall/core"
 	"github.com/gigol/irecall/tui/styles"
 )
@@ -80,5 +82,25 @@ func TestSettingsPageThemeSelectionUpdatesCurrentSettingsAndPreview(t *testing.T
 	}
 	if current.Theme != "forest" {
 		t.Fatalf("CurrentSettings().Theme = %q, want forest", current.Theme)
+	}
+}
+
+func TestSettingsPageShowsStoragePaths(t *testing.T) {
+	original := config.RootPath()
+	config.SetRootPath("/tmp/irecall-test")
+	t.Cleanup(func() { config.SetRootPath(original) })
+
+	page := NewSettingsPage(nil, 120, 40, core.DefaultSettings())
+	view := page.View()
+
+	for _, want := range []string{
+		"Local Storage",
+		"/tmp/irecall-test/data",
+		"/tmp/irecall-test/config",
+		"/tmp/irecall-test/state",
+	} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("settings view missing %q:\n%s", want, view)
+		}
 	}
 }

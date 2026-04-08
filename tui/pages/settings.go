@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/gigol/irecall/config"
 	"github.com/gigol/irecall/core"
 	"github.com/gigol/irecall/tui/styles"
 )
@@ -290,6 +291,13 @@ func (p SettingsPage) View() string {
 		row("Min relevance", p.inputView(fieldMinRelevance)),
 	)
 
+	pathsSection := lipgloss.JoinVertical(lipgloss.Left,
+		styles.SectionHeader.Render("Local Storage"),
+		row("Data dir", styles.Muted.Render(config.DataDir())),
+		row("Config dir", styles.Muted.Render(config.ConfigDir())),
+		row("State dir", styles.Muted.Render(config.StateDir())),
+	)
+
 	var statusLine string
 	if p.statusMsg != "" {
 		if p.isErr {
@@ -306,6 +314,8 @@ func (p SettingsPage) View() string {
 			providerSection,
 			"",
 			searchSection,
+			"",
+			pathsSection,
 			"",
 			statusLine,
 			helpLine,

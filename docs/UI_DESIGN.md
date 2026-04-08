@@ -392,6 +392,7 @@ The page is split into two sections:
 
 1. `LLM Provider`
 2. `Search`
+3. `Local Storage`
 
 ### Provider fields
 
@@ -410,6 +411,19 @@ Current search controls:
 
 1. max reference quotes
 2. minimum relevance
+
+### Local storage information
+
+The Settings page also shows read-only local filesystem paths for:
+
+1. data directory
+2. config directory
+3. state directory
+
+Rules:
+
+1. these paths are informational, not editable in the current design
+2. they should reflect the active runtime root, including `-data-path` overrides
 
 ### Interaction model
 
