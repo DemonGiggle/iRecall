@@ -52,6 +52,55 @@ func TestQuotesPageShareUsesSelectedOrCurrentQuote(t *testing.T) {
 	}
 }
 
+func TestQuotesPageListShowsTagPreviewOnly(t *testing.T) {
+	t.Parallel()
+
+	page := NewQuotesPage(nil, 120, 40)
+	page.loading = false
+	page.quotes = []core.Quote{
+		{ID: 1, Content: "first quote", Tags: []string{"alpha", "beta", "gamma", "delta", "epsilon"}},
+	}
+	page.quoteFns.clamp(page.quotes)
+	page.viewport.SetContent(page.renderQuotes())
+
+	view := page.View()
+	if !containsAllText(view, "alpha", "beta", "gamma", "+2 more") {
+		t.Fatalf("quotes page preview missing expected compact tags:\n%s", view)
+	}
+	if containsAllText(view, "delta", "epsilon") {
+		t.Fatalf("quotes page preview should hide extra tags:\n%s", view)
+	}
+}
+
+func TestQuotesPageEnterShowsDetailView(t *testing.T) {
+	t.Parallel()
+
+	page := NewQuotesPage(nil, 120, 40)
+	page.loading = false
+	page.quotes = []core.Quote{
+		{ID: 1, Content: "first quote", Tags: []string{"alpha", "beta", "gamma", "delta"}},
+	}
+	page.quoteFns.clamp(page.quotes)
+	page.viewport.SetContent(page.renderQuotes())
+
+	model, _ := page.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	page = model
+
+	if !page.detail {
+		t.Fatal("detail = false, want true")
+	}
+	view := page.View()
+	if !containsAllText(view, "Quote [1]", "alpha", "beta", "gamma", "delta", "enter/esc: Back to list") {
+		t.Fatalf("quotes page detail view missing expected full data:\n%s", view)
+	}
+
+	model, _ = page.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	page = model
+	if page.detail {
+		t.Fatal("detail = true after esc, want false")
+	}
+}
+
 func TestQuotesPageCanOpenAddQuoteModal(t *testing.T) {
 	t.Parallel()
 

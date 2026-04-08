@@ -132,7 +132,7 @@ func renderQuoteFunctionList(quotes []core.Quote, selection quoteSelection, inne
 
 		if showTags {
 			if len(q.Tags) > 0 {
-				tagStr := strings.Join(q.Tags, "  ·  ")
+				tagStr := previewTags(q.Tags, 3)
 				sb.WriteString(styles.Muted.Render("    Tags: ") + styles.Accent.Render(tagStr) + "\n")
 			} else {
 				sb.WriteString(styles.Muted.Render("    Tags: (none)") + "\n")
@@ -144,6 +144,16 @@ func renderQuoteFunctionList(quotes []core.Quote, selection quoteSelection, inne
 		}
 	}
 	return sb.String()
+}
+
+func previewTags(tags []string, limit int) string {
+	if len(tags) == 0 {
+		return ""
+	}
+	if limit <= 0 || len(tags) <= limit {
+		return strings.Join(tags, "  ·  ")
+	}
+	return strings.Join(tags[:limit], "  ·  ") + fmt.Sprintf("  ·  +%d more", len(tags)-limit)
 }
 
 func idsSet(ids []int64) map[int64]bool {

@@ -333,7 +333,19 @@ Each quote item includes:
 3. list index
 4. quote content
 5. source line for foreign quotes
-6. tag line in list contexts that show tags
+6. a compact tag preview line in list contexts
+
+List density rule:
+
+1. the quote list is intentionally concise
+2. tag previews should show only the first few tags in list view
+3. when more tags exist, the preview should indicate that additional tags are hidden
+
+Detail rule:
+
+1. pressing `enter` on the current quote opens a detail view inside the Quotes page
+2. the detail view shows the full quote metadata, including all tags
+3. pressing `enter` or `esc` exits detail view and returns to the compact list
 
 Origin rule:
 
