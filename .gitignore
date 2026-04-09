@@ -1,3 +1,4 @@
 bin
 desktop/frontend/node_modules
 desktop/frontend/dist
+.codex
