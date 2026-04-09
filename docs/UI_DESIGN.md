@@ -237,6 +237,7 @@ Rules:
 1. stream progressively
 2. auto-scroll to the bottom during generation
 3. preserve the current response until the next question starts
+4. show the current question at the top of the response panel so the answer remains anchored to its prompt
 
 ### Reference quotes panel
 
@@ -340,6 +341,7 @@ List density rule:
 1. the quote list is intentionally concise
 2. tag previews should show only the first few tags in list view
 3. when more tags exist, the preview should indicate that additional tags are hidden
+4. quote content in list view should also be truncated to a compact preview so rows stay visually consistent
 
 Detail rule:
 

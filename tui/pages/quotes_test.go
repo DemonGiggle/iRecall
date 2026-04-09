@@ -72,6 +72,29 @@ func TestQuotesPageListShowsTagPreviewOnly(t *testing.T) {
 	}
 }
 
+func TestQuotesPageListTruncatesLongContent(t *testing.T) {
+	t.Parallel()
+
+	page := NewQuotesPage(nil, 60, 40)
+	page.loading = false
+	page.quotes = []core.Quote{
+		{ID: 1, Content: "This is a very long quote entry that should be truncated in the list view so every row stays compact and easy to scan.", Tags: []string{"alpha"}},
+	}
+	page.quoteFns.clamp(page.quotes)
+	page.viewport.SetContent(page.renderQuotes())
+
+	view := page.View()
+	if !containsAllText(view, "This is a very long") {
+		t.Fatalf("quotes page preview missing expected content prefix:\n%s", view)
+	}
+	if containsAllText(view, "every row stays compact and easy to scan.") {
+		t.Fatalf("quotes page preview should truncate long content:\n%s", view)
+	}
+	if !containsAllText(view, "…") {
+		t.Fatalf("quotes page preview should show ellipsis for truncated content:\n%s", view)
+	}
+}
+
 func TestQuotesPageEnterShowsDetailView(t *testing.T) {
 	t.Parallel()
 
@@ -92,6 +115,9 @@ func TestQuotesPageEnterShowsDetailView(t *testing.T) {
 	view := page.View()
 	if !containsAllText(view, "Quote [1]", "alpha", "beta", "gamma", "delta", "enter/esc: Back to list") {
 		t.Fatalf("quotes page detail view missing expected full data:\n%s", view)
+	}
+	if !containsAllText(view, "first quote") {
+		t.Fatalf("quotes page detail view missing full quote content:\n%s", view)
 	}
 
 	model, _ = page.Update(tea.KeyMsg{Type: tea.KeyEsc})

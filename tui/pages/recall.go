@@ -44,6 +44,7 @@ type RecallPage struct {
 
 	quotes   []core.Quote
 	keywords []string
+	question string
 	respBuf  string
 	quoteFns quoteSelection
 
@@ -109,8 +110,9 @@ func (p RecallPage) Update(msg tea.Msg) (RecallPage, tea.Cmd) {
 			}
 			question := strings.TrimSpace(p.input.Value())
 			p.input.SetValue("")
+			p.question = question
 			p.respBuf = ""
-			p.response.SetContent("")
+			p.updateResponsePanel()
 			p.refPanel.SetContent("")
 			p.quotes = nil
 			p.keywords = nil
@@ -171,7 +173,7 @@ func (p RecallPage) Update(msg tea.Msg) (RecallPage, tea.Cmd) {
 
 	case TokenMsg:
 		p.respBuf += msg.Token
-		p.response.SetContent(p.respBuf)
+		p.updateResponsePanel()
 		p.response.GotoBottom()
 
 	case KeywordsReadyMsg:
@@ -193,7 +195,7 @@ func (p RecallPage) Update(msg tea.Msg) (RecallPage, tea.Cmd) {
 
 	case tokenWithChannel:
 		p.respBuf += msg.token
-		p.response.SetContent(p.respBuf)
+		p.updateResponsePanel()
 		p.response.GotoBottom()
 		ch := msg.ch
 		cmds = append(cmds, func() tea.Msg {
@@ -307,6 +309,18 @@ func (p *RecallPage) recalcLayout() {
 func (p *RecallPage) refreshReferencePanel() {
 	p.quoteFns.clamp(p.quotes)
 	p.refPanel.SetContent(renderQuoteFunctionList(p.quotes, p.quoteFns, p.refPanel.Width, false))
+}
+
+func (p *RecallPage) updateResponsePanel() {
+	var lines []string
+	if strings.TrimSpace(p.question) != "" {
+		lines = append(lines, styles.Muted.Render("Question: ")+styles.Accent.Render(p.question))
+		lines = append(lines, "")
+	}
+	if p.respBuf != "" {
+		lines = append(lines, p.respBuf)
+	}
+	p.response.SetContent(strings.Join(lines, "\n"))
 }
 
 func (p *RecallPage) toggleFocus() {

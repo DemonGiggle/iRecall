@@ -97,6 +97,20 @@ func TestRecallPageShareRequiresReferenceFocus(t *testing.T) {
 	}
 }
 
+func TestRecallPageResponseShowsQuestionContext(t *testing.T) {
+	t.Parallel()
+
+	page := NewRecallPage(nil, 120, 40)
+	page.question = "Ask about memory"
+	page.respBuf = "Here is the answer."
+	page.updateResponsePanel()
+
+	view := page.View()
+	if !containsAllText(view, "Question:", "Ask about memory", "Here is the answer.") {
+		t.Fatalf("recall response missing question context:\n%s", view)
+	}
+}
+
 func containsAllText(s string, parts ...string) bool {
 	for _, part := range parts {
 		if !strings.Contains(s, part) {

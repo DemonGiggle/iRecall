@@ -123,7 +123,7 @@ func renderQuoteFunctionList(quotes []core.Quote, selection quoteSelection, inne
 		}
 		check = styles.QuoteNumber.Render(check)
 		number := styles.QuoteNumber.Render(fmt.Sprintf("[%d]", i+1))
-		content := lipgloss.NewStyle().Width(innerW - 10).Render(q.Content)
+		content := truncateQuotePreview(q.Content, innerW-10)
 		sb.WriteString(prefix + check + " " + number + " " + content + "\n")
 
 		if !q.IsOwnedByMe && q.SourceName != "" {
@@ -154,6 +154,24 @@ func previewTags(tags []string, limit int) string {
 		return strings.Join(tags, "  ·  ")
 	}
 	return strings.Join(tags[:limit], "  ·  ") + fmt.Sprintf("  ·  +%d more", len(tags)-limit)
+}
+
+func truncateQuotePreview(content string, width int) string {
+	if width < 8 {
+		width = 8
+	}
+	flat := strings.Join(strings.Fields(content), " ")
+	if lipgloss.Width(flat) <= width {
+		return flat
+	}
+	if width <= 1 {
+		return "…"
+	}
+	truncated := []rune(flat)
+	if len(truncated) > width-1 {
+		truncated = truncated[:width-1]
+	}
+	return strings.TrimSpace(string(truncated)) + "…"
 }
 
 func idsSet(ids []int64) map[int64]bool {
