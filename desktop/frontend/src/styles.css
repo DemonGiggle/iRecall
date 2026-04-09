@@ -249,6 +249,18 @@ pre {
   gap: 12px;
 }
 
+.settings-paths {
+  display: grid;
+  gap: 14px;
+}
+
+.path-value {
+  justify-content: start;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
 .keyword-row,
 .meta-row {
   display: flex;

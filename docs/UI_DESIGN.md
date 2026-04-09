@@ -421,11 +421,13 @@ The Settings page also shows read-only local filesystem paths for:
 1. data directory
 2. config directory
 3. state directory
+4. database path
 
 Rules:
 
 1. these paths are informational, not editable in the current design
 2. they should reflect the active runtime root, including `-data-path` overrides
+3. the desktop and TUI settings screens should expose the same storage metadata
 
 ### Interaction model
 

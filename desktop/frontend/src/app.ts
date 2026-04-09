@@ -1231,6 +1231,7 @@ function renderQuotesPage(): string {
 
 function renderSettingsPage(): string {
   const filteredModels = getFilteredModels(state.settings);
+  const storagePaths = state.bootstrap?.paths;
   const modelSelect =
     state.settings.models.length > 0 && filteredModels.length > 0
       ? `
@@ -1308,6 +1309,28 @@ function renderSettingsPage(): string {
             </label>
             <div class="settings-hint muted">
               Saving updates both the persisted settings and the live engine configuration for the desktop session.
+            </div>
+          </section>
+
+          <section class="panel subpanel">
+            <div class="section-title">Local Storage</div>
+            <div class="settings-paths">
+              <div class="field">
+                <span>Data dir</span>
+                <div class="readonly-model path-value">${escapeHtml(storagePaths?.dataDir ?? "(unavailable)")}</div>
+              </div>
+              <div class="field">
+                <span>Config dir</span>
+                <div class="readonly-model path-value">${escapeHtml(storagePaths?.configDir ?? "(unavailable)")}</div>
+              </div>
+              <div class="field">
+                <span>State dir</span>
+                <div class="readonly-model path-value">${escapeHtml(storagePaths?.stateDir ?? "(unavailable)")}</div>
+              </div>
+              <div class="field">
+                <span>Database</span>
+                <div class="readonly-model path-value">${escapeHtml(storagePaths?.dbPath ?? "(unavailable)")}</div>
+              </div>
             </div>
           </section>
         </div>
