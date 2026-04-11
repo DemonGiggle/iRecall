@@ -1261,9 +1261,6 @@ function renderSettingsPage(): string {
             <div class="muted">Configure the OpenAI-compatible endpoint and quote retrieval behavior.</div>
           </div>
           <div class="toolbar">
-            <button class="button" data-action="settings-fetch-models" type="button" ${state.settingsBusy ? "disabled" : ""}>
-              ${state.settingsBusy ? "Fetching…" : "Fetch Models"}
-            </button>
             <button class="button button-primary" data-action="settings-save" type="button" ${state.settingsBusy ? "disabled" : ""}>Save</button>
           </div>
         </div>
@@ -1293,7 +1290,12 @@ function renderSettingsPage(): string {
             </label>
             <label class="field">
               <span>Model</span>
-              ${modelSelect}
+              <div class="field-inline">
+                <div class="field-inline-grow">${modelSelect}</div>
+                <button class="button" data-action="settings-fetch-models" type="button" ${state.settingsBusy ? "disabled" : ""}>
+                  ${state.settingsBusy ? "Fetching…" : "Fetch Models"}
+                </button>
+              </div>
             </label>
           </section>
 
@@ -1356,6 +1358,7 @@ function renderQuoteList(
     <div class="quote-list">
       ${quotes
         .map((quote, index) => {
+          const isCurrent = index === cursor;
           const sourceLine =
             !quote.IsOwnedByMe && quote.SourceName
               ? `<div class="quote-meta"><span class="muted">From:</span> <span class="meta-accent">${escapeHtml(quote.SourceName)}</span></div>`
@@ -1364,12 +1367,12 @@ function renderQuoteList(
             ? `
               <div class="quote-meta">
                 <span class="muted">Tags:</span>
-                <span>${quote.Tags.length > 0 ? escapeHtml(quote.Tags.join(" · ")) : "(none)"}</span>
+                <span>${quote.Tags.length > 0 ? escapeHtml(previewTags(quote.Tags, 3)) : "(none)"}</span>
               </div>
             `
             : "";
           return `
-            <article class="quote-card${index === cursor ? " is-current" : ""}" data-action="set-cursor" data-context="${context}" data-index="${index}">
+            <article class="quote-card${isCurrent ? " is-current" : ""}" data-action="set-cursor" data-context="${context}" data-index="${index}">
               <div class="quote-topline">
                 <label class="selection-toggle">
                   <input
@@ -1381,9 +1384,12 @@ function renderQuoteList(
                   />
                   <span>${selected.has(quote.ID) ? "[x]" : "[ ]"}</span>
                 </label>
-                <div class="quote-version">v${quote.Version}</div>
+                <div class="quote-topline-meta">
+                  <span class="quote-index${isCurrent ? " is-current" : ""}">${isCurrent ? "&gt; " : ""}[${index + 1}]</span>
+                  <span class="quote-version">v${quote.Version}</span>
+                </div>
               </div>
-              <div class="quote-content">${escapeHtml(quote.Content)}</div>
+              <div class="quote-content">${escapeHtml(truncateQuotePreview(quote.Content, context === "quotes" ? 96 : 120))}</div>
               ${sourceLine}
               ${tagsLine}
             </article>
@@ -1686,10 +1692,25 @@ function escapeAttribute(value: string): string {
 }
 
 function truncate(value: string, max: number): string {
-  if (value.length <= max) {
-    return value;
+  const normalized = value.replace(/\s+/g, " ").trim();
+  if (normalized.length <= max) {
+    return normalized;
   }
-  return `${value.slice(0, max - 1)}…`;
+  return `${normalized.slice(0, max - 1).trimEnd()}…`;
+}
+
+function previewTags(tags: string[], limit: number): string {
+  if (tags.length === 0) {
+    return "";
+  }
+  if (limit <= 0 || tags.length <= limit) {
+    return tags.join(" · ");
+  }
+  return `${tags.slice(0, limit).join(" · ")} · +${tags.length - limit} more`;
+}
+
+function truncateQuotePreview(content: string, width: number): string {
+  return truncate(content, Math.max(8, width));
 }
 
 function getErrorMessage(error: unknown): string {
