@@ -27,6 +27,7 @@ Related design references:
 - [docs/QUOTES_SHARING_DESIGN.md](./QUOTES_SHARING_DESIGN.md)
 - [docs/WAILS_DESKTOP.md](./WAILS_DESKTOP.md)
 - [docs/SPEC.md](./SPEC.md)
+- [docs/schema.md](./schema.md)
 
 ## Roadmap Summary
 

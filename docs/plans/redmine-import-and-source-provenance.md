@@ -18,27 +18,16 @@ The script should:
 
 The current import/export format is `core.SharedQuoteEnvelope` with `core.SharedQuoteEntry`.
 
-Each imported quote currently supports:
+The field definitions and provenance semantics are documented in [docs/schema.md](../schema.md).
 
-- `global_id`
-- `author_user_id`
-- `author_name`
-- `source_user_id`
-- `source_name`
-- `version`
-- `content`
-- `tags`
-- `created_at_utc`
-- `updated_at_utc`
+The short version is:
 
-This is already enough for person-level provenance:
-
-- `author_*` can represent the original Redmine author
-- `source_*` currently represents who the quote came from in iRecall sharing flows
+- existing fields already cover quote identity, authorship, person-level source, content, tags, and import versioning
+- they do not fully describe system-level origin such as Redmine issue IDs, journal IDs, LAN node identities, or repository identities
 
 ### Important schema gap
 
-The current model does **not** have a dedicated provenance model for external or network-discovered sources such as:
+The current model does not yet have a complete provenance model for external or network-discovered sources such as:
 
 - source backend: `redmine`, `lan`, `node`, `file_import`
 - source scope: a remote system, host, node, or repository
@@ -46,7 +35,7 @@ The current model does **not** have a dedicated provenance model for external or
 - source object ID: Redmine issue ID / journal ID / remote quote ID
 - source URL or canonical reference
 
-That means the current `source_user_*` fields are **not sufficient** if we want imports to retain durable source metadata or support future filtering and discovery features.
+That means the current person-level source fields are not sufficient if imports need durable source metadata or future filtering and discovery features.
 
 ## Recommendation
 
@@ -61,16 +50,9 @@ Minimum recommended fields on quotes:
 - `source_label`
 - `source_url`
 
-Suggested meanings:
+The detailed meaning of these fields is documented in [docs/schema.md](../schema.md).
 
-- `source_backend`: broad transport or integration family such as `redmine`, `lan`, `node`, `file_import`
-- `source_namespace`: source scope such as `redmine:<database>`, `lan:<host>`, `node:<node_id>`, `repo:<repo_id>`
-- `source_entity_type`: concrete source record kind such as `issue_description`, `issue_journal`, `quote`, `shared_quote`
-- `source_entity_id`: stable record identifier within the namespace
-- `source_label`: human-readable label suitable for UI and filtering
-- `source_url`: optional canonical link when one exists
-
-This keeps the existing `source_user_id` and `source_name` semantics intact while adding structured provenance that is flexible enough for:
+This source model is meant to support:
 
 - Redmine imports
 - LAN quote discovery
@@ -147,7 +129,7 @@ Possible mappings:
 - `content`: issue subject + description combined into one quote body
 - `author_user_id`: `redmine:user:<author_id>`
 - `author_name`: resolved Redmine display name
-- `source_user_id`: same as author for the initial import path
+- `source_user_id`: same as author for the initial importer path
 - `source_name`: resolved Redmine display name
 - `source_backend`: `redmine`
 - `source_namespace`: `redmine:<database>`
@@ -162,7 +144,7 @@ Possible mappings:
 - `content`: journal notes, optionally prefixed with issue context
 - `author_user_id`: `redmine:user:<journal_user_id>`
 - `author_name`: resolved Redmine display name
-- `source_user_id`: same as author for the initial import path
+- `source_user_id`: same as author for the initial importer path
 - `source_name`: resolved Redmine display name
 - `source_backend`: `redmine`
 - `source_namespace`: `redmine:<database>`
@@ -255,18 +237,17 @@ These need to be confirmed before or during implementation:
 2. Should blank descriptions or blank journal notes be skipped?
 3. Should tags be strictly structured from Redmine metadata, or should we also run the existing tag extractor later inside iRecall?
 4. Should `source_url` be populated in the initial Redmine implementation when a base Redmine URL is supplied?
-5. Should `source_user_*` continue to mean "person source" while the new source metadata captures system provenance? Current recommendation: yes.
+5. Should `source_user_*` continue to mean person-level source while the new source metadata captures system provenance? Current recommendation: yes.
 6. Do we want source metadata exposed in the UI immediately, or only persisted and filterable for now?
 
 ## Recommended Next Task
 
-Start with Phase 1.
+Start with Phase 2 and Phase 3.
+
+Phase 1 is already implemented in the codebase.
 
 Specifically:
 
-- add external-source fields to the quote/share model
-- make the source model generic enough for Redmine, LAN discovery, and quote nodes
-- migrate SQLite
-- update import/export round-trip tests
-
-After that, implement the Redmine exporter script against the stabilized format.
+- lock the exact Redmine mapping rules
+- finalize the query set against the Redmine PostgreSQL schema
+- implement the exporter under `tools/`
