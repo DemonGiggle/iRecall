@@ -75,7 +75,7 @@ type Settings struct {
 // SearchConfig controls how candidate quotes are retrieved.
 type SearchConfig struct {
 	MaxResults   int     // max quotes returned per query (default: 5)
-	MinRelevance float64 // FTS rank threshold; 0 = no filter (default: 0.0)
+	MinRelevance float64 // normalized keyword-match threshold in [0,1]; 0 = no filter
 }
 
 func DefaultSettings() *Settings {

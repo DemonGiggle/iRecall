@@ -187,7 +187,8 @@ make build-all
 Current implementation notes:
 
 - Search uses `MaxResults` today.
-- `MinRelevance` is captured and persisted in settings, but it is not yet applied to the FTS query.
+- `MinRelevance` filters search results by normalized keyword coverage on a `0.0..1.0` scale.
+- Start with `0.3` to `0.7` for cleaner matches. Use `0.0` to disable filtering.
 - `docs/PLAN.md` is the project roadmap and index for detailed plans in `docs/plans/`.
 - `docs/schema.md` describes the quote, share, and source provenance field semantics.
 - `docs/UI_DESIGN.md` is the shared UI contract for future clients.

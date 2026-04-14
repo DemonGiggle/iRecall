@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"math"
 	"slices"
 	"strings"
 	"time"
@@ -354,18 +355,65 @@ func (e *Engine) ExtractKeywords(ctx context.Context, question string) ([]string
 
 // SearchQuotes runs a ranked FTS5 search using the given keywords.
 func (e *Engine) SearchQuotes(ctx context.Context, keywords []string) ([]Quote, error) {
-	slog.Info("engine: searching quotes", "keywords", keywords, "max_results", e.cfg.Search.MaxResults)
-	rows, err := e.store.SearchQuotes(keywords, e.cfg.Search.MaxResults)
+	minRelevance := e.cfg.Search.MinRelevance
+	searchLimit := e.cfg.Search.MaxResults
+	if minRelevance > 0 {
+		searchLimit = max(searchLimit*5, 25)
+	}
+	slog.Info("engine: searching quotes", "keywords", keywords, "max_results", e.cfg.Search.MaxResults, "min_relevance", minRelevance, "search_limit", searchLimit)
+	rows, err := e.store.SearchQuotes(keywords, searchLimit)
 	if err != nil {
 		slog.Error("engine: search failed", "error", err)
 		return nil, err
 	}
 	quotes := rowsToQuotes(rows, e.localUserID())
+	if minRelevance > 0 {
+		filtered := make([]Quote, 0, len(quotes))
+		for _, q := range quotes {
+			score := quoteRelevanceScore(keywords, q)
+			if score >= minRelevance {
+				filtered = append(filtered, q)
+			}
+		}
+		quotes = filtered
+	}
+	if len(quotes) > e.cfg.Search.MaxResults {
+		quotes = quotes[:e.cfg.Search.MaxResults]
+	}
 	slog.Info("engine: search complete", "result_count", len(quotes))
 	for i, q := range quotes {
 		slog.Debug("engine: search result", "index", i, "id", q.ID, "content_preview", truncate(q.Content, 80), "tags", q.Tags)
 	}
 	return quotes, nil
+}
+
+func quoteRelevanceScore(keywords []string, quote Quote) float64 {
+	normalized := make([]string, 0, len(keywords))
+	seen := make(map[string]struct{}, len(keywords))
+	for _, kw := range keywords {
+		kw = strings.ToLower(strings.TrimSpace(kw))
+		if kw == "" {
+			continue
+		}
+		if _, ok := seen[kw]; ok {
+			continue
+		}
+		seen[kw] = struct{}{}
+		normalized = append(normalized, kw)
+	}
+	if len(normalized) == 0 {
+		return 0
+	}
+
+	haystack := strings.ToLower(quote.Content + "\n" + strings.Join(quote.Tags, "\n"))
+	matches := 0
+	for _, kw := range normalized {
+		if strings.Contains(haystack, kw) {
+			matches++
+		}
+	}
+	score := float64(matches) / float64(len(normalized))
+	return math.Round(score*100) / 100
 }
 
 // GenerateResponse streams a synthesized answer grounded in candidate quotes.

@@ -413,6 +413,7 @@ Current search controls:
 
 1. max reference quotes
 2. minimum relevance
+3. help text should explain that `0.0` keeps broad matches, `0.3-0.7` is the recommended range, and `1.0` is very strict
 
 ### Local storage information
 
