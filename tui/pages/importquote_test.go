@@ -53,4 +53,7 @@ func TestQuoteImportPageImportsSharedFile(t *testing.T) {
 	if len(quotes) != 1 || quotes[0].Content != "shared from alice" {
 		t.Fatalf("imported quotes = %+v", quotes)
 	}
+	if quotes[0].SourceBackend != "local" || quotes[0].SourceEntityType != "quote" {
+		t.Fatalf("imported quote source provenance = %+v", quotes[0])
+	}
 }

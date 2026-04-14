@@ -11,12 +11,17 @@ func TestStoreQuoteLifecycleAndSearch(t *testing.T) {
 	store := openTestStore(t)
 
 	quoteID, err := store.InsertQuote("Go channels coordinate concurrent goroutines.", QuoteIdentity{
-		GlobalID:     "quote-1",
-		AuthorUserID: "user-1",
-		AuthorName:   "Alice",
-		SourceUserID: "user-1",
-		SourceName:   "Alice",
-		Version:      1,
+		GlobalID:         "quote-1",
+		AuthorUserID:     "user-1",
+		AuthorName:       "Alice",
+		SourceUserID:     "user-1",
+		SourceName:       "Alice",
+		SourceBackend:    "local",
+		SourceNamespace:  "local:user-1",
+		SourceEntityType: "quote",
+		SourceEntityID:   "quote-1",
+		SourceLabel:      "Local quote",
+		Version:          1,
 	})
 	if err != nil {
 		t.Fatalf("insert quote: %v", err)
@@ -57,6 +62,9 @@ func TestStoreQuoteLifecycleAndSearch(t *testing.T) {
 	}
 	if listed[0].GlobalID != "quote-1" {
 		t.Fatalf("global id = %q, want quote-1", listed[0].GlobalID)
+	}
+	if listed[0].SourceBackend != "local" || listed[0].SourceEntityID != "quote-1" {
+		t.Fatalf("source provenance = %+v, want local provenance", listed[0])
 	}
 	if listed[0].Tags != "concurrency,golang" && listed[0].Tags != "golang,concurrency" {
 		t.Fatalf("listed tags = %q, want concurrency and golang", listed[0].Tags)

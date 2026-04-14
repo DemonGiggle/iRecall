@@ -35,7 +35,14 @@ func TestQuoteSharePageExportsAndSavesPayload(t *testing.T) {
 	if page.payload == "" {
 		t.Fatal("payload = empty, want exported JSON")
 	}
-	if !containsAll(page.payload, "\"schema_version\": 1", "first shared quote", "second shared quote") {
+	if !containsAll(
+		page.payload,
+		"\"schema_version\": 2",
+		"\"source_backend\": \"local\"",
+		"\"source_entity_type\": \"quote\"",
+		"first shared quote",
+		"second shared quote",
+	) {
 		t.Fatalf("payload missing expected content:\n%s", page.payload)
 	}
 

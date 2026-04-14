@@ -311,6 +311,9 @@ func TestExportQuotesIncludesSchemaVersion(t *testing.T) {
 	if env.Quotes[0].GlobalID == "" {
 		t.Fatal("exported quote missing global id")
 	}
+	if env.Quotes[0].SourceBackend != "local" || env.Quotes[0].SourceEntityID == "" {
+		t.Fatalf("exported source provenance = %+v, want local provenance fields", env.Quotes[0])
+	}
 }
 
 func TestImportSharedQuotesRejectsUnsupportedSchema(t *testing.T) {
@@ -322,15 +325,20 @@ func TestImportSharedQuotesRejectsUnsupportedSchema(t *testing.T) {
 		ExportedAt:    time.Now().UTC(),
 		Quotes: []SharedQuoteEntry{
 			{
-				GlobalID:     "quote-1",
-				AuthorUserID: "user-1",
-				AuthorName:   "Alice",
-				SourceUserID: "user-1",
-				SourceName:   "Alice",
-				Version:      1,
-				Content:      "hello",
-				CreatedAtUTC: time.Now().UTC(),
-				UpdatedAtUTC: time.Now().UTC(),
+				GlobalID:         "quote-1",
+				AuthorUserID:     "user-1",
+				AuthorName:       "Alice",
+				SourceUserID:     "user-1",
+				SourceName:       "Alice",
+				SourceBackend:    "local",
+				SourceNamespace:  "local:user-1",
+				SourceEntityType: "quote",
+				SourceEntityID:   "quote-1",
+				SourceLabel:      "Local quote",
+				Version:          1,
+				Content:          "hello",
+				CreatedAtUTC:     time.Now().UTC(),
+				UpdatedAtUTC:     time.Now().UTC(),
 			},
 		},
 	})
@@ -352,16 +360,22 @@ func TestImportSharedQuotesVersionHandling(t *testing.T) {
 		ExportedAt:    time.Now().UTC(),
 		Quotes: []SharedQuoteEntry{
 			{
-				GlobalID:     "quote-1",
-				AuthorUserID: "author-1",
-				AuthorName:   "Alice",
-				SourceUserID: "author-1",
-				SourceName:   "Alice",
-				Version:      1,
-				Content:      "first version",
-				Tags:         []string{"alpha"},
-				CreatedAtUTC: time.Unix(100, 0).UTC(),
-				UpdatedAtUTC: time.Unix(100, 0).UTC(),
+				GlobalID:         "quote-1",
+				AuthorUserID:     "author-1",
+				AuthorName:       "Alice",
+				SourceUserID:     "author-1",
+				SourceName:       "Alice",
+				SourceBackend:    "redmine",
+				SourceNamespace:  "redmine:testdb",
+				SourceEntityType: "issue_description",
+				SourceEntityID:   "123",
+				SourceLabel:      "Redmine issue #123",
+				SourceURL:        "https://redmine.test/issues/123",
+				Version:          1,
+				Content:          "first version",
+				Tags:             []string{"alpha"},
+				CreatedAtUTC:     time.Unix(100, 0).UTC(),
+				UpdatedAtUTC:     time.Unix(100, 0).UTC(),
 			},
 		},
 	}
@@ -388,16 +402,22 @@ func TestImportSharedQuotesVersionHandling(t *testing.T) {
 		ExportedAt:    time.Now().UTC(),
 		Quotes: []SharedQuoteEntry{
 			{
-				GlobalID:     "quote-1",
-				AuthorUserID: "author-1",
-				AuthorName:   "Alice",
-				SourceUserID: "author-1",
-				SourceName:   "Alice",
-				Version:      2,
-				Content:      "second version",
-				Tags:         []string{"beta"},
-				CreatedAtUTC: time.Unix(100, 0).UTC(),
-				UpdatedAtUTC: time.Unix(200, 0).UTC(),
+				GlobalID:         "quote-1",
+				AuthorUserID:     "author-1",
+				AuthorName:       "Alice",
+				SourceUserID:     "author-1",
+				SourceName:       "Alice",
+				SourceBackend:    "redmine",
+				SourceNamespace:  "redmine:testdb",
+				SourceEntityType: "issue_description",
+				SourceEntityID:   "123",
+				SourceLabel:      "Redmine issue #123",
+				SourceURL:        "https://redmine.test/issues/123",
+				Version:          2,
+				Content:          "second version",
+				Tags:             []string{"beta"},
+				CreatedAtUTC:     time.Unix(100, 0).UTC(),
+				UpdatedAtUTC:     time.Unix(200, 0).UTC(),
 			},
 		},
 	}
@@ -415,16 +435,22 @@ func TestImportSharedQuotesVersionHandling(t *testing.T) {
 		ExportedAt:    time.Now().UTC(),
 		Quotes: []SharedQuoteEntry{
 			{
-				GlobalID:     "quote-1",
-				AuthorUserID: "author-1",
-				AuthorName:   "Alice",
-				SourceUserID: "author-1",
-				SourceName:   "Alice",
-				Version:      1,
-				Content:      "first version",
-				Tags:         []string{"alpha"},
-				CreatedAtUTC: time.Unix(100, 0).UTC(),
-				UpdatedAtUTC: time.Unix(100, 0).UTC(),
+				GlobalID:         "quote-1",
+				AuthorUserID:     "author-1",
+				AuthorName:       "Alice",
+				SourceUserID:     "author-1",
+				SourceName:       "Alice",
+				SourceBackend:    "redmine",
+				SourceNamespace:  "redmine:testdb",
+				SourceEntityType: "issue_description",
+				SourceEntityID:   "123",
+				SourceLabel:      "Redmine issue #123",
+				SourceURL:        "https://redmine.test/issues/123",
+				Version:          1,
+				Content:          "first version",
+				Tags:             []string{"alpha"},
+				CreatedAtUTC:     time.Unix(100, 0).UTC(),
+				UpdatedAtUTC:     time.Unix(100, 0).UTC(),
 			},
 		},
 	}
@@ -446,6 +472,9 @@ func TestImportSharedQuotesVersionHandling(t *testing.T) {
 	}
 	if quotes[0].Content != "second version" || quotes[0].Version != 2 {
 		t.Fatalf("quote after update = %+v", quotes[0])
+	}
+	if quotes[0].SourceBackend != "redmine" || quotes[0].SourceEntityID != "123" {
+		t.Fatalf("quote source provenance = %+v", quotes[0])
 	}
 }
 
