@@ -1307,10 +1307,11 @@ function renderSettingsPage(): string {
             </label>
             <label class="field">
               <span>Min relevance</span>
-              <input class="text-input" data-bind="settings-min-relevance" value="${escapeAttribute(state.settings.minRelevance)}" />
+              <input class="text-input" data-bind="settings-min-relevance" value="${escapeAttribute(state.settings.minRelevance)}" placeholder="0.0-1.0" />
             </label>
             <div class="settings-hint muted">
               Saving updates both the persisted settings and the live engine configuration for the desktop session.
+              0.0 keeps broad matches. Try 0.3-0.7 for cleaner results; 1.0 is very strict.
             </div>
           </section>
 
@@ -1631,6 +1632,9 @@ function settingsPayloadFromForm(form: SettingsFormState): SettingsPayload {
   const minRelevance = Number.parseFloat(form.minRelevance.trim());
   if (Number.isNaN(minRelevance)) {
     throw new Error("Min relevance must be a decimal number.");
+  }
+  if (minRelevance < 0 || minRelevance > 1) {
+    throw new Error("Min relevance must be between 0.0 and 1.0.");
   }
   return {
     Provider: provider,

@@ -432,7 +432,7 @@ The page validates:
 
 - port: `1..65535`
 - max results: `1..20`
-- min relevance: valid decimal number
+- min relevance: decimal number between `0.0` and `1.0`
 
 Model selection behavior:
 

@@ -104,3 +104,13 @@ func TestSettingsPageShowsStoragePaths(t *testing.T) {
 		}
 	}
 }
+
+func TestSettingsPageCurrentSettingsRejectsMinRelevanceOutsideRange(t *testing.T) {
+	page := NewSettingsPage(nil, 120, 40, core.DefaultSettings())
+	page.inputs[fieldMinRelevance].SetValue("1.2")
+
+	_, err := page.CurrentSettings()
+	if err == nil || !strings.Contains(err.Error(), "between 0.0 and 1.0") {
+		t.Fatalf("CurrentSettings() error = %v, want range validation", err)
+	}
+}

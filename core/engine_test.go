@@ -254,6 +254,56 @@ func TestExtractTagsRepairsWeakGenericResults(t *testing.T) {
 	}
 }
 
+func TestSearchQuotesAppliesMinRelevance(t *testing.T) {
+	t.Parallel()
+
+	engine := newProfiledTestEngine(t, "localhost")
+	engine.cfg.Search.MaxResults = 5
+	engine.cfg.Search.MinRelevance = 0.6
+
+	identity := db.QuoteIdentity{
+		GlobalID:         "quote-1",
+		AuthorUserID:     "user-1",
+		AuthorName:       "Alice",
+		SourceUserID:     "user-1",
+		SourceName:       "Alice",
+		SourceBackend:    "local",
+		SourceNamespace:  "local:user-1",
+		SourceEntityType: "quote",
+		SourceEntityID:   "quote-1",
+		SourceLabel:      "Local quote",
+		Version:          1,
+	}
+	id1, err := engine.store.InsertQuote("Go concurrency patterns with channels and goroutines.", identity)
+	if err != nil {
+		t.Fatalf("InsertQuote() first error = %v", err)
+	}
+	if err := engine.store.UpdateQuoteFTS(id1, []string{"go", "concurrency"}); err != nil {
+		t.Fatalf("UpdateQuoteFTS() first error = %v", err)
+	}
+
+	identity.GlobalID = "quote-2"
+	identity.SourceEntityID = "quote-2"
+	id2, err := engine.store.InsertQuote("Go testing basics.", identity)
+	if err != nil {
+		t.Fatalf("InsertQuote() second error = %v", err)
+	}
+	if err := engine.store.UpdateQuoteFTS(id2, []string{"go", "testing"}); err != nil {
+		t.Fatalf("UpdateQuoteFTS() second error = %v", err)
+	}
+
+	got, err := engine.SearchQuotes(context.Background(), []string{"go", "concurrency"})
+	if err != nil {
+		t.Fatalf("SearchQuotes() error = %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("SearchQuotes() count = %d, want 1", len(got))
+	}
+	if got[0].GlobalID != "quote-1" {
+		t.Fatalf("SearchQuotes() returned %q, want quote-1", got[0].GlobalID)
+	}
+}
+
 func TestNormalizeTagsFiltersNoiseAndCapsCount(t *testing.T) {
 	t.Parallel()
 

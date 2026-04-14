@@ -85,7 +85,7 @@ func NewSettingsPage(engine *core.Engine, width, height int, s *core.Settings) S
 	inputs[fieldAPIKey] = makeInput("optional", true)
 	inputs[fieldModelFilter] = makeInput("type to filter", false)
 	inputs[fieldMaxResults] = makeInput("1–20", false)
-	inputs[fieldMinRelevance] = makeInput("0.0", false)
+	inputs[fieldMinRelevance] = makeInput("0.0-1.0", false)
 
 	// Populate from current settings.
 	inputs[fieldHost].SetValue(s.Provider.Host)
@@ -289,6 +289,7 @@ func (p SettingsPage) View() string {
 		styles.SectionHeader.Render("Search"),
 		row("Max ref quotes", p.inputView(fieldMaxResults)),
 		row("Min relevance", p.inputView(fieldMinRelevance)),
+		styles.Muted.Render("0.0 keeps broad matches. Try 0.3-0.7 for cleaner results; 1.0 is very strict."),
 	)
 
 	pathsSection := lipgloss.JoinVertical(lipgloss.Left,
@@ -426,6 +427,9 @@ func (p *SettingsPage) CurrentSettings() (*core.Settings, error) {
 	minRel, err := strconv.ParseFloat(strings.TrimSpace(p.inputs[fieldMinRelevance].Value()), 64)
 	if err != nil {
 		return nil, fmt.Errorf("min relevance must be a decimal number")
+	}
+	if minRel < 0 || minRel > 1 {
+		return nil, fmt.Errorf("min relevance must be between 0.0 and 1.0")
 	}
 	return &core.Settings{
 		Provider: core.ProviderConfig{
