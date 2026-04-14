@@ -164,13 +164,13 @@ iRecall/
 ├── desktop/          # Wails-oriented desktop scaffold
 │   ├── backend/
 │   └── frontend/
-├── docs/             # Shared UI and platform design references
+├── docs/             # Roadmap, detailed plans, and design references
+│   ├── PLAN.md
+│   └── plans/
 ├── tui/              # Bubble Tea application and pages
 │   ├── pages/
 │   └── styles/
 ├── README.md
-├── SPEC.md
-├── PLAN.md
 └── Makefile
 ```
 
@@ -188,5 +188,6 @@ Current implementation notes:
 
 - Search uses `MaxResults` today.
 - `MinRelevance` is captured and persisted in settings, but it is not yet applied to the FTS query.
+- `docs/PLAN.md` is the project roadmap and index for detailed plans in `docs/plans/`.
 - `docs/UI_DESIGN.md` is the shared UI contract for future clients.
 - `desktop/` contains the current Wails-oriented desktop scaffold and backend service layer.
