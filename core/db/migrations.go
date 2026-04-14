@@ -24,6 +24,11 @@ var migrations = []migration{
 		name:    "quote_identity_and_user_profile",
 		up:      upQuoteIdentityAndUserProfile,
 	},
+	{
+		version: 3,
+		name:    "quote_source_provenance",
+		up:      upQuoteSourceProvenance,
+	},
 }
 
 const initialSchemaSQL = `
@@ -279,6 +284,40 @@ func upQuoteIdentityAndUserProfile(tx *sql.Tx) error {
 			created_at   INTEGER NOT NULL,
 			updated_at   INTEGER NOT NULL
 		)`,
+	}
+
+	for _, stmt := range stmts {
+		if _, err := tx.Exec(stmt); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func upQuoteSourceProvenance(tx *sql.Tx) error {
+	stmts := []string{
+		`ALTER TABLE quotes ADD COLUMN source_backend TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE quotes ADD COLUMN source_namespace TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE quotes ADD COLUMN source_entity_type TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE quotes ADD COLUMN source_entity_id TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE quotes ADD COLUMN source_label TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE quotes ADD COLUMN source_url TEXT NOT NULL DEFAULT ''`,
+		`UPDATE quotes
+		 SET source_backend = 'local',
+		     source_namespace = CASE
+		         WHEN author_user_id IS NOT NULL AND author_user_id <> '' THEN 'local:' || author_user_id
+		         ELSE 'local:unknown'
+		     END,
+		     source_entity_type = 'quote',
+		     source_entity_id = CASE
+		         WHEN global_id IS NOT NULL AND global_id <> '' THEN global_id
+		         ELSE 'legacy'
+		     END,
+		     source_label = 'Local quote'
+		 WHERE source_backend = ''`,
+		`CREATE INDEX IF NOT EXISTS idx_quotes_source_backend ON quotes(source_backend)`,
+		`CREATE INDEX IF NOT EXISTS idx_quotes_source_namespace ON quotes(source_namespace)`,
+		`CREATE INDEX IF NOT EXISTS idx_quotes_source_identity ON quotes(source_backend, source_namespace, source_entity_type, source_entity_id)`,
 	}
 
 	for _, stmt := range stmts {

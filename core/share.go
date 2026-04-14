@@ -24,16 +24,22 @@ func (e *Engine) ExportQuotes(ctx context.Context, ids []int64) ([]byte, error) 
 			return nil, err
 		}
 		entries = append(entries, SharedQuoteEntry{
-			GlobalID:     q.GlobalID,
-			AuthorUserID: q.AuthorUserID,
-			AuthorName:   q.AuthorName,
-			SourceUserID: q.SourceUserID,
-			SourceName:   q.SourceName,
-			Version:      q.Version,
-			Content:      q.Content,
-			Tags:         append([]string(nil), q.Tags...),
-			CreatedAtUTC: q.CreatedAt.UTC(),
-			UpdatedAtUTC: q.UpdatedAt.UTC(),
+			GlobalID:         q.GlobalID,
+			AuthorUserID:     q.AuthorUserID,
+			AuthorName:       q.AuthorName,
+			SourceUserID:     q.SourceUserID,
+			SourceName:       q.SourceName,
+			SourceBackend:    q.SourceBackend,
+			SourceNamespace:  q.SourceNamespace,
+			SourceEntityType: q.SourceEntityType,
+			SourceEntityID:   q.SourceEntityID,
+			SourceLabel:      q.SourceLabel,
+			SourceURL:        q.SourceURL,
+			Version:          q.Version,
+			Content:          q.Content,
+			Tags:             append([]string(nil), q.Tags...),
+			CreatedAtUTC:     q.CreatedAt.UTC(),
+			UpdatedAtUTC:     q.UpdatedAt.UTC(),
 		})
 	}
 
@@ -55,7 +61,7 @@ func (e *Engine) ImportSharedQuotes(ctx context.Context, payload []byte) (Import
 	if err := json.Unmarshal(payload, &env); err != nil {
 		return ImportResult{}, fmt.Errorf("decode share payload: %w", err)
 	}
-	if env.SchemaVersion != ShareSchemaVersion {
+	if env.SchemaVersion != 1 && env.SchemaVersion != ShareSchemaVersion {
 		return ImportResult{}, fmt.Errorf("unsupported share schema version: %d", env.SchemaVersion)
 	}
 
@@ -71,13 +77,20 @@ func (e *Engine) ImportSharedQuotes(ctx context.Context, payload []byte) (Import
 		}
 
 		identity := db.QuoteIdentity{
-			GlobalID:     entry.GlobalID,
-			AuthorUserID: entry.AuthorUserID,
-			AuthorName:   entry.AuthorName,
-			SourceUserID: entry.SourceUserID,
-			SourceName:   entry.SourceName,
-			Version:      entry.Version,
+			GlobalID:         entry.GlobalID,
+			AuthorUserID:     entry.AuthorUserID,
+			AuthorName:       entry.AuthorName,
+			SourceUserID:     entry.SourceUserID,
+			SourceName:       entry.SourceName,
+			SourceBackend:    entry.SourceBackend,
+			SourceNamespace:  entry.SourceNamespace,
+			SourceEntityType: entry.SourceEntityType,
+			SourceEntityID:   entry.SourceEntityID,
+			SourceLabel:      entry.SourceLabel,
+			SourceURL:        entry.SourceURL,
+			Version:          entry.Version,
 		}
+		identity = normalizeImportedQuoteIdentity(env.SchemaVersion, identity)
 
 		tagIDs, err := e.store.UpsertTags(entry.Tags)
 		if err != nil {
@@ -135,4 +148,31 @@ func validateSharedQuoteEntry(entry SharedQuoteEntry) error {
 		return fmt.Errorf("shared quote %s has empty content", entry.GlobalID)
 	}
 	return nil
+}
+
+func normalizeImportedQuoteIdentity(schemaVersion int, identity db.QuoteIdentity) db.QuoteIdentity {
+	if schemaVersion == 1 || identity.SourceBackend == "" {
+		identity.SourceBackend = "shared_import"
+	}
+	if schemaVersion == 1 || identity.SourceNamespace == "" {
+		sourceUserID := strings.TrimSpace(identity.SourceUserID)
+		if sourceUserID == "" {
+			sourceUserID = "unknown"
+		}
+		identity.SourceNamespace = "share:" + sourceUserID
+	}
+	if schemaVersion == 1 || identity.SourceEntityType == "" {
+		identity.SourceEntityType = "shared_quote"
+	}
+	if schemaVersion == 1 || identity.SourceEntityID == "" {
+		identity.SourceEntityID = identity.GlobalID
+	}
+	if schemaVersion == 1 || identity.SourceLabel == "" {
+		sourceName := strings.TrimSpace(identity.SourceName)
+		if sourceName == "" {
+			sourceName = "Shared import"
+		}
+		identity.SourceLabel = sourceName
+	}
+	return identity
 }

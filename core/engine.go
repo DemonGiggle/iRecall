@@ -549,18 +549,24 @@ func rowsToQuotes(rows []db.QuoteRow, localUserID string) []Quote {
 			tags = strings.Split(r.Tags, ",")
 		}
 		out[i] = Quote{
-			ID:           r.ID,
-			GlobalID:     r.GlobalID,
-			AuthorUserID: r.AuthorUserID,
-			AuthorName:   r.AuthorName,
-			SourceUserID: r.SourceUserID,
-			SourceName:   r.SourceName,
-			Content:      r.Content,
-			Tags:         tags,
-			Version:      r.Version,
-			IsOwnedByMe:  localUserID != "" && r.AuthorUserID == localUserID,
-			CreatedAt:    time.Unix(r.CreatedAt, 0),
-			UpdatedAt:    time.Unix(r.UpdatedAt, 0),
+			ID:               r.ID,
+			GlobalID:         r.GlobalID,
+			AuthorUserID:     r.AuthorUserID,
+			AuthorName:       r.AuthorName,
+			SourceUserID:     r.SourceUserID,
+			SourceName:       r.SourceName,
+			SourceBackend:    r.SourceBackend,
+			SourceNamespace:  r.SourceNamespace,
+			SourceEntityType: r.SourceEntityType,
+			SourceEntityID:   r.SourceEntityID,
+			SourceLabel:      r.SourceLabel,
+			SourceURL:        r.SourceURL,
+			Content:          r.Content,
+			Tags:             tags,
+			Version:          r.Version,
+			IsOwnedByMe:      localUserID != "" && r.AuthorUserID == localUserID,
+			CreatedAt:        time.Unix(r.CreatedAt, 0),
+			UpdatedAt:        time.Unix(r.UpdatedAt, 0),
 		}
 	}
 	return out
@@ -586,13 +592,20 @@ func (e *Engine) quoteIdentityForNewQuote() (db.QuoteIdentity, error) {
 	if e.profile == nil || e.profile.UserID == "" {
 		return db.QuoteIdentity{}, fmt.Errorf("user profile not loaded")
 	}
+	globalID := uuid.NewString()
 	return db.QuoteIdentity{
-		GlobalID:     uuid.NewString(),
-		AuthorUserID: e.profile.UserID,
-		AuthorName:   e.profile.DisplayName,
-		SourceUserID: e.profile.UserID,
-		SourceName:   e.profile.DisplayName,
-		Version:      1,
+		GlobalID:         globalID,
+		AuthorUserID:     e.profile.UserID,
+		AuthorName:       e.profile.DisplayName,
+		SourceUserID:     e.profile.UserID,
+		SourceName:       e.profile.DisplayName,
+		SourceBackend:    "local",
+		SourceNamespace:  "local:" + e.profile.UserID,
+		SourceEntityType: "quote",
+		SourceEntityID:   globalID,
+		SourceLabel:      "Local quote",
+		SourceURL:        "",
+		Version:          1,
 	}, nil
 }
 

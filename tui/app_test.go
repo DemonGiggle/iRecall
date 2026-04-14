@@ -102,7 +102,7 @@ func TestAppOpensAndClosesQuoteShareOverlay(t *testing.T) {
 	msg := cmd()
 	model, _ = app.Update(msg)
 	app, _ = model.(App)
-	if !containsAllText(app.View(), "Share Quotes", "Export Payload", "\"schema_version\": 1") {
+	if !containsAllText(app.View(), "Share Quotes", "Export Payload", "\"schema_version\": 2") {
 		t.Fatalf("share overlay view missing expected content:\n%s", app.View())
 	}
 
@@ -166,12 +166,17 @@ func newTestApp(t *testing.T) App {
 	engine.UpdateUserProfile(profile)
 
 	if _, err := store.InsertQuote("Test quote for page reload.", db.QuoteIdentity{
-		GlobalID:     "quote-1",
-		AuthorUserID: profile.UserID,
-		AuthorName:   profile.DisplayName,
-		SourceUserID: profile.UserID,
-		SourceName:   profile.DisplayName,
-		Version:      1,
+		GlobalID:         "quote-1",
+		AuthorUserID:     profile.UserID,
+		AuthorName:       profile.DisplayName,
+		SourceUserID:     profile.UserID,
+		SourceName:       profile.DisplayName,
+		SourceBackend:    "local",
+		SourceNamespace:  "local:" + profile.UserID,
+		SourceEntityType: "quote",
+		SourceEntityID:   "quote-1",
+		SourceLabel:      "Local quote",
+		Version:          1,
 	}); err != nil {
 		t.Fatalf("insert quote: %v", err)
 	}

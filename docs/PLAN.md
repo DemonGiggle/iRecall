@@ -1,112 +1,76 @@
-# iRecall Implementation Status and Forward Plan
+# iRecall Roadmap
 
-## Current State
+## Purpose
 
-The repository is no longer at the scaffold stage. The following are implemented and working at the code level:
+This file is the top-level roadmap and planning index for iRecall.
 
-- Go module initialized as `github.com/gigol/irecall`
-- Bubble Tea TUI with `Recall`, `Quotes`, and `Settings` pages
-- Add Quote modal overlay with asynchronous save flow
-- SQLite persistence with migrations, FTS5, and tag joins
-- OpenAI-compatible HTTP client for chat completions and model listing
-- Streaming response handling in the TUI
-- XDG-style directory setup for data, config, and state
-- File-based structured logging
-- `Makefile` build, run, test, lint, install, tidy, clean, and cross-build targets
+Use it for:
 
-## What the App Does Today
+- project-wide priorities
+- status across major initiatives
+- links to detailed plans
 
-### End-user flow
+Detailed execution plans live under [docs/plans/](./plans/README.md).
 
-1. Configure an LLM endpoint and model on the Settings page.
-2. Add notes from the Recall page with `Ctrl+N`.
-3. Let the model extract tags for each note.
-4. Ask a question on the Recall page.
-5. Let the model extract search keywords.
-6. Search notes through SQLite FTS5.
-7. Stream a grounded answer alongside the matched notes.
+## Planning Structure
 
-### Core architecture
+- [docs/plans/foundation-and-current-state.md](./plans/foundation-and-current-state.md)
+  Historical baseline and implemented foundation.
+- [docs/plans/retrieval-and-product-gap-closure.md](./plans/retrieval-and-product-gap-closure.md)
+  Active backlog for improving the current recall workflow.
+- [docs/plans/redmine-import-and-source-provenance.md](./plans/redmine-import-and-source-provenance.md)
+  Source provenance model and Redmine import/export work.
 
-- `core/` remains independent from the TUI and contains the engine, DB layer, and LLM client
-- `tui/` is a presentation layer that turns asynchronous engine work into Bubble Tea messages
-- settings are persisted in SQLite, not a standalone config file
+Related design references:
 
-## Completed Work by Area
+- [docs/UI_DESIGN.md](./UI_DESIGN.md)
+- [docs/QUOTES_SHARING_DESIGN.md](./QUOTES_SHARING_DESIGN.md)
+- [docs/WAILS_DESKTOP.md](./WAILS_DESKTOP.md)
+- [docs/SPEC.md](./SPEC.md)
+- [docs/schema.md](./schema.md)
 
-### Platform and packaging
+## Roadmap Summary
 
-- [x] Module initialized
-- [x] Single-binary build flow via `make build`
-- [x] Cross-compilation targets in `Makefile`
-- [x] Version injection via linker flags
+### Completed foundation
 
-### Persistence
+Status: established
 
-- [x] SQLite store
-- [x] Migration runner
-- [x] Schema version tracking
-- [x] `quotes`, `tags`, `quote_tags`, `quotes_fts`, and `settings` tables
-- [x] FTS triggers for quote insert, update, and delete
-- [x] Explicit FTS refresh with tag text after tag association writes
+The current codebase already has a working TUI, SQLite persistence, OpenAI-compatible provider integration, quote sharing/import, and a reusable Go core. The detailed baseline lives in [foundation-and-current-state.md](./plans/foundation-and-current-state.md).
 
-### LLM integration
+### Product maturity
 
-- [x] OpenAI-compatible provider configuration
-- [x] `/v1/chat/completions` support
-- [x] `/v1/models` support
-- [x] SSE token streaming
-- [x] API key support
+Status: active
 
-### TUI
+The next layer of work is improving retrieval quality, coverage, validation, and product polish around the current note-search-answer workflow. The detailed backlog lives in [retrieval-and-product-gap-closure.md](./plans/retrieval-and-product-gap-closure.md).
 
-- [x] Root app with page routing
-- [x] Recall page
-- [x] Quotes page
-- [x] Settings page
-- [x] Add Quote modal
-- [x] Responsive resizing through `tea.WindowSizeMsg`
+### External source provenance and Redmine import
 
-## Known Gaps
+Status: planned
 
-These are the main areas where the implementation still lags the intended product shape:
+Before broader import, sync, or LAN discovery features land, the quote model needs a first-class source identity design. The Redmine importer is the first concrete feature depending on that model. The detailed plan lives in [redmine-import-and-source-provenance.md](./plans/redmine-import-and-source-provenance.md).
 
-- [ ] `SearchConfig.MinRelevance` is collected and saved but not applied in search queries
-- [ ] No automated tests are present even though `make test` is wired
-- [ ] No UI flow exists for deleting quotes, despite engine support
-- [ ] The config directory is created but not used for stored configuration
-- [ ] No CI workflow is present in the repository
-- [ ] No web or native client exists yet
+## Near-Term Priorities
 
-## Recommended Next Steps
+1. Strengthen retrieval and search correctness.
+2. Improve automated coverage around persistence, imports, and recall flows.
+3. Introduce a generalized source provenance model.
+4. Build the Redmine export/import path on top of that source model.
 
-### Short-term
+## Medium-Term Priorities
 
-- [ ] Apply `MinRelevance` to the FTS query so saved search settings affect retrieval
-- [ ] Add core tests for DB migrations, FTS search, settings persistence, and LLM parsing fallbacks
-- [ ] Add provider validation in the UI for empty host and empty model
-- [ ] Surface quote timestamps on the Quotes page
+1. Expand product polish across TUI and desktop surfaces.
+2. Add stronger CI and delivery discipline.
+3. Prepare the data model for future sync and discovery scenarios.
 
-### Medium-term
+## Longer-Term Themes
 
-- [ ] Add quote deletion and maybe editing from the Quotes page
-- [ ] Add cancellation for in-flight recall requests when the user asks a new question or exits
-- [ ] Add integration tests around the full add-then-recall path with a mock provider
-- [ ] Add a GitHub Actions workflow for build and test
+1. External imports and synchronization.
+2. Network-aware quote discovery and source filtering.
+3. Additional client surfaces once the core model stabilizes.
 
-### Longer-term
+## Non-Goals For Now
 
-- [ ] Expose the same `core/` engine through a web UI
-- [ ] Consider import and export flows for notes
-- [ ] Add better retrieval controls such as AND/OR search strategies, tag filters, or score thresholds
-
-## Non-goals for the Current Codebase
-
-The repository does not currently include:
-
-- background sync
-- multi-user support
-- remote storage
 - embeddings or vector search
 - a REST API
-- any GUI outside the terminal
+- remote-first storage
+- full multi-user collaboration semantics

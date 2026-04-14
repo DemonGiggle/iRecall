@@ -16,12 +16,18 @@ type Store struct {
 }
 
 type QuoteIdentity struct {
-	GlobalID     string
-	AuthorUserID string
-	AuthorName   string
-	SourceUserID string
-	SourceName   string
-	Version      int64
+	GlobalID         string
+	AuthorUserID     string
+	AuthorName       string
+	SourceUserID     string
+	SourceName       string
+	SourceBackend    string
+	SourceNamespace  string
+	SourceEntityType string
+	SourceEntityID   string
+	SourceLabel      string
+	SourceURL        string
+	Version          int64
 }
 
 type UserProfileRow struct {
@@ -63,10 +69,14 @@ func (s *Store) InsertQuote(content string, identity QuoteIdentity) (int64, erro
 	slog.Info("db: inserting quote", "content_len", len(content))
 	res, err := s.db.Exec(
 		`INSERT INTO quotes(
-			content, global_id, author_user_id, author_name, source_user_id, source_name, version, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			content, global_id, author_user_id, author_name, source_user_id, source_name,
+			source_backend, source_namespace, source_entity_type, source_entity_id, source_label, source_url,
+			version, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		content, identity.GlobalID, identity.AuthorUserID, identity.AuthorName,
-		identity.SourceUserID, identity.SourceName, identity.Version, now, now,
+		identity.SourceUserID, identity.SourceName,
+		identity.SourceBackend, identity.SourceNamespace, identity.SourceEntityType, identity.SourceEntityID, identity.SourceLabel, identity.SourceURL,
+		identity.Version, now, now,
 	)
 	if err != nil {
 		slog.Error("db: insert quote failed", "error", err)
@@ -81,10 +91,14 @@ func (s *Store) InsertImportedQuote(content string, identity QuoteIdentity, crea
 	slog.Info("db: inserting imported quote", "content_len", len(content), "global_id", identity.GlobalID)
 	res, err := s.db.Exec(
 		`INSERT INTO quotes(
-			content, global_id, author_user_id, author_name, source_user_id, source_name, version, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			content, global_id, author_user_id, author_name, source_user_id, source_name,
+			source_backend, source_namespace, source_entity_type, source_entity_id, source_label, source_url,
+			version, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		content, identity.GlobalID, identity.AuthorUserID, identity.AuthorName,
-		identity.SourceUserID, identity.SourceName, identity.Version, createdAt, updatedAt,
+		identity.SourceUserID, identity.SourceName,
+		identity.SourceBackend, identity.SourceNamespace, identity.SourceEntityType, identity.SourceEntityID, identity.SourceLabel, identity.SourceURL,
+		identity.Version, createdAt, updatedAt,
 	)
 	if err != nil {
 		return 0, fmt.Errorf("insert imported quote: %w", err)
@@ -150,9 +164,13 @@ func (s *Store) UpdateQuoteContent(id int64, content string) error {
 func (s *Store) UpdateImportedQuote(id int64, content string, identity QuoteIdentity, createdAt, updatedAt int64) error {
 	_, err := s.db.Exec(
 		`UPDATE quotes
-		 SET content = ?, author_user_id = ?, author_name = ?, source_user_id = ?, source_name = ?, version = ?, created_at = ?, updated_at = ?
+		 SET content = ?, author_user_id = ?, author_name = ?, source_user_id = ?, source_name = ?,
+		     source_backend = ?, source_namespace = ?, source_entity_type = ?, source_entity_id = ?, source_label = ?, source_url = ?,
+		     version = ?, created_at = ?, updated_at = ?
 		 WHERE id = ?`,
-		content, identity.AuthorUserID, identity.AuthorName, identity.SourceUserID, identity.SourceName, identity.Version, createdAt, updatedAt, id,
+		content, identity.AuthorUserID, identity.AuthorName, identity.SourceUserID, identity.SourceName,
+		identity.SourceBackend, identity.SourceNamespace, identity.SourceEntityType, identity.SourceEntityID, identity.SourceLabel, identity.SourceURL,
+		identity.Version, createdAt, updatedAt, id,
 	)
 	if err != nil {
 		return fmt.Errorf("update imported quote: %w", err)
@@ -186,7 +204,8 @@ func (s *Store) GetQuote(id int64) (QuoteRow, error) {
 	`, id)
 	var out QuoteRow
 	if err := row.Scan(
-		&out.ID, &out.GlobalID, &out.AuthorUserID, &out.AuthorName, &out.SourceUserID, &out.SourceName, &out.Version,
+		&out.ID, &out.GlobalID, &out.AuthorUserID, &out.AuthorName, &out.SourceUserID, &out.SourceName,
+		&out.SourceBackend, &out.SourceNamespace, &out.SourceEntityType, &out.SourceEntityID, &out.SourceLabel, &out.SourceURL, &out.Version,
 		&out.Content, &out.CreatedAt, &out.UpdatedAt, &out.Tags,
 	); err != nil {
 		if err == sql.ErrNoRows {
@@ -205,7 +224,8 @@ func (s *Store) GetQuoteByGlobalID(globalID string) (QuoteRow, error) {
 	`, globalID)
 	var out QuoteRow
 	if err := row.Scan(
-		&out.ID, &out.GlobalID, &out.AuthorUserID, &out.AuthorName, &out.SourceUserID, &out.SourceName, &out.Version,
+		&out.ID, &out.GlobalID, &out.AuthorUserID, &out.AuthorName, &out.SourceUserID, &out.SourceName,
+		&out.SourceBackend, &out.SourceNamespace, &out.SourceEntityType, &out.SourceEntityID, &out.SourceLabel, &out.SourceURL, &out.Version,
 		&out.Content, &out.CreatedAt, &out.UpdatedAt, &out.Tags,
 	); err != nil {
 		if err == sql.ErrNoRows {
@@ -217,7 +237,8 @@ func (s *Store) GetQuoteByGlobalID(globalID string) (QuoteRow, error) {
 }
 
 const baseQuoteSelect = `
-		SELECT q.id, q.global_id, q.author_user_id, q.author_name, q.source_user_id, q.source_name, q.version,
+		SELECT q.id, q.global_id, q.author_user_id, q.author_name, q.source_user_id, q.source_name,
+		       q.source_backend, q.source_namespace, q.source_entity_type, q.source_entity_id, q.source_label, q.source_url, q.version,
 		       q.content, q.created_at, q.updated_at,
 		       COALESCE(GROUP_CONCAT(t.name, ','), '') AS tags
 		FROM quotes q
@@ -251,7 +272,8 @@ func (s *Store) SearchQuotes(keywords []string, limit int) ([]QuoteRow, error) {
 	query := strings.Join(quoted, " OR ")
 	slog.Debug("db: FTS query", "match_expr", query)
 	rows, err := s.db.Query(`
-		SELECT q.id, q.global_id, q.author_user_id, q.author_name, q.source_user_id, q.source_name, q.version,
+		SELECT q.id, q.global_id, q.author_user_id, q.author_name, q.source_user_id, q.source_name,
+		       q.source_backend, q.source_namespace, q.source_entity_type, q.source_entity_id, q.source_label, q.source_url, q.version,
 		       q.content, q.created_at, q.updated_at,
 		       COALESCE(GROUP_CONCAT(t.name, ','), '') AS tags
 		FROM quotes_fts AS fts
@@ -282,17 +304,23 @@ func (s *Store) SearchQuotes(keywords []string, limit int) ([]QuoteRow, error) {
 
 // QuoteRow is the raw DB representation returned by list/search queries.
 type QuoteRow struct {
-	ID           int64
-	GlobalID     string
-	AuthorUserID string
-	AuthorName   string
-	SourceUserID string
-	SourceName   string
-	Version      int64
-	Content      string
-	CreatedAt    int64
-	UpdatedAt    int64
-	Tags         string // comma-separated
+	ID               int64
+	GlobalID         string
+	AuthorUserID     string
+	AuthorName       string
+	SourceUserID     string
+	SourceName       string
+	SourceBackend    string
+	SourceNamespace  string
+	SourceEntityType string
+	SourceEntityID   string
+	SourceLabel      string
+	SourceURL        string
+	Version          int64
+	Content          string
+	CreatedAt        int64
+	UpdatedAt        int64
+	Tags             string // comma-separated
 }
 
 func scanQuoteRows(rows *sql.Rows) ([]QuoteRow, error) {
@@ -300,7 +328,8 @@ func scanQuoteRows(rows *sql.Rows) ([]QuoteRow, error) {
 	for rows.Next() {
 		var r QuoteRow
 		if err := rows.Scan(
-			&r.ID, &r.GlobalID, &r.AuthorUserID, &r.AuthorName, &r.SourceUserID, &r.SourceName, &r.Version,
+			&r.ID, &r.GlobalID, &r.AuthorUserID, &r.AuthorName, &r.SourceUserID, &r.SourceName,
+			&r.SourceBackend, &r.SourceNamespace, &r.SourceEntityType, &r.SourceEntityID, &r.SourceLabel, &r.SourceURL, &r.Version,
 			&r.Content, &r.CreatedAt, &r.UpdatedAt, &r.Tags,
 		); err != nil {
 			return nil, err
@@ -438,11 +467,16 @@ func (s *Store) BackfillQuoteIdentity(authorUserID, authorName string, now int64
 		if err := rows.Scan(&id); err != nil {
 			return fmt.Errorf("scan quote missing identity: %w", err)
 		}
+		globalID := gen()
 		if _, err := tx.Exec(
 			`UPDATE quotes
-			 SET global_id = ?, author_user_id = ?, author_name = ?, source_user_id = ?, source_name = ?, version = COALESCE(NULLIF(version, 0), 1), updated_at = ?
+			 SET global_id = ?, author_user_id = ?, author_name = ?, source_user_id = ?, source_name = ?,
+			     source_backend = ?, source_namespace = ?, source_entity_type = ?, source_entity_id = ?, source_label = ?, source_url = ?,
+			     version = COALESCE(NULLIF(version, 0), 1), updated_at = ?
 			 WHERE id = ?`,
-			gen(), authorUserID, authorName, authorUserID, authorName, now, id,
+			globalID, authorUserID, authorName, authorUserID, authorName,
+			"local", "local:"+authorUserID, "quote", globalID, "Local quote", "",
+			now, id,
 		); err != nil {
 			return fmt.Errorf("backfill quote identity %d: %w", id, err)
 		}

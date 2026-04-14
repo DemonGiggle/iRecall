@@ -4,18 +4,24 @@ import "time"
 
 // Quote is a single user-captured note with associated tags.
 type Quote struct {
-	ID           int64
-	GlobalID     string
-	AuthorUserID string
-	AuthorName   string
-	SourceUserID string
-	SourceName   string
-	Content      string
-	Tags         []string
-	Version      int64
-	IsOwnedByMe  bool
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
+	ID               int64
+	GlobalID         string
+	AuthorUserID     string
+	AuthorName       string
+	SourceUserID     string
+	SourceName       string
+	SourceBackend    string
+	SourceNamespace  string
+	SourceEntityType string
+	SourceEntityID   string
+	SourceLabel      string
+	SourceURL        string
+	Content          string
+	Tags             []string
+	Version          int64
+	IsOwnedByMe      bool
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
 }
 
 type UserProfile struct {
@@ -25,7 +31,7 @@ type UserProfile struct {
 	UpdatedAt   time.Time
 }
 
-const ShareSchemaVersion = 1
+const ShareSchemaVersion = 2
 
 type SharedQuoteEnvelope struct {
 	SchemaVersion int                `json:"schema_version"`
@@ -34,16 +40,22 @@ type SharedQuoteEnvelope struct {
 }
 
 type SharedQuoteEntry struct {
-	GlobalID     string    `json:"global_id"`
-	AuthorUserID string    `json:"author_user_id"`
-	AuthorName   string    `json:"author_name"`
-	SourceUserID string    `json:"source_user_id"`
-	SourceName   string    `json:"source_name"`
-	Version      int64     `json:"version"`
-	Content      string    `json:"content"`
-	Tags         []string  `json:"tags"`
-	CreatedAtUTC time.Time `json:"created_at_utc"`
-	UpdatedAtUTC time.Time `json:"updated_at_utc"`
+	GlobalID         string    `json:"global_id"`
+	AuthorUserID     string    `json:"author_user_id"`
+	AuthorName       string    `json:"author_name"`
+	SourceUserID     string    `json:"source_user_id"`
+	SourceName       string    `json:"source_name"`
+	SourceBackend    string    `json:"source_backend,omitempty"`
+	SourceNamespace  string    `json:"source_namespace,omitempty"`
+	SourceEntityType string    `json:"source_entity_type,omitempty"`
+	SourceEntityID   string    `json:"source_entity_id,omitempty"`
+	SourceLabel      string    `json:"source_label,omitempty"`
+	SourceURL        string    `json:"source_url,omitempty"`
+	Version          int64     `json:"version"`
+	Content          string    `json:"content"`
+	Tags             []string  `json:"tags"`
+	CreatedAtUTC     time.Time `json:"created_at_utc"`
+	UpdatedAtUTC     time.Time `json:"updated_at_utc"`
 }
 
 type ImportResult struct {
