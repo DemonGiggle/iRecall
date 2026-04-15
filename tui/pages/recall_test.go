@@ -111,6 +111,20 @@ func TestRecallPageResponseShowsQuestionContext(t *testing.T) {
 	}
 }
 
+func TestRecallPageSaveAsQuoteStatus(t *testing.T) {
+	t.Parallel()
+
+	page := NewRecallPage(nil, 120, 40)
+
+	model, _ := page.Update(RecallQuoteSavedMsg{Quote: &core.Quote{ID: 1}, Err: nil})
+	page = model
+
+	view := page.View()
+	if !containsAllText(view, "Saved recall as quote.") {
+		t.Fatalf("recall view missing save status:\n%s", view)
+	}
+}
+
 func containsAllText(s string, parts ...string) bool {
 	for _, part := range parts {
 		if !strings.Contains(s, part) {

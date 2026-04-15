@@ -96,6 +96,7 @@ interface DesktopBackend {
   BootstrapState(): Promise<BootstrapState>;
   ListQuotes(): Promise<Quote[]>;
   AddQuote(content: string): Promise<Quote>;
+  SaveRecallAsQuote(question: string, response: string, keywords: string[]): Promise<Quote>;
   RefineQuoteDraft(content: string): Promise<string>;
   UpdateQuote(id: number, content: string): Promise<Quote>;
   DeleteQuotes(ids: number[]): Promise<void>;
@@ -164,11 +165,14 @@ interface AppState {
   quotesCursor: number;
   quotesSelected: Set<number>;
   recallQuestion: string;
+  recallLastQuestion: string;
   recallKeywords: string[];
   recallQuotes: Quote[];
   recallResponse: string;
   recallBusy: boolean;
   recallError: string;
+  recallStatus: string;
+  recallStatusIsError: boolean;
   recallCursor: number;
   recallSelected: Set<number>;
   historyEntries: RecallHistorySummary[];
@@ -179,6 +183,8 @@ interface AppState {
   historyDetail: RecallHistoryEntry | null;
   historyDetailLoading: boolean;
   historyDetailError: string;
+  historyStatus: string;
+  historyStatusIsError: boolean;
   historyQuoteCursor: number;
   historyQuoteSelected: Set<number>;
   settings: SettingsFormState;
@@ -199,11 +205,14 @@ const state: AppState = {
   quotesCursor: 0,
   quotesSelected: new Set<number>(),
   recallQuestion: "",
+  recallLastQuestion: "",
   recallKeywords: [],
   recallQuotes: [],
   recallResponse: "",
   recallBusy: false,
   recallError: "",
+  recallStatus: "",
+  recallStatusIsError: false,
   recallCursor: 0,
   recallSelected: new Set<number>(),
   historyEntries: [],
@@ -214,6 +223,8 @@ const state: AppState = {
   historyDetail: null,
   historyDetailLoading: false,
   historyDetailError: "",
+  historyStatus: "",
+  historyStatusIsError: false,
   historyQuoteCursor: 0,
   historyQuoteSelected: new Set<number>(),
   settings: emptySettingsForm(),
@@ -307,6 +318,12 @@ async function handleClick(event: MouseEvent): Promise<void> {
       return;
     case "history-back":
       closeHistoryDetail();
+      return;
+    case "recall-save-quote":
+      await saveRecallAsQuote();
+      return;
+    case "history-save-quote":
+      await saveHistoryAsQuote();
       return;
     case "history-delete-current":
       openDeleteHistoryOverlay();
@@ -566,6 +583,8 @@ async function loadQuotes(): Promise<void> {
 async function loadHistory(): Promise<void> {
   state.historyLoading = true;
   state.historyError = "";
+  state.historyStatus = "";
+  state.historyStatusIsError = false;
   render();
   try {
     const entries = await backend().ListRecallHistory();
@@ -594,6 +613,8 @@ async function openHistoryDetail(id: number): Promise<void> {
   }
   state.historyDetailLoading = true;
   state.historyDetailError = "";
+  state.historyStatus = "";
+  state.historyStatusIsError = false;
   render();
   try {
     const detail = await backend().GetRecallHistory(id);
@@ -1021,6 +1042,9 @@ async function runRecall(): Promise<void> {
 
   state.recallBusy = true;
   state.recallError = "";
+  state.recallStatus = "";
+  state.recallStatusIsError = false;
+  state.recallLastQuestion = question;
   state.recallKeywords = [];
   state.recallQuotes = [];
   state.recallResponse = "";
@@ -1033,6 +1057,7 @@ async function runRecall(): Promise<void> {
     state.recallKeywords = result.keywords;
     state.recallQuotes = result.quotes;
     state.recallResponse = result.response;
+    state.recallLastQuestion = result.question || question;
     state.recallCursor = 0;
     state.recallSelected = new Set<number>();
     state.recallQuestion = "";
@@ -1042,6 +1067,46 @@ async function runRecall(): Promise<void> {
     state.recallBusy = false;
     render();
   }
+}
+
+async function saveRecallAsQuote(): Promise<void> {
+  const question = state.recallLastQuestion.trim();
+  const response = state.recallResponse.trim();
+  if (!question || !response) {
+    state.recallStatus = "Run a recall first before saving it as a quote.";
+    state.recallStatusIsError = true;
+    render();
+    return;
+  }
+  try {
+    const quote = await backend().SaveRecallAsQuote(question, response, state.recallKeywords);
+    applyQuoteUpdate(quote);
+    await loadQuotes();
+    state.recallStatus = "Saved recall as quote.";
+    state.recallStatusIsError = false;
+  } catch (error) {
+    state.recallStatus = getErrorMessage(error);
+    state.recallStatusIsError = true;
+  }
+  render();
+}
+
+async function saveHistoryAsQuote(): Promise<void> {
+  const entry = state.historyDetail;
+  if (!entry) {
+    return;
+  }
+  try {
+    const quote = await backend().SaveRecallAsQuote(entry.Question, entry.Response, []);
+    applyQuoteUpdate(quote);
+    await loadQuotes();
+    state.historyStatus = "Saved history entry as quote.";
+    state.historyStatusIsError = false;
+  } catch (error) {
+    state.historyStatus = getErrorMessage(error);
+    state.historyStatusIsError = true;
+  }
+  render();
 }
 
 async function fetchModels(): Promise<void> {
@@ -1363,6 +1428,7 @@ function renderRecallPage(): string {
           </div>
           <div class="toolbar">
             <button class="button" data-action="quote-add" type="button">Add Quote</button>
+            <button class="button" data-action="recall-save-quote" type="button" ${!state.recallResponse.trim() ? "disabled" : ""}>Save as Quote</button>
             <button class="button" data-action="quote-edit-current" data-context="recall" type="button" ${selected.length === 0 ? "disabled" : ""}>Edit</button>
             <button class="button button-danger" data-action="quote-delete-current" data-context="recall" type="button" ${selected.length === 0 ? "disabled" : ""}>Delete</button>
             <button class="button" data-action="quote-share-current" data-context="recall" type="button" ${selected.length === 0 ? "disabled" : ""}>Share</button>
@@ -1405,6 +1471,7 @@ function renderRecallPage(): string {
         </div>
 
         ${state.recallError ? `<div class="status status-error">${escapeHtml(state.recallError)}</div>` : ""}
+        ${state.recallStatus ? `<div class="status ${state.recallStatusIsError ? "status-error" : "status-ok"}">${escapeHtml(state.recallStatus)}</div>` : ""}
       </div>
     </section>
   `;
@@ -1475,6 +1542,7 @@ function renderHistoryPage(): string {
             </div>
             <div class="toolbar">
               <button class="button" data-action="history-back" type="button">Back</button>
+              <button class="button" data-action="history-save-quote" type="button">Save as Quote</button>
               <button class="button" data-action="quote-edit-current" data-context="history" type="button" ${selectedQuotes.length === 0 ? "disabled" : ""}>Edit Quote</button>
               <button class="button button-danger" data-action="quote-delete-current" data-context="history" type="button" ${selectedQuotes.length === 0 ? "disabled" : ""}>Delete Quote</button>
               <button class="button" data-action="quote-share-current" data-context="history" type="button" ${selectedQuotes.length === 0 ? "disabled" : ""}>Share Quote</button>
@@ -1509,6 +1577,7 @@ function renderHistoryPage(): string {
               ${renderQuoteList("history", state.historyDetail.Quotes, state.historyQuoteCursor, state.historyQuoteSelected, false)}
             </section>
           </div>
+          ${state.historyStatus ? `<div class="status ${state.historyStatusIsError ? "status-error" : "status-ok"}">${escapeHtml(state.historyStatus)}</div>` : ""}
         </div>
       </section>
     `;

@@ -304,6 +304,51 @@ func TestSearchQuotesAppliesMinRelevance(t *testing.T) {
 	}
 }
 
+func TestSaveRecallAsQuoteMergesSuggestedAndExtractedTags(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/chat/completions" {
+			t.Fatalf("path = %q, want /v1/chat/completions", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"choices": []map[string]any{
+				{
+					"message": map[string]string{
+						"content": `["postgres restore","pg_restore","database recovery"]`,
+					},
+				},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	engine := newProfiledTestEngine(t, srv.Listener.Addr().String())
+
+	quote, err := engine.SaveRecallAsQuote(
+		context.Background(),
+		"How do I restore a PostgreSQL backup?",
+		"Use pg_restore against the target database.",
+		[]string{"postgres", "backup"},
+	)
+	if err != nil {
+		t.Fatalf("SaveRecallAsQuote() error = %v", err)
+	}
+	if !strings.Contains(quote.Content, "Question: How do I restore a PostgreSQL backup?") {
+		t.Fatalf("quote content = %q, want formatted question", quote.Content)
+	}
+	if !strings.Contains(quote.Content, "Response:\nUse pg_restore against the target database.") {
+		t.Fatalf("quote content = %q, want formatted response", quote.Content)
+	}
+	wantTags := []string{"postgres", "backup", "postgres restore", "pg_restore", "database recovery"}
+	for _, tag := range wantTags {
+		if !slices.Contains(quote.Tags, tag) {
+			t.Fatalf("quote tags = %#v, want tag %q", quote.Tags, tag)
+		}
+	}
+}
+
 func TestNormalizeTagsFiltersNoiseAndCapsCount(t *testing.T) {
 	t.Parallel()
 

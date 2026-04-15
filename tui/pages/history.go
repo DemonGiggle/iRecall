@@ -27,6 +27,11 @@ type OpenDeleteRecallHistoryMsg struct {
 	Entries []core.RecallHistorySummary
 }
 
+type RecallHistoryQuoteSavedMsg struct {
+	Quote *core.Quote
+	Err   error
+}
+
 type historyListSelection struct {
 	cursor   int
 	selected map[int64]bool
@@ -142,6 +147,8 @@ type HistoryPage struct {
 	loading       bool
 	focus         historyFocus
 	errMsg        string
+	statusMsg     string
+	statusErr     bool
 
 	width  int
 	height int
@@ -247,6 +254,12 @@ func (p HistoryPage) Update(msg tea.Msg) (HistoryPage, tea.Cmd) {
 					p.focus = historyFocusDetail
 				}
 				return p, nil
+			case "ctrl+s":
+				if p.entry != nil {
+					p.statusMsg = ""
+					p.statusErr = false
+					return p, p.saveHistoryAsQuote()
+				}
 			case "up":
 				if p.focus == historyFocusReferenceQuotes {
 					p.quoteFns.move(-1, p.currentQuotes())
@@ -292,6 +305,18 @@ func (p HistoryPage) Update(msg tea.Msg) (HistoryPage, tea.Cmd) {
 		}
 	}
 
+	switch msg := msg.(type) {
+	case RecallHistoryQuoteSavedMsg:
+		if msg.Err != nil {
+			p.statusMsg = "Error saving history as quote: " + msg.Err.Error()
+			p.statusErr = true
+		} else {
+			p.statusMsg = "Saved history entry as quote."
+			p.statusErr = false
+		}
+		return p, nil
+	}
+
 	var cmd tea.Cmd
 	if !p.detail {
 		p.listViewport, cmd = p.listViewport.Update(msg)
@@ -319,7 +344,19 @@ func (p HistoryPage) View() string {
 			body = styles.Muted.Render("  Loading history entry...")
 		} else {
 			help = "enter/esc: Back   ctrl+j: Toggle focus   x: Select quote   e: Edit quote   d: Delete quote   s: Share quote"
+			if p.entry != nil {
+				help = "enter/esc: Back   ctrl+s: Save Q/A as Quote   ctrl+j: Toggle focus   x: Select quote   e: Edit quote   d: Delete quote   s: Share quote"
+			}
 			body = p.detailView()
+		}
+	}
+
+	status := ""
+	if p.statusMsg != "" {
+		if p.statusErr {
+			status = styles.StatusErr.Render("  " + p.statusMsg)
+		} else {
+			status = styles.StatusOK.Render("  " + p.statusMsg)
 		}
 	}
 
@@ -327,6 +364,7 @@ func (p HistoryPage) View() string {
 		lipgloss.JoinVertical(lipgloss.Left,
 			styles.SectionHeader.Render(fmt.Sprintf("History (%d)", len(p.entries))),
 			body,
+			status,
 			"",
 			styles.HelpBar.Render(help),
 		),
@@ -503,6 +541,16 @@ func (p *HistoryPage) loadHistoryDetail(id int64) tea.Cmd {
 	return func() tea.Msg {
 		entry, err := engine.GetRecallHistory(context.Background(), id)
 		return HistoryDetailLoadedMsg{Entry: entry, Err: err}
+	}
+}
+
+func (p *HistoryPage) saveHistoryAsQuote() tea.Cmd {
+	engine := p.engine
+	question := p.entry.Question
+	response := p.entry.Response
+	return func() tea.Msg {
+		quote, err := engine.SaveRecallAsQuote(context.Background(), question, response, nil)
+		return RecallHistoryQuoteSavedMsg{Quote: quote, Err: err}
 	}
 }
 

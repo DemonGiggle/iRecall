@@ -111,6 +111,27 @@ func TestHistoryPageOpensDeleteForSelectedEntries(t *testing.T) {
 	}
 }
 
+func TestHistoryPageSaveAsQuoteStatusInDetail(t *testing.T) {
+	t.Parallel()
+
+	page := NewHistoryPage(nil, 120, 40)
+	page.detail = true
+	page.entry = &core.RecallHistoryEntry{
+		ID:        1,
+		Question:  "How do I save this?",
+		Response:  "Use the save action.",
+		CreatedAt: time.Now(),
+	}
+
+	model, _ := page.Update(RecallHistoryQuoteSavedMsg{Quote: &core.Quote{ID: 1}, Err: nil})
+	page = model
+
+	view := page.View()
+	if !strings.Contains(view, "Saved history entry as quote.") {
+		t.Fatalf("history detail missing save status:\n%s", view)
+	}
+}
+
 func newHistoryTestEngine(t *testing.T) (*core.Engine, core.Quote) {
 	t.Helper()
 

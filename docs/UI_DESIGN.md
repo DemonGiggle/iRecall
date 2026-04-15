@@ -16,11 +16,12 @@ The goal is that a Windows desktop app, another terminal UI, or a web client can
 
 ## Product Model
 
-iRecall is a personal recall and quote management app with three core surfaces:
+iRecall is a personal recall and quote management app with four core surfaces:
 
 1. `Recall`
-2. `Quotes`
-3. `Settings`
+2. `History`
+3. `Quotes`
+4. `Settings`
 
 It also uses task-specific modal overlays for blocking work:
 
@@ -44,8 +45,9 @@ The current product is intentionally local-first:
 Each top-level page has one primary job:
 
 1. `Recall` is for asking and grounding answers in quotes
-2. `Quotes` is for managing the quote library
-3. `Settings` is for provider and search configuration
+2. `History` is for reviewing saved recall sessions
+3. `Quotes` is for managing the quote library
+4. `Settings` is for provider and search configuration
 
 Do not turn the top-level pages into multi-purpose dashboards.
 
@@ -157,7 +159,7 @@ The shell has:
 
 1. a title bar
 2. a user greeting when a display name exists
-3. top-level tabs for `Recall`, `Quotes`, and `Settings`
+3. top-level tabs for `Recall`, `History`, `Quotes`, and `Settings`
 4. one active page at a time
 5. at most one blocking overlay at a time
 
@@ -176,13 +178,14 @@ The greeting is secondary to navigation and should never overpower the page tabs
 Only one page is active at a time:
 
 1. `Recall`
-2. `Quotes`
-3. `Settings`
+2. `History`
+3. `Quotes`
+4. `Settings`
 
 Navigation is cyclical:
 
-1. forward moves `Recall -> Quotes -> Settings -> Recall`
-2. backward moves `Recall <- Quotes <- Settings <- Recall`
+1. forward moves `Recall -> History -> Quotes -> Settings -> Recall`
+2. backward moves `Recall <- History <- Quotes <- Settings <- Recall`
 
 Future clients do not need to preserve `Tab` and `Shift+Tab` specifically, but should preserve this three-page model and clear page switching.
 
@@ -200,6 +203,7 @@ The Recall page is the core recall workflow:
 2. extract keywords
 3. retrieve relevant quotes
 4. generate a grounded answer from those quotes
+5. optionally save the resulting question/response pair as a quote
 
 ### Layout
 
@@ -269,6 +273,11 @@ Current quote actions here:
 4. delete
 5. share/export
 
+Recall-level actions:
+
+1. run recall from the question input
+2. save the current question/response as a quote
+
 ### Focus model
 
 The Recall page has two internal focus zones:
@@ -305,6 +314,66 @@ When generation fails:
 1. keep the page structure
 2. show an explicit error message
 3. do not hide the user’s context
+
+## History Page
+
+Reference implementation: [tui/pages/history.go](/home/gigo/workspace/iRecall/tui/pages/history.go)
+
+### Purpose
+
+The History page is the recall-session archive.
+
+It owns:
+
+1. browsing saved recall sessions
+2. selecting multiple history entries for deletion
+3. opening one entry in full detail
+4. saving a past question/response pair as a quote
+5. preserving quote-management actions for the reference quotes shown in detail
+
+### Layout
+
+The page has two modes:
+
+1. list mode for browsing history entries
+2. detail mode for a single saved session
+
+### List mode
+
+Each history row includes:
+
+1. selection state
+2. created timestamp
+3. question preview
+4. response preview
+
+List actions include:
+
+1. move through entries
+2. select current entry
+3. select all
+4. deselect all
+5. open detail with `enter`
+6. delete selected entries
+
+### Detail mode
+
+The detail view shows:
+
+1. the full question
+2. the full response
+3. the creation timestamp
+4. the exact reference quotes used for that recall session
+
+The reference quotes area keeps the same quote-management actions available elsewhere:
+
+1. edit
+2. delete
+3. share/export
+
+History-level action:
+
+1. save the displayed question/response as a quote
 
 ## Quotes Page
 

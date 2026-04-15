@@ -83,6 +83,32 @@ func (e *Engine) UpdateUserProfile(profile *UserProfile) {
 // AddQuote stores a new quote and extracts tags via LLM.
 // If tag extraction fails, the quote is still saved with no tags.
 func (e *Engine) AddQuote(ctx context.Context, content string) (*Quote, error) {
+	return e.addQuoteWithSuggestedTags(ctx, content, nil)
+}
+
+func (e *Engine) SaveRecallAsQuote(ctx context.Context, question, response string, keywords []string) (*Quote, error) {
+	question = strings.TrimSpace(question)
+	response = strings.TrimSpace(response)
+	if question == "" {
+		return nil, fmt.Errorf("question is empty")
+	}
+	if response == "" {
+		return nil, fmt.Errorf("response is empty")
+	}
+
+	if len(keywords) == 0 {
+		var err error
+		keywords, err = e.ExtractKeywords(ctx, question)
+		if err != nil {
+			return nil, fmt.Errorf("extract keywords: %w", err)
+		}
+	}
+
+	content := formatRecallQuote(question, response)
+	return e.addQuoteWithSuggestedTags(ctx, content, keywords)
+}
+
+func (e *Engine) addQuoteWithSuggestedTags(ctx context.Context, content string, suggestedTags []string) (*Quote, error) {
 	content = strings.TrimSpace(content)
 	if content == "" {
 		return nil, fmt.Errorf("quote content is empty")
@@ -103,11 +129,12 @@ func (e *Engine) AddQuote(ctx context.Context, content string) (*Quote, error) {
 	slog.Info("engine: quote inserted", "id", id)
 
 	slog.Info("engine: extracting tags via LLM", "quote_id", id)
-	tags, err := e.ExtractTags(ctx, content)
+	extractedTags, err := e.ExtractTags(ctx, content)
 	if err != nil {
 		slog.Error("engine: tag extraction failed, saving without tags", "quote_id", id, "error", err)
-		tags = []string{}
+		extractedTags = nil
 	}
+	tags, _ := normalizeTags(append(slices.Clone(suggestedTags), extractedTags...))
 	slog.Info("engine: tags extracted", "quote_id", id, "tags", tags)
 
 	if len(tags) > 0 {
@@ -695,6 +722,10 @@ func (e *Engine) localUserID() string {
 		return ""
 	}
 	return e.profile.UserID
+}
+
+func formatRecallQuote(question, response string) string {
+	return strings.TrimSpace("Question: " + strings.TrimSpace(question) + "\n\nResponse:\n" + strings.TrimSpace(response))
 }
 
 func (e *Engine) quoteIdentityForNewQuote() (db.QuoteIdentity, error) {
