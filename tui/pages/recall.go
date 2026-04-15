@@ -222,6 +222,12 @@ func (p RecallPage) Update(msg tea.Msg) (RecallPage, tea.Cmd) {
 		}
 		p.statusMsg = "Saved recall as quote."
 		p.statusErr = false
+		return p, func() tea.Msg {
+			return OpenNoticeMsg{
+				Title:   "Recall Saved as Quote",
+				Message: "The current question and grounded response were saved as a quote with generated tags.",
+			}
+		}
 
 	case quotesAndStreamMsg:
 		return p.handleQuotesAndStream(msg)

@@ -341,6 +341,11 @@ Clients can:
 - delete selected history entries
 - save a history entry as a quote, regenerating recall keywords when necessary
 
+Frontend behavior:
+
+- successful save-to-quote actions are confirmed with a notice modal
+- save failures remain inline on the active page
+
 ### Import / export behavior
 
 Export:

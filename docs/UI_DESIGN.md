@@ -278,6 +278,11 @@ Recall-level actions:
 1. run recall from the question input
 2. save the current question/response as a quote
 
+Save confirmation rule:
+
+1. a successful `Save as Quote` action must open an explicit notice modal
+2. failures should remain inline on the page so the user can correct or retry immediately
+
 ### Focus model
 
 The Recall page has two internal focus zones:
@@ -374,6 +379,10 @@ The reference quotes area keeps the same quote-management actions available else
 History-level action:
 
 1. save the displayed question/response as a quote
+
+Completion rule:
+
+1. a successful save from History detail must confirm completion with a notice modal
 
 ## Quotes Page
 

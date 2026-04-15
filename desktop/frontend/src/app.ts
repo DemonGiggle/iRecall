@@ -140,7 +140,8 @@ type OverlayState =
   | { type: "deleteQuotes"; context: QuoteContext; ids: number[]; busy: boolean; status: string; isError: boolean }
   | { type: "deleteHistory"; ids: number[]; busy: boolean; status: string; isError: boolean }
   | { type: "shareQuotes"; context: QuoteContext; ids: number[]; path: string; payload: string; busy: boolean; status: string; isError: boolean }
-  | { type: "importQuotes"; path: string; busy: boolean; status: string; isError: boolean; result: ImportResult | null };
+  | { type: "importQuotes"; path: string; busy: boolean; status: string; isError: boolean; result: ImportResult | null }
+  | { type: "notice"; title: string; message: string };
 
 interface SettingsFormState {
   host: string;
@@ -1084,6 +1085,11 @@ async function saveRecallAsQuote(): Promise<void> {
     await loadQuotes();
     state.recallStatus = "Saved recall as quote.";
     state.recallStatusIsError = false;
+    state.overlay = {
+      type: "notice",
+      title: "Recall Saved as Quote",
+      message: "The current question and grounded response were saved as a quote with generated tags.",
+    };
   } catch (error) {
     state.recallStatus = getErrorMessage(error);
     state.recallStatusIsError = true;
@@ -1102,6 +1108,11 @@ async function saveHistoryAsQuote(): Promise<void> {
     await loadQuotes();
     state.historyStatus = "Saved history entry as quote.";
     state.historyStatusIsError = false;
+    state.overlay = {
+      type: "notice",
+      title: "History Entry Saved as Quote",
+      message: "The selected history question and response were saved as a quote with generated tags.",
+    };
   } catch (error) {
     state.historyStatus = getErrorMessage(error);
     state.historyStatusIsError = true;
@@ -2009,6 +2020,18 @@ function renderOverlay(overlay: OverlayState): string {
                 ${overlay.busy ? "Importing…" : "Import file"}
               </button>
               <button class="button" data-action="overlay-close" type="button" ${overlay.busy ? "disabled" : ""}>Close</button>
+            </div>
+          </div>
+        </div>
+      `;
+    case "notice":
+      return `
+        <div class="overlay-backdrop">
+          <div class="modal">
+            <div class="modal-title">${escapeHtml(overlay.title)}</div>
+            <div class="modal-copy">${escapeHtml(overlay.message)}</div>
+            <div class="modal-actions">
+              <button class="button button-primary" data-action="overlay-close" type="button">OK</button>
             </div>
           </div>
         </div>

@@ -310,11 +310,16 @@ func (p HistoryPage) Update(msg tea.Msg) (HistoryPage, tea.Cmd) {
 		if msg.Err != nil {
 			p.statusMsg = "Error saving history as quote: " + msg.Err.Error()
 			p.statusErr = true
-		} else {
-			p.statusMsg = "Saved history entry as quote."
-			p.statusErr = false
+			return p, nil
 		}
-		return p, nil
+		p.statusMsg = "Saved history entry as quote."
+		p.statusErr = false
+		return p, func() tea.Msg {
+			return OpenNoticeMsg{
+				Title:   "History Entry Saved as Quote",
+				Message: "The selected history question and response were saved as a quote with generated tags.",
+			}
+		}
 	}
 
 	var cmd tea.Cmd

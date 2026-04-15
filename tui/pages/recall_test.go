@@ -116,8 +116,19 @@ func TestRecallPageSaveAsQuoteStatus(t *testing.T) {
 
 	page := NewRecallPage(nil, 120, 40)
 
-	model, _ := page.Update(RecallQuoteSavedMsg{Quote: &core.Quote{ID: 1}, Err: nil})
+	model, cmd := page.Update(RecallQuoteSavedMsg{Quote: &core.Quote{ID: 1}, Err: nil})
 	page = model
+	if cmd == nil {
+		t.Fatal("notice command = nil")
+	}
+	msg := cmd()
+	open, ok := msg.(OpenNoticeMsg)
+	if !ok {
+		t.Fatalf("notice msg type = %T, want OpenNoticeMsg", msg)
+	}
+	if open.Title != "Recall Saved as Quote" {
+		t.Fatalf("notice title = %q, want Recall Saved as Quote", open.Title)
+	}
 
 	view := page.View()
 	if !containsAllText(view, "Saved recall as quote.") {
