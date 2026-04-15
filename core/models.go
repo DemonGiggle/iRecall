@@ -65,6 +65,21 @@ type ImportResult struct {
 	Stale      int
 }
 
+type RecallHistorySummary struct {
+	ID        int64
+	Question  string
+	Response  string
+	CreatedAt time.Time
+}
+
+type RecallHistoryEntry struct {
+	ID        int64
+	Question  string
+	Response  string
+	CreatedAt time.Time
+	Quotes    []Quote
+}
+
 // Settings holds all persisted user preferences.
 type Settings struct {
 	Provider ProviderConfig

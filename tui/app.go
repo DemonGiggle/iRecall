@@ -14,6 +14,7 @@ type activePage int
 
 const (
 	pageRecall activePage = iota
+	pageHistory
 	pageQuotes
 	pageSettings
 	pageCount // sentinel
@@ -26,6 +27,7 @@ const (
 	overlayUserProfilePrompt
 	overlayQuoteEditor
 	overlayDeleteQuotes
+	overlayDeleteRecallHistory
 	overlayQuoteShare
 	overlayQuoteImport
 )
@@ -39,14 +41,16 @@ type App struct {
 	page    activePage
 	overlay overlayKind
 
-	userProfile  pages.UserProfilePromptPage
-	recall       pages.RecallPage
-	quotes       pages.QuotesPage
-	settings_    pages.SettingsPage
-	quoteEditor  pages.QuoteEditorPage
-	deleteQuotes pages.DeleteQuotesPage
-	quoteShare   pages.QuoteSharePage
-	quoteImport  pages.QuoteImportPage
+	userProfile   pages.UserProfilePromptPage
+	recall        pages.RecallPage
+	quotes        pages.QuotesPage
+	history       pages.HistoryPage
+	settings_     pages.SettingsPage
+	quoteEditor   pages.QuoteEditorPage
+	deleteQuotes  pages.DeleteQuotesPage
+	deleteHistory pages.DeleteRecallHistoryPage
+	quoteShare    pages.QuoteSharePage
+	quoteImport   pages.QuoteImportPage
 
 	width  int
 	height int
@@ -59,21 +63,23 @@ func NewApp(engine *core.Engine, settings *core.Settings, profile *core.UserProf
 		overlay = overlayUserProfilePrompt
 	}
 	return App{
-		engine:       engine,
-		settings:     settings,
-		profile:      profile,
-		page:         pageRecall,
-		overlay:      overlay,
-		userProfile:  pages.NewUserProfilePromptPage(engine, width, height, profile),
-		recall:       pages.NewRecallPage(engine, width, height-3),
-		quotes:       pages.NewQuotesPage(engine, width, height-3),
-		settings_:    pages.NewSettingsPage(engine, width, height-3, settings),
-		quoteEditor:  pages.NewQuoteEditorPage(engine, width, height),
-		deleteQuotes: pages.NewDeleteQuotesPage(engine, width, height),
-		quoteShare:   pages.NewQuoteSharePage(engine, width, height),
-		quoteImport:  pages.NewQuoteImportPage(engine, width, height),
-		width:        width,
-		height:       height,
+		engine:        engine,
+		settings:      settings,
+		profile:       profile,
+		page:          pageRecall,
+		overlay:       overlay,
+		userProfile:   pages.NewUserProfilePromptPage(engine, width, height, profile),
+		recall:        pages.NewRecallPage(engine, width, height-3),
+		quotes:        pages.NewQuotesPage(engine, width, height-3),
+		history:       pages.NewHistoryPage(engine, width, height-3),
+		settings_:     pages.NewSettingsPage(engine, width, height-3, settings),
+		quoteEditor:   pages.NewQuoteEditorPage(engine, width, height),
+		deleteQuotes:  pages.NewDeleteQuotesPage(engine, width, height),
+		deleteHistory: pages.NewDeleteRecallHistoryPage(engine, width, height),
+		quoteShare:    pages.NewQuoteSharePage(engine, width, height),
+		quoteImport:   pages.NewQuoteImportPage(engine, width, height),
+		width:         width,
+		height:        height,
 	}
 }
 
@@ -93,10 +99,12 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.height = msg.Height
 		a.recall.SetSize(msg.Width, msg.Height-3)
 		a.quotes.SetSize(msg.Width, msg.Height-3)
+		a.history.SetSize(msg.Width, msg.Height-3)
 		a.settings_.SetSize(msg.Width, msg.Height-3)
 		a.userProfile.SetSize(msg.Width, msg.Height)
 		a.quoteEditor.SetSize(msg.Width, msg.Height)
 		a.deleteQuotes.SetSize(msg.Width, msg.Height)
+		a.deleteHistory.SetSize(msg.Width, msg.Height)
 		a.quoteShare.SetSize(msg.Width, msg.Height)
 		a.quoteImport.SetSize(msg.Width, msg.Height)
 		return a, nil
@@ -108,17 +116,23 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "ctrl+c":
 				return a, tea.Quit
 			case "tab":
-				// Cycle forward: Recall → Quotes → Settings → Recall.
+				// Cycle forward: Recall → History → Quotes → Settings → Recall.
 				next := activePage((int(a.page) + 1) % int(pageCount))
 				a.page = next
+				if next == pageHistory {
+					cmds = append(cmds, a.history.Reload())
+				}
 				if next == pageQuotes {
 					cmds = append(cmds, a.quotes.Reload())
 				}
 				return a, tea.Batch(cmds...)
 			case "shift+tab":
-				// Cycle backward: Recall ← Quotes ← Settings ← Recall.
+				// Cycle backward: Recall ← History ← Quotes ← Settings ← Recall.
 				next := activePage((int(a.page) - 1 + int(pageCount)) % int(pageCount))
 				a.page = next
+				if next == pageHistory {
+					cmds = append(cmds, a.history.Reload())
+				}
 				if next == pageQuotes {
 					cmds = append(cmds, a.quotes.Reload())
 				}
@@ -145,6 +159,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.SavedQuote != nil {
 			a.recall.ApplyQuoteUpdate(*msg.SavedQuote)
 			a.quotes.ApplyQuoteUpdate(*msg.SavedQuote)
+			a.history.ApplyQuoteUpdate(*msg.SavedQuote)
 		}
 		cmds = append(cmds, a.quotes.Reload())
 		return a, tea.Batch(cmds...)
@@ -153,6 +168,11 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.overlay = overlayDeleteQuotes
 		a.deleteQuotes.Reset(msg.Quotes)
 		return a, a.deleteQuotes.Init()
+
+	case pages.OpenDeleteRecallHistoryMsg:
+		a.overlay = overlayDeleteRecallHistory
+		a.deleteHistory.Reset(msg.Entries)
+		return a, a.deleteHistory.Init()
 
 	case pages.OpenQuoteShareMsg:
 		a.overlay = overlayQuoteShare
@@ -169,9 +189,17 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if len(msg.DeletedIDs) > 0 {
 			a.recall.RemoveQuotes(msg.DeletedIDs)
 			a.quotes.RemoveQuotes(msg.DeletedIDs)
+			a.history.RemoveQuotes(msg.DeletedIDs)
 		}
 		cmds = append(cmds, a.quotes.Reload())
 		return a, tea.Batch(cmds...)
+
+	case pages.CloseDeleteRecallHistoryMsg:
+		a.overlay = overlayNone
+		if len(msg.DeletedIDs) > 0 {
+			a.history.RemoveHistories(msg.DeletedIDs)
+		}
+		return a, nil
 
 	case pages.CloseQuoteShareMsg:
 		a.overlay = overlayNone
@@ -188,6 +216,12 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case pages.QuotesLoadedMsg:
 		var cmd tea.Cmd
 		a.quotes, cmd = a.quotes.Update(msg)
+		cmds = append(cmds, cmd)
+		return a, tea.Batch(cmds...)
+
+	case pages.HistoryLoadedMsg, pages.HistoryDetailLoadedMsg:
+		var cmd tea.Cmd
+		a.history, cmd = a.history.Update(msg)
 		cmds = append(cmds, cmd)
 		return a, tea.Batch(cmds...)
 	}
@@ -208,6 +242,12 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if a.overlay == overlayDeleteQuotes {
 		var cmd tea.Cmd
 		a.deleteQuotes, cmd = a.deleteQuotes.Update(msg)
+		cmds = append(cmds, cmd)
+		return a, tea.Batch(cmds...)
+	}
+	if a.overlay == overlayDeleteRecallHistory {
+		var cmd tea.Cmd
+		a.deleteHistory, cmd = a.deleteHistory.Update(msg)
 		cmds = append(cmds, cmd)
 		return a, tea.Batch(cmds...)
 	}
@@ -233,6 +273,10 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		var cmd tea.Cmd
 		a.quotes, cmd = a.quotes.Update(msg)
 		cmds = append(cmds, cmd)
+	case pageHistory:
+		var cmd tea.Cmd
+		a.history, cmd = a.history.Update(msg)
+		cmds = append(cmds, cmd)
 	case pageSettings:
 		var cmd tea.Cmd
 		a.settings_, cmd = a.settings_.Update(msg)
@@ -251,6 +295,8 @@ func (a App) View() string {
 		body = a.recall.View()
 	case pageQuotes:
 		body = a.quotes.View()
+	case pageHistory:
+		body = a.history.View()
 	case pageSettings:
 		body = a.settings_.View()
 	}
@@ -277,6 +323,14 @@ func (a App) View() string {
 		return lipgloss.Place(a.width, a.height,
 			lipgloss.Center, lipgloss.Center,
 			a.deleteQuotes.View(),
+			lipgloss.WithWhitespaceChars(" "),
+			lipgloss.WithWhitespaceForeground(styles.ColorMuted),
+		)
+	}
+	if a.overlay == overlayDeleteRecallHistory {
+		return lipgloss.Place(a.width, a.height,
+			lipgloss.Center, lipgloss.Center,
+			a.deleteHistory.View(),
 			lipgloss.WithWhitespaceChars(" "),
 			lipgloss.WithWhitespaceForeground(styles.ColorMuted),
 		)
@@ -316,6 +370,7 @@ func (a App) headerView() string {
 	}
 	sep := styles.Muted.Render(" | ")
 	tabs := tab("Recall", pageRecall) + sep +
+		tab("History", pageHistory) + sep +
 		tab("Quotes", pageQuotes) + sep +
 		tab("Settings", pageSettings)
 

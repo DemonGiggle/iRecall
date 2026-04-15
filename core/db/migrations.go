@@ -29,6 +29,11 @@ var migrations = []migration{
 		name:    "quote_source_provenance",
 		up:      upQuoteSourceProvenance,
 	},
+	{
+		version: 4,
+		name:    "recall_history",
+		up:      upRecallHistory,
+	},
 }
 
 const initialSchemaSQL = `
@@ -318,6 +323,32 @@ func upQuoteSourceProvenance(tx *sql.Tx) error {
 		`CREATE INDEX IF NOT EXISTS idx_quotes_source_backend ON quotes(source_backend)`,
 		`CREATE INDEX IF NOT EXISTS idx_quotes_source_namespace ON quotes(source_namespace)`,
 		`CREATE INDEX IF NOT EXISTS idx_quotes_source_identity ON quotes(source_backend, source_namespace, source_entity_type, source_entity_id)`,
+	}
+
+	for _, stmt := range stmts {
+		if _, err := tx.Exec(stmt); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func upRecallHistory(tx *sql.Tx) error {
+	stmts := []string{
+		`CREATE TABLE IF NOT EXISTS recall_history (
+			id         INTEGER PRIMARY KEY AUTOINCREMENT,
+			question   TEXT NOT NULL,
+			response   TEXT NOT NULL,
+			created_at INTEGER NOT NULL
+		)`,
+		`CREATE TABLE IF NOT EXISTS recall_history_quotes (
+			history_id INTEGER NOT NULL REFERENCES recall_history(id) ON DELETE CASCADE,
+			quote_id   INTEGER NOT NULL REFERENCES quotes(id) ON DELETE CASCADE,
+			position   INTEGER NOT NULL,
+			PRIMARY KEY (history_id, quote_id)
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_recall_history_created_at ON recall_history(created_at DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_recall_history_quotes_history ON recall_history_quotes(history_id, position)`,
 	}
 
 	for _, stmt := range stmts {

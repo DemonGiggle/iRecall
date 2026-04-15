@@ -587,6 +587,67 @@ func (e *Engine) BootstrapQuoteIdentity(ctx context.Context) error {
 	return e.store.BackfillQuoteIdentity(e.profile.UserID, e.profile.DisplayName, time.Now().Unix(), uuid.NewString)
 }
 
+func (e *Engine) SaveRecallHistory(ctx context.Context, question, response string, quotes []Quote) (*RecallHistoryEntry, error) {
+	_ = ctx
+	question = strings.TrimSpace(question)
+	response = strings.TrimSpace(response)
+	if question == "" {
+		return nil, fmt.Errorf("history question is empty")
+	}
+	if response == "" {
+		return nil, fmt.Errorf("history response is empty")
+	}
+	quoteIDs := make([]int64, 0, len(quotes))
+	for _, q := range quotes {
+		if q.ID > 0 {
+			quoteIDs = append(quoteIDs, q.ID)
+		}
+	}
+	id, err := e.store.InsertRecallHistory(question, response, quoteIDs)
+	if err != nil {
+		return nil, err
+	}
+	return e.GetRecallHistory(context.Background(), id)
+}
+
+func (e *Engine) ListRecallHistory(ctx context.Context) ([]RecallHistorySummary, error) {
+	_ = ctx
+	rows, err := e.store.ListRecallHistory()
+	if err != nil {
+		return nil, err
+	}
+	out := make([]RecallHistorySummary, len(rows))
+	for i, row := range rows {
+		out[i] = RecallHistorySummary{
+			ID:        row.ID,
+			Question:  row.Question,
+			Response:  row.Response,
+			CreatedAt: time.Unix(row.CreatedAt, 0),
+		}
+	}
+	return out, nil
+}
+
+func (e *Engine) GetRecallHistory(ctx context.Context, id int64) (*RecallHistoryEntry, error) {
+	_ = ctx
+	row, err := e.store.GetRecallHistory(id)
+	if err != nil {
+		return nil, err
+	}
+	return &RecallHistoryEntry{
+		ID:        row.ID,
+		Question:  row.Question,
+		Response:  row.Response,
+		CreatedAt: time.Unix(row.CreatedAt, 0),
+		Quotes:    rowsToQuotes(row.Quotes, e.localUserID()),
+	}, nil
+}
+
+func (e *Engine) DeleteRecallHistory(ctx context.Context, ids []int64) error {
+	_ = ctx
+	return e.store.DeleteRecallHistory(ids)
+}
+
 // --- Helpers ---
 
 func rowsToQuotes(rows []db.QuoteRow, localUserID string) []Quote {
