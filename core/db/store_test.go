@@ -143,6 +143,87 @@ func TestStoreUserProfileRoundTripAndBackfill(t *testing.T) {
 	}
 }
 
+func TestStoreRecallHistoryLifecycle(t *testing.T) {
+	t.Parallel()
+
+	store := openTestStore(t)
+
+	firstQuoteID, err := store.InsertQuote("First history quote", QuoteIdentity{
+		GlobalID:         "quote-1",
+		AuthorUserID:     "user-1",
+		AuthorName:       "Alice",
+		SourceUserID:     "user-1",
+		SourceName:       "Alice",
+		SourceBackend:    "local",
+		SourceNamespace:  "local:user-1",
+		SourceEntityType: "quote",
+		SourceEntityID:   "quote-1",
+		SourceLabel:      "Local quote",
+		Version:          1,
+	})
+	if err != nil {
+		t.Fatalf("insert first quote: %v", err)
+	}
+	secondQuoteID, err := store.InsertQuote("Second history quote", QuoteIdentity{
+		GlobalID:         "quote-2",
+		AuthorUserID:     "user-1",
+		AuthorName:       "Alice",
+		SourceUserID:     "user-1",
+		SourceName:       "Alice",
+		SourceBackend:    "local",
+		SourceNamespace:  "local:user-1",
+		SourceEntityType: "quote",
+		SourceEntityID:   "quote-2",
+		SourceLabel:      "Local quote",
+		Version:          1,
+	})
+	if err != nil {
+		t.Fatalf("insert second quote: %v", err)
+	}
+
+	historyID, err := store.InsertRecallHistory("How do goroutines coordinate?", "Use channels to synchronize work.", []int64{firstQuoteID, secondQuoteID})
+	if err != nil {
+		t.Fatalf("insert recall history: %v", err)
+	}
+
+	summaries, err := store.ListRecallHistory()
+	if err != nil {
+		t.Fatalf("list recall history: %v", err)
+	}
+	if len(summaries) != 1 {
+		t.Fatalf("history count = %d, want 1", len(summaries))
+	}
+	if summaries[0].ID != historyID || summaries[0].Question != "How do goroutines coordinate?" {
+		t.Fatalf("history summary = %+v", summaries[0])
+	}
+
+	entry, err := store.GetRecallHistory(historyID)
+	if err != nil {
+		t.Fatalf("get recall history: %v", err)
+	}
+	if entry.Response != "Use channels to synchronize work." {
+		t.Fatalf("history response = %q, want exact saved response", entry.Response)
+	}
+	if len(entry.Quotes) != 2 {
+		t.Fatalf("history quote count = %d, want 2", len(entry.Quotes))
+	}
+	if entry.Quotes[0].ID != firstQuoteID || entry.Quotes[1].ID != secondQuoteID {
+		t.Fatalf("history quote order = [%d %d], want [%d %d]", entry.Quotes[0].ID, entry.Quotes[1].ID, firstQuoteID, secondQuoteID)
+	}
+
+	if err := store.DeleteRecallHistory([]int64{historyID}); err != nil {
+		t.Fatalf("delete recall history: %v", err)
+	}
+
+	summaries, err = store.ListRecallHistory()
+	if err != nil {
+		t.Fatalf("list recall history after delete: %v", err)
+	}
+	if len(summaries) != 0 {
+		t.Fatalf("history count after delete = %d, want 0", len(summaries))
+	}
+}
+
 func openTestStore(t *testing.T) *Store {
 	t.Helper()
 

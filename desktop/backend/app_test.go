@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/gigol/irecall/core"
 )
 
 func TestDesktopBackendQuoteShareRoundTrip(t *testing.T) {
@@ -88,10 +90,71 @@ func TestDesktopBackendBootstrapState(t *testing.T) {
 	if state.Profile == nil || state.Profile.DisplayName != profile.DisplayName {
 		t.Fatalf("profile = %+v, want display name %q", state.Profile, profile.DisplayName)
 	}
-	if len(state.Pages) != 3 {
-		t.Fatalf("page count = %d, want 3", len(state.Pages))
+	if len(state.Pages) != 4 {
+		t.Fatalf("page count = %d, want 4", len(state.Pages))
+	}
+	if state.Pages[1] != "History" {
+		t.Fatalf("pages = %v, want History tab in bootstrap state", state.Pages)
 	}
 	if state.Docs["uiDesign"] != "docs/UI_DESIGN.md" {
 		t.Fatalf("ui design doc = %q, want docs/UI_DESIGN.md", state.Docs["uiDesign"])
+	}
+}
+
+func TestDesktopBackendRecallHistoryLifecycle(t *testing.T) {
+	t.Parallel()
+
+	app, err := NewApp(filepath.Join(t.TempDir(), "desktop-history"))
+	if err != nil {
+		t.Fatalf("NewApp() error = %v", err)
+	}
+	t.Cleanup(func() { app.Shutdown(context.Background()) })
+
+	if _, err := app.SaveUserProfile("Alice"); err != nil {
+		t.Fatalf("SaveUserProfile() error = %v", err)
+	}
+
+	quote, err := app.AddQuote("History-enabled desktop quote")
+	if err != nil {
+		t.Fatalf("AddQuote() error = %v", err)
+	}
+
+	if _, err := app.engine.SaveRecallHistory(context.Background(),
+		"How do I check history?",
+		"Open the History tab and inspect the saved session.",
+		[]core.Quote{*quote},
+	); err != nil {
+		t.Fatalf("SaveRecallHistory() error = %v", err)
+	}
+
+	history, err := app.ListRecallHistory()
+	if err != nil {
+		t.Fatalf("ListRecallHistory() error = %v", err)
+	}
+	if len(history) != 1 {
+		t.Fatalf("history count = %d, want 1", len(history))
+	}
+
+	entry, err := app.GetRecallHistory(history[0].ID)
+	if err != nil {
+		t.Fatalf("GetRecallHistory() error = %v", err)
+	}
+	if entry.Question != "How do I check history?" {
+		t.Fatalf("history question = %q, want exact saved question", entry.Question)
+	}
+	if len(entry.Quotes) != 1 || entry.Quotes[0].ID != quote.ID {
+		t.Fatalf("history quotes = %+v, want original quote", entry.Quotes)
+	}
+
+	if err := app.DeleteRecallHistory([]int64{entry.ID}); err != nil {
+		t.Fatalf("DeleteRecallHistory() error = %v", err)
+	}
+
+	history, err = app.ListRecallHistory()
+	if err != nil {
+		t.Fatalf("ListRecallHistory() after delete error = %v", err)
+	}
+	if len(history) != 0 {
+		t.Fatalf("history count after delete = %d, want 0", len(history))
 	}
 }

@@ -37,6 +37,21 @@ type UserProfileRow struct {
 	UpdatedAt   int64
 }
 
+type RecallHistorySummaryRow struct {
+	ID        int64
+	Question  string
+	Response  string
+	CreatedAt int64
+}
+
+type RecallHistoryRow struct {
+	ID        int64
+	Question  string
+	Response  string
+	CreatedAt int64
+	Quotes    []QuoteRow
+}
+
 // Open opens (or creates) the SQLite database at path and runs migrations.
 func Open(path string) (*Store, error) {
 	slog.Info("db: opening database", "path", path)
@@ -388,6 +403,112 @@ func (s *Store) ReplaceQuoteTags(quoteID int64, tagIDs []int64) error {
 		return fmt.Errorf("clear quote tags: %w", err)
 	}
 	return s.InsertQuoteTags(quoteID, tagIDs)
+}
+
+// --- Recall history ---
+
+func (s *Store) InsertRecallHistory(question, response string, quoteIDs []int64) (int64, error) {
+	now := time.Now().Unix()
+	tx, err := s.db.Begin()
+	if err != nil {
+		return 0, fmt.Errorf("begin insert recall history: %w", err)
+	}
+	defer tx.Rollback()
+
+	res, err := tx.Exec(
+		`INSERT INTO recall_history(question, response, created_at) VALUES (?, ?, ?)`,
+		question, response, now,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("insert recall history: %w", err)
+	}
+	historyID, _ := res.LastInsertId()
+
+	for i, quoteID := range quoteIDs {
+		if _, err := tx.Exec(
+			`INSERT OR IGNORE INTO recall_history_quotes(history_id, quote_id, position) VALUES (?, ?, ?)`,
+			historyID, quoteID, i,
+		); err != nil {
+			return 0, fmt.Errorf("insert recall history quote: %w", err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("commit recall history: %w", err)
+	}
+	return historyID, nil
+}
+
+func (s *Store) ListRecallHistory() ([]RecallHistorySummaryRow, error) {
+	rows, err := s.db.Query(
+		`SELECT id, question, response, created_at
+		 FROM recall_history
+		 ORDER BY created_at DESC, id DESC`,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("list recall history: %w", err)
+	}
+	defer rows.Close()
+
+	var out []RecallHistorySummaryRow
+	for rows.Next() {
+		var row RecallHistorySummaryRow
+		if err := rows.Scan(&row.ID, &row.Question, &row.Response, &row.CreatedAt); err != nil {
+			return nil, fmt.Errorf("scan recall history: %w", err)
+		}
+		out = append(out, row)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) GetRecallHistory(id int64) (RecallHistoryRow, error) {
+	var out RecallHistoryRow
+	if err := s.db.QueryRow(
+		`SELECT id, question, response, created_at
+		 FROM recall_history
+		 WHERE id = ?`,
+		id,
+	).Scan(&out.ID, &out.Question, &out.Response, &out.CreatedAt); err != nil {
+		if err == sql.ErrNoRows {
+			return RecallHistoryRow{}, fmt.Errorf("recall history %d not found", id)
+		}
+		return RecallHistoryRow{}, fmt.Errorf("get recall history: %w", err)
+	}
+
+	rows, err := s.db.Query(baseQuoteSelect+`
+		JOIN recall_history_quotes rhq ON rhq.quote_id = q.id
+		WHERE rhq.history_id = ?
+		GROUP BY q.id, rhq.position
+		ORDER BY rhq.position ASC
+	`, id)
+	if err != nil {
+		return RecallHistoryRow{}, fmt.Errorf("get recall history quotes: %w", err)
+	}
+	defer rows.Close()
+
+	out.Quotes, err = scanQuoteRows(rows)
+	if err != nil {
+		return RecallHistoryRow{}, err
+	}
+	return out, nil
+}
+
+func (s *Store) DeleteRecallHistory(ids []int64) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin delete recall history: %w", err)
+	}
+	defer tx.Rollback()
+
+	for _, id := range ids {
+		if _, err := tx.Exec(`DELETE FROM recall_history WHERE id = ?`, id); err != nil {
+			return fmt.Errorf("delete recall history %d: %w", id, err)
+		}
+	}
+	return tx.Commit()
 }
 
 // --- Settings ---

@@ -23,23 +23,38 @@ func TestAppTabNavigationAndQuotesReload(t *testing.T) {
 	}
 
 	app = updateAppWithKey(t, app, tea.KeyTab)
-	if app.page != pageQuotes {
-		t.Fatalf("page after tab = %v, want %v", app.page, pageQuotes)
-	}
-
-	app = updateAppWithKey(t, app, tea.KeyShiftTab)
-	if app.page != pageRecall {
-		t.Fatalf("page after shift+tab from quotes = %v, want %v", app.page, pageRecall)
-	}
-
-	app = updateAppWithKey(t, app, tea.KeyShiftTab)
-	if app.page != pageSettings {
-		t.Fatalf("page after shift+tab from recall = %v, want %v", app.page, pageSettings)
+	if app.page != pageHistory {
+		t.Fatalf("page after tab = %v, want %v", app.page, pageHistory)
 	}
 
 	app = updateAppWithKey(t, app, tea.KeyTab)
+	if app.page != pageQuotes {
+		t.Fatalf("page after second tab = %v, want %v", app.page, pageQuotes)
+	}
+
+	app = updateAppWithKey(t, app, tea.KeyTab)
+	if app.page != pageSettings {
+		t.Fatalf("page after third tab = %v, want %v", app.page, pageSettings)
+	}
+
+	app = updateAppWithKey(t, app, tea.KeyShiftTab)
+	if app.page != pageQuotes {
+		t.Fatalf("page after shift+tab from settings = %v, want %v", app.page, pageQuotes)
+	}
+
+	app = updateAppWithKey(t, app, tea.KeyShiftTab)
+	if app.page != pageHistory {
+		t.Fatalf("page after shift+tab from quotes = %v, want %v", app.page, pageHistory)
+	}
+
+	app = updateAppWithKey(t, app, tea.KeyShiftTab)
 	if app.page != pageRecall {
-		t.Fatalf("page after tab from settings = %v, want %v", app.page, pageRecall)
+		t.Fatalf("page after shift+tab from history = %v, want %v", app.page, pageRecall)
+	}
+
+	app = updateAppWithKey(t, app, tea.KeyTab)
+	if app.page != pageHistory {
+		t.Fatalf("page after tab from recall = %v, want %v", app.page, pageHistory)
 	}
 }
 
@@ -60,7 +75,7 @@ func TestAppHeaderShowsUserGreeting(t *testing.T) {
 	app := newTestApp(t)
 
 	view := app.View()
-	if !containsAllText(view, "Hi! Alice", "Recall", "Quotes", "Settings") {
+	if !containsAllText(view, "Hi! Alice", "Recall", "Quotes", "History", "Settings") {
 		t.Fatalf("header missing expected greeting:\n%s", view)
 	}
 }
@@ -207,6 +222,11 @@ func updateAppWithKey(t *testing.T, app App, key tea.KeyType) App {
 		}
 		if len(loaded.Quotes) != 1 {
 			t.Fatalf("quotes reload count = %d, want 1", len(loaded.Quotes))
+		}
+	}
+	if loaded, ok := msg.(pages.HistoryLoadedMsg); ok {
+		if loaded.Err != nil {
+			t.Fatalf("history reload returned error: %v", loaded.Err)
 		}
 	}
 

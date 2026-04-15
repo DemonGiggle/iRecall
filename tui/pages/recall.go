@@ -28,6 +28,8 @@ type QuotesReadyMsg struct{ Quotes []core.Quote }
 // KeywordsReadyMsg carries the extracted search keywords.
 type KeywordsReadyMsg struct{ Keywords []string }
 
+type RecallHistorySavedMsg struct{ Err error }
+
 // --- RecallPage ---
 
 // RecallPage is the main Q&A page.
@@ -188,6 +190,13 @@ func (p RecallPage) Update(msg tea.Msg) (RecallPage, tea.Cmd) {
 		p.busy = false
 		if msg.Err != nil {
 			p.statusMsg = "Error: " + msg.Err.Error()
+			break
+		}
+		return p, p.saveHistory()
+
+	case RecallHistorySavedMsg:
+		if msg.Err != nil {
+			p.statusMsg = "Error saving history: " + msg.Err.Error()
 		}
 
 	case quotesAndStreamMsg:
@@ -426,4 +435,15 @@ func (p *RecallPage) RemoveQuotes(ids []int64) {
 	p.quotes = filtered
 	p.quoteFns.clamp(p.quotes)
 	p.refreshReferencePanel()
+}
+
+func (p *RecallPage) saveHistory() tea.Cmd {
+	engine := p.engine
+	question := p.question
+	response := p.respBuf
+	quotes := append([]core.Quote(nil), p.quotes...)
+	return func() tea.Msg {
+		_, err := engine.SaveRecallHistory(context.Background(), question, response, quotes)
+		return RecallHistorySavedMsg{Err: err}
+	}
 }

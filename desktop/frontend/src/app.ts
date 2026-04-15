@@ -1,5 +1,5 @@
-type PageName = "Recall" | "Quotes" | "Settings";
-type QuoteContext = "quotes" | "recall";
+type PageName = "Recall" | "Quotes" | "History" | "Settings";
+type QuoteContext = "quotes" | "recall" | "history";
 
 interface FocusSnapshot {
   selector: string;
@@ -74,6 +74,17 @@ interface RecallResult {
   response: string;
 }
 
+interface RecallHistorySummary {
+  ID: number;
+  Question: string;
+  Response: string;
+  CreatedAt: string;
+}
+
+interface RecallHistoryEntry extends RecallHistorySummary {
+  Quotes: Quote[];
+}
+
 interface ImportResult {
   Inserted: number;
   Updated: number;
@@ -97,6 +108,9 @@ interface DesktopBackend {
   SaveSettings(settings: SettingsPayload): Promise<SettingsPayload>;
   FetchModels(settings: ProviderConfig): Promise<string[]>;
   RunRecall(question: string): Promise<RecallResult>;
+  ListRecallHistory(): Promise<RecallHistorySummary[]>;
+  GetRecallHistory(id: number): Promise<RecallHistoryEntry>;
+  DeleteRecallHistory(ids: number[]): Promise<void>;
 }
 
 declare global {
@@ -123,6 +137,7 @@ type OverlayState =
       previewRefined: string;
     }
   | { type: "deleteQuotes"; context: QuoteContext; ids: number[]; busy: boolean; status: string; isError: boolean }
+  | { type: "deleteHistory"; ids: number[]; busy: boolean; status: string; isError: boolean }
   | { type: "shareQuotes"; context: QuoteContext; ids: number[]; path: string; payload: string; busy: boolean; status: string; isError: boolean }
   | { type: "importQuotes"; path: string; busy: boolean; status: string; isError: boolean; result: ImportResult | null };
 
@@ -156,6 +171,16 @@ interface AppState {
   recallError: string;
   recallCursor: number;
   recallSelected: Set<number>;
+  historyEntries: RecallHistorySummary[];
+  historyLoading: boolean;
+  historyError: string;
+  historyCursor: number;
+  historySelected: Set<number>;
+  historyDetail: RecallHistoryEntry | null;
+  historyDetailLoading: boolean;
+  historyDetailError: string;
+  historyQuoteCursor: number;
+  historyQuoteSelected: Set<number>;
   settings: SettingsFormState;
   settingsBusy: boolean;
   settingsStatus: string;
@@ -181,6 +206,16 @@ const state: AppState = {
   recallError: "",
   recallCursor: 0,
   recallSelected: new Set<number>(),
+  historyEntries: [],
+  historyLoading: false,
+  historyError: "",
+  historyCursor: 0,
+  historySelected: new Set<number>(),
+  historyDetail: null,
+  historyDetailLoading: false,
+  historyDetailError: "",
+  historyQuoteCursor: 0,
+  historyQuoteSelected: new Set<number>(),
   settings: emptySettingsForm(),
   settingsBusy: false,
   settingsStatus: "",
@@ -192,7 +227,7 @@ let rootEl: HTMLElement | null = null;
 let handlersInstalled = false;
 let bootPromise: Promise<void> | null = null;
 
-const navItems: PageName[] = ["Recall", "Quotes", "Settings"];
+const navItems: PageName[] = ["Recall", "History", "Quotes", "Settings"];
 
 export function renderApp(root: HTMLElement): void {
   rootEl = root;
@@ -264,6 +299,24 @@ async function handleClick(event: MouseEvent): Promise<void> {
     case "quotes-refresh":
       await loadQuotes();
       return;
+    case "history-refresh":
+      await loadHistory();
+      return;
+    case "history-view-current":
+      await openCurrentHistory();
+      return;
+    case "history-back":
+      closeHistoryDetail();
+      return;
+    case "history-delete-current":
+      openDeleteHistoryOverlay();
+      return;
+    case "history-select-all":
+      selectAllHistory();
+      return;
+    case "history-deselect-all":
+      clearHistorySelection();
+      return;
     case "quote-add":
       openQuoteEditor("add");
       return;
@@ -284,6 +337,15 @@ async function handleClick(event: MouseEvent): Promise<void> {
         return;
       }
       setCursor(actionEl.dataset.context as QuoteContext, Number(actionEl.dataset.index ?? "0"));
+      return;
+    case "history-set-cursor":
+      if (target.closest("input, button, label")) {
+        return;
+      }
+      setHistoryCursor(Number(actionEl.dataset.index ?? "0"));
+      return;
+    case "history-open":
+      await openHistoryDetail(Number(actionEl.dataset.id ?? "0"));
       return;
     case "profile-save":
       await saveProfileName();
@@ -399,6 +461,9 @@ function handleChange(event: Event): void {
     case "quote-selected":
       toggleSelection(target.dataset.context as QuoteContext, Number(target.dataset.id ?? "0"), (target as HTMLInputElement).checked);
       return;
+    case "history-selected":
+      toggleHistorySelection(Number(target.dataset.id ?? "0"), (target as HTMLInputElement).checked);
+      return;
     case "settings-https":
       if (target instanceof HTMLInputElement) {
         state.settings.https = target.checked;
@@ -475,6 +540,9 @@ async function switchPage(page: PageName): Promise<void> {
   if (page === "Quotes") {
     await loadQuotes();
   }
+  if (page === "History") {
+    await loadHistory();
+  }
 }
 
 async function loadQuotes(): Promise<void> {
@@ -493,6 +561,60 @@ async function loadQuotes(): Promise<void> {
     state.quotesLoading = false;
     render();
   }
+}
+
+async function loadHistory(): Promise<void> {
+  state.historyLoading = true;
+  state.historyError = "";
+  render();
+  try {
+    const entries = await backend().ListRecallHistory();
+    state.historyEntries = entries;
+    state.historyCursor = clampHistoryCursor(state.historyCursor, entries);
+    state.historySelected = clampHistorySelection(state.historySelected, entries);
+  } catch (error) {
+    state.historyError = getErrorMessage(error);
+  } finally {
+    state.historyLoading = false;
+    render();
+  }
+}
+
+async function openCurrentHistory(): Promise<void> {
+  const entry = selectedOrCurrentHistory()[0];
+  if (!entry) {
+    return;
+  }
+  await openHistoryDetail(entry.ID);
+}
+
+async function openHistoryDetail(id: number): Promise<void> {
+  if (!Number.isFinite(id) || id <= 0) {
+    return;
+  }
+  state.historyDetailLoading = true;
+  state.historyDetailError = "";
+  render();
+  try {
+    const detail = await backend().GetRecallHistory(id);
+    state.historyDetail = detail;
+    state.historyQuoteCursor = clampCursor(state.historyQuoteCursor, detail.Quotes);
+    state.historyQuoteSelected = clampSelection(state.historyQuoteSelected, detail.Quotes);
+  } catch (error) {
+    state.historyDetailError = getErrorMessage(error);
+  } finally {
+    state.historyDetailLoading = false;
+    render();
+  }
+}
+
+function closeHistoryDetail(): void {
+  state.historyDetail = null;
+  state.historyDetailLoading = false;
+  state.historyDetailError = "";
+  state.historyQuoteCursor = 0;
+  state.historyQuoteSelected = new Set<number>();
+  render();
 }
 
 function openQuoteEditor(mode: "add" | "edit", quote?: Quote): void {
@@ -526,6 +648,21 @@ function openDeleteOverlay(context: QuoteContext): void {
   state.overlay = {
     type: "deleteQuotes",
     context,
+    ids,
+    busy: false,
+    status: "",
+    isError: false,
+  };
+  render();
+}
+
+function openDeleteHistoryOverlay(): void {
+  const ids = selectedOrCurrentHistory().map((entry) => entry.ID);
+  if (ids.length === 0) {
+    return;
+  }
+  state.overlay = {
+    type: "deleteHistory",
     ids,
     busy: false,
     status: "",
@@ -711,6 +848,29 @@ function rejectRefinedDraft(): void {
 }
 
 async function confirmDelete(): Promise<void> {
+  if (state.overlay?.type === "deleteHistory") {
+    if (state.overlay.busy) {
+      return;
+    }
+    state.overlay.busy = true;
+    state.overlay.status = "";
+    render();
+
+    try {
+      await backend().DeleteRecallHistory(state.overlay.ids);
+      removeHistoryEntries(state.overlay.ids);
+      state.overlay = null;
+      await loadHistory();
+    } catch (error) {
+      if (state.overlay?.type === "deleteHistory") {
+        state.overlay.busy = false;
+        state.overlay.status = getErrorMessage(error);
+        state.overlay.isError = true;
+      }
+      render();
+    }
+    return;
+  }
   if (state.overlay?.type !== "deleteQuotes" || state.overlay.busy) {
     return;
   }
@@ -969,14 +1129,18 @@ function closeOverlay(): void {
 function setCursor(context: QuoteContext, index: number): void {
   if (context === "quotes") {
     state.quotesCursor = clampCursor(index, state.quotes);
-  } else {
+  } else if (context === "recall") {
     state.recallCursor = clampCursor(index, state.recallQuotes);
+  } else {
+    const quotes = state.historyDetail?.Quotes ?? [];
+    state.historyQuoteCursor = clampCursor(index, quotes);
   }
   render();
 }
 
 function toggleSelection(context: QuoteContext, id: number, checked: boolean): void {
-  const selected = context === "quotes" ? state.quotesSelected : state.recallSelected;
+  const selected =
+    context === "quotes" ? state.quotesSelected : context === "recall" ? state.recallSelected : state.historyQuoteSelected;
   if (checked) {
     selected.add(id);
   } else {
@@ -985,9 +1149,10 @@ function toggleSelection(context: QuoteContext, id: number, checked: boolean): v
 }
 
 function selectedOrCurrentQuotes(context: QuoteContext): Quote[] {
-  const quotes = context === "quotes" ? state.quotes : state.recallQuotes;
-  const cursor = context === "quotes" ? state.quotesCursor : state.recallCursor;
-  const selected = context === "quotes" ? state.quotesSelected : state.recallSelected;
+  const quotes = context === "quotes" ? state.quotes : context === "recall" ? state.recallQuotes : (state.historyDetail?.Quotes ?? []);
+  const cursor = context === "quotes" ? state.quotesCursor : context === "recall" ? state.recallCursor : state.historyQuoteCursor;
+  const selected =
+    context === "quotes" ? state.quotesSelected : context === "recall" ? state.recallSelected : state.historyQuoteSelected;
   const chosen = quotes.filter((quote) => selected.has(quote.ID));
   if (chosen.length > 0) {
     return chosen;
@@ -998,6 +1163,9 @@ function selectedOrCurrentQuotes(context: QuoteContext): Quote[] {
 function applyQuoteUpdate(updated: Quote): void {
   state.quotes = patchQuoteList(state.quotes, updated);
   state.recallQuotes = patchQuoteList(state.recallQuotes, updated);
+  if (state.historyDetail) {
+    state.historyDetail = { ...state.historyDetail, Quotes: patchQuoteList(state.historyDetail.Quotes, updated) };
+  }
   render();
 }
 
@@ -1005,10 +1173,61 @@ function removeQuotes(ids: number[]): void {
   const remove = new Set(ids);
   state.quotes = state.quotes.filter((quote) => !remove.has(quote.ID));
   state.recallQuotes = state.recallQuotes.filter((quote) => !remove.has(quote.ID));
+  if (state.historyDetail) {
+    state.historyDetail = {
+      ...state.historyDetail,
+      Quotes: state.historyDetail.Quotes.filter((quote) => !remove.has(quote.ID)),
+    };
+  }
   state.quotesSelected = new Set([...state.quotesSelected].filter((id) => !remove.has(id)));
   state.recallSelected = new Set([...state.recallSelected].filter((id) => !remove.has(id)));
+  state.historyQuoteSelected = new Set([...state.historyQuoteSelected].filter((id) => !remove.has(id)));
   state.quotesCursor = clampCursor(state.quotesCursor, state.quotes);
   state.recallCursor = clampCursor(state.recallCursor, state.recallQuotes);
+  state.historyQuoteCursor = clampCursor(state.historyQuoteCursor, state.historyDetail?.Quotes ?? []);
+  render();
+}
+
+function setHistoryCursor(index: number): void {
+  state.historyCursor = clampHistoryCursor(index, state.historyEntries);
+  render();
+}
+
+function toggleHistorySelection(id: number, checked: boolean): void {
+  if (checked) {
+    state.historySelected.add(id);
+  } else {
+    state.historySelected.delete(id);
+  }
+}
+
+function selectAllHistory(): void {
+  state.historySelected = new Set(state.historyEntries.map((entry) => entry.ID));
+  render();
+}
+
+function clearHistorySelection(): void {
+  state.historySelected = new Set<number>();
+  render();
+}
+
+function selectedOrCurrentHistory(): RecallHistorySummary[] {
+  const chosen = state.historyEntries.filter((entry) => state.historySelected.has(entry.ID));
+  if (chosen.length > 0) {
+    return chosen;
+  }
+  return state.historyEntries[state.historyCursor] ? [state.historyEntries[state.historyCursor]] : [];
+}
+
+function removeHistoryEntries(ids: number[]): void {
+  const remove = new Set(ids);
+  state.historyEntries = state.historyEntries.filter((entry) => !remove.has(entry.ID));
+  state.historySelected = new Set([...state.historySelected].filter((id) => !remove.has(id)));
+  state.historyCursor = clampHistoryCursor(state.historyCursor, state.historyEntries);
+  if (state.historyDetail && remove.has(state.historyDetail.ID)) {
+    closeHistoryDetail();
+    return;
+  }
   render();
 }
 
@@ -1117,6 +1336,8 @@ function renderPage(): string {
       return renderRecallPage();
     case "Quotes":
       return renderQuotesPage();
+    case "History":
+      return renderHistoryPage();
     case "Settings":
       return renderSettingsPage();
   }
@@ -1222,6 +1443,142 @@ function renderQuotesPage(): string {
           <span>${state.quotes.length}</span>
           <span class="muted">Selection:</span>
           <span>${selected.length > 0 ? selected.length : state.quotes.length > 0 ? 1 : 0}</span>
+        </div>
+        ${content}
+      </div>
+    </section>
+  `;
+}
+
+function renderHistoryPage(): string {
+  const selectedEntries = selectedOrCurrentHistory();
+  const selectedQuotes = selectedOrCurrentQuotes("history");
+
+  if (state.historyDetailLoading) {
+    return `
+      <section class="page page-history">
+        <div class="panel page-panel">
+          <div class="empty-state">Loading history entry…</div>
+        </div>
+      </section>
+    `;
+  }
+
+  if (state.historyDetail) {
+    return `
+      <section class="page page-history">
+        <div class="panel page-panel">
+          <div class="section-heading">
+            <div>
+              <div class="section-title">History Detail</div>
+              <div class="muted">Full question, response, and the exact quote set used for grounding.</div>
+            </div>
+            <div class="toolbar">
+              <button class="button" data-action="history-back" type="button">Back</button>
+              <button class="button" data-action="quote-edit-current" data-context="history" type="button" ${selectedQuotes.length === 0 ? "disabled" : ""}>Edit Quote</button>
+              <button class="button button-danger" data-action="quote-delete-current" data-context="history" type="button" ${selectedQuotes.length === 0 ? "disabled" : ""}>Delete Quote</button>
+              <button class="button" data-action="quote-share-current" data-context="history" type="button" ${selectedQuotes.length === 0 ? "disabled" : ""}>Share Quote</button>
+            </div>
+          </div>
+
+          ${state.historyDetailError ? `<div class="status status-error">${escapeHtml(state.historyDetailError)}</div>` : ""}
+
+          <div class="recall-grid">
+            <section class="panel subpanel">
+              <div class="subpanel-header">
+                <div class="section-title">History Entry</div>
+                <div class="muted">${escapeHtml(formatHistoryCreatedAt(state.historyDetail.CreatedAt))}</div>
+              </div>
+              <div class="detail-stack">
+                <div class="detail-block">
+                  <div class="muted">Question</div>
+                  <pre class="response-box">${escapeHtml(state.historyDetail.Question)}</pre>
+                </div>
+                <div class="detail-block">
+                  <div class="muted">Response</div>
+                  <pre class="response-box">${escapeHtml(state.historyDetail.Response)}</pre>
+                </div>
+              </div>
+            </section>
+
+            <section class="panel subpanel">
+              <div class="subpanel-header">
+                <div class="section-title">Reference Quotes</div>
+                <div class="muted">${selectedQuotes.length > 0 ? `${selectedQuotes.length} selected` : `${state.historyDetail.Quotes.length} loaded`}</div>
+              </div>
+              ${renderQuoteList("history", state.historyDetail.Quotes, state.historyQuoteCursor, state.historyQuoteSelected, false)}
+            </section>
+          </div>
+        </div>
+      </section>
+    `;
+  }
+
+  let content = "";
+  if (state.historyLoading) {
+    content = '<div class="empty-state">Loading history…</div>';
+  } else if (state.historyError) {
+    content = `<div class="status status-error">${escapeHtml(state.historyError)}</div>`;
+  } else if (state.historyEntries.length === 0) {
+    content = '<div class="empty-state">No recall history yet. Run a recall from the Recall tab to create one.</div>';
+  } else {
+    content = `
+      <div class="history-list">
+        ${state.historyEntries
+          .map((entry, index) => {
+            const isCurrent = index === state.historyCursor;
+            const preview = truncateQuotePreview(entry.Response, 140);
+            return `
+              <article class="quote-card${isCurrent ? " is-current" : ""}" data-action="history-set-cursor" data-index="${index}">
+                <div class="quote-topline">
+                  <label class="selection-toggle">
+                    <input
+                      type="checkbox"
+                      data-bind="history-selected"
+                      data-id="${entry.ID}"
+                      ${state.historySelected.has(entry.ID) ? "checked" : ""}
+                    />
+                    <span>${state.historySelected.has(entry.ID) ? "[x]" : "[ ]"}</span>
+                  </label>
+                  <div class="quote-topline-meta">
+                    <span class="quote-index${isCurrent ? " is-current" : ""}">${isCurrent ? "&gt; " : ""}[${index + 1}]</span>
+                    <span class="quote-version">${escapeHtml(formatHistoryCreatedAt(entry.CreatedAt))}</span>
+                  </div>
+                </div>
+                <div class="quote-content">${escapeHtml(truncateQuotePreview(entry.Question, 120))}</div>
+                <div class="quote-meta"><span class="muted">Response:</span> <span>${escapeHtml(preview || "(empty response)")}</span></div>
+                <div class="toolbar toolbar-inline">
+                  <button class="button" data-action="history-open" data-id="${entry.ID}" type="button">View</button>
+                </div>
+              </article>
+            `;
+          })
+          .join("")}
+      </div>
+    `;
+  }
+
+  return `
+    <section class="page page-history">
+      <div class="panel page-panel">
+        <div class="section-heading">
+          <div>
+            <div class="section-title">History</div>
+            <div class="muted">Review past recall sessions, inspect grounded responses, and manage saved history entries.</div>
+          </div>
+          <div class="toolbar">
+            <button class="button" data-action="history-refresh" type="button">Refresh</button>
+            <button class="button" data-action="history-select-all" type="button" ${state.historyEntries.length === 0 ? "disabled" : ""}>Select All</button>
+            <button class="button" data-action="history-deselect-all" type="button" ${state.historySelected.size === 0 ? "disabled" : ""}>Deselect All</button>
+            <button class="button" data-action="history-view-current" type="button" ${selectedEntries.length === 0 ? "disabled" : ""}>View</button>
+            <button class="button button-danger" data-action="history-delete-current" type="button" ${selectedEntries.length === 0 ? "disabled" : ""}>Delete</button>
+          </div>
+        </div>
+        <div class="meta-row">
+          <span class="muted">Stored History:</span>
+          <span>${state.historyEntries.length}</span>
+          <span class="muted">Selection:</span>
+          <span>${selectedEntries.length > 0 ? selectedEntries.length : state.historyEntries.length > 0 ? 1 : 0}</span>
         </div>
         ${content}
       </div>
@@ -1502,6 +1859,27 @@ function renderOverlay(overlay: OverlayState): string {
           </div>
         </div>
       `;
+    case "deleteHistory":
+      return `
+        <div class="overlay-backdrop">
+          <div class="modal">
+            <div class="modal-title modal-title-danger">Delete History</div>
+            <div class="modal-copy">This permanently removes the selected recall history entries from the local library.</div>
+            <div class="summary-list">
+              ${selectedHistoryByIds(overlay.ids)
+                .map((entry, index) => `<div class="summary-item">[${index + 1}] ${escapeHtml(truncate(entry.Question, 140))}</div>`)
+                .join("")}
+            </div>
+            ${overlay.status ? `<div class="status ${overlay.isError ? "status-error" : "status-ok"}">${escapeHtml(overlay.status)}</div>` : ""}
+            <div class="modal-actions">
+              <button class="button button-danger" data-action="delete-confirm" type="button" ${overlay.busy ? "disabled" : ""}>
+                ${overlay.busy ? "Deleting…" : "Delete"}
+              </button>
+              <button class="button" data-action="overlay-close" type="button" ${overlay.busy ? "disabled" : ""}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      `;
     case "shareQuotes":
       return `
         <div class="overlay-backdrop">
@@ -1570,9 +1948,14 @@ function renderOverlay(overlay: OverlayState): string {
 }
 
 function selectedQuotesByIds(context: QuoteContext, ids: number[]): Quote[] {
-  const source = context === "quotes" ? state.quotes : state.recallQuotes;
+  const source = context === "quotes" ? state.quotes : context === "recall" ? state.recallQuotes : (state.historyDetail?.Quotes ?? []);
   const wanted = new Set(ids);
   return source.filter((quote) => wanted.has(quote.ID));
+}
+
+function selectedHistoryByIds(ids: number[]): RecallHistorySummary[] {
+  const wanted = new Set(ids);
+  return state.historyEntries.filter((entry) => wanted.has(entry.ID));
 }
 
 function settingsFormFromBootstrap(bootstrap: BootstrapState): SettingsFormState {
@@ -1682,6 +2065,18 @@ function clampSelection(selected: Set<number>, quotes: Quote[]): Set<number> {
   return new Set([...selected].filter((id) => valid.has(id)));
 }
 
+function clampHistoryCursor(cursor: number, entries: RecallHistorySummary[]): number {
+  if (entries.length === 0) {
+    return 0;
+  }
+  return Math.min(Math.max(cursor, 0), entries.length - 1);
+}
+
+function clampHistorySelection(selected: Set<number>, entries: RecallHistorySummary[]): Set<number> {
+  const valid = new Set(entries.map((entry) => entry.ID));
+  return new Set([...selected].filter((id) => valid.has(id)));
+}
+
 function escapeHtml(value: string): string {
   return value
     .replaceAll("&", "&amp;")
@@ -1701,6 +2096,14 @@ function truncate(value: string, max: number): string {
     return normalized;
   }
   return `${normalized.slice(0, max - 1).trimEnd()}…`;
+}
+
+function formatHistoryCreatedAt(value: string): string {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return value;
+  }
+  return parsed.toLocaleString();
 }
 
 function previewTags(tags: string[], limit: number): string {

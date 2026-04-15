@@ -108,7 +108,7 @@ func (a *App) BootstrapState() BootstrapState {
 		Profile:     a.profile,
 		Settings:    a.settings,
 		Paths:       a.paths,
-		Pages:       []string{"Recall", "Quotes", "Settings"},
+		Pages:       []string{"Recall", "History", "Quotes", "Settings"},
 		Docs: map[string]string{
 			"uiDesign":       "docs/UI_DESIGN.md",
 			"desktopMapping": "docs/WAILS_DESKTOP.md",
@@ -138,6 +138,18 @@ func (a *App) UpdateQuote(id int64, content string) (*core.Quote, error) {
 
 func (a *App) DeleteQuotes(ids []int64) error {
 	return a.engine.DeleteQuotes(a.context(), ids)
+}
+
+func (a *App) ListRecallHistory() ([]core.RecallHistorySummary, error) {
+	return a.engine.ListRecallHistory(a.context())
+}
+
+func (a *App) GetRecallHistory(id int64) (*core.RecallHistoryEntry, error) {
+	return a.engine.GetRecallHistory(a.context(), id)
+}
+
+func (a *App) DeleteRecallHistory(ids []int64) error {
+	return a.engine.DeleteRecallHistory(a.context(), ids)
 }
 
 func (a *App) ExportQuotesToFile(ids []int64, path string) error {
@@ -241,6 +253,9 @@ func (a *App) RunRecall(question string) (*RecallResult, error) {
 		sb.WriteString(token)
 	}
 	if err := <-errCh; err != nil {
+		return nil, err
+	}
+	if _, err := a.engine.SaveRecallHistory(a.context(), question, sb.String(), quotes); err != nil {
 		return nil, err
 	}
 
