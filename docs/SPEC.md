@@ -2,77 +2,158 @@
 
 ## Overview
 
-iRecall is a Bubble Tea TUI backed by a small Go core. The core owns persistence, prompt orchestration, provider communication, and settings. The TUI owns navigation, form state, viewport rendering, and asynchronous command wiring.
+iRecall is a local-first quote recall application with two clients built on one Go core:
 
-The current application flow is:
+- a Bubble Tea TUI launched from `cmd/irecall`
+- a Wails desktop client under `desktop/`
 
-1. Store a note in SQLite.
-2. Ask the configured LLM for 6 to 12 tags.
-3. Save tags and update the FTS index.
-4. For recall, ask the LLM for 3 to 6 search keywords.
-5. Search the note corpus with SQLite FTS5.
-6. Stream a grounded answer using only the retrieved notes.
+The shared core owns:
+
+- quote persistence in SQLite
+- migration management
+- user profile and quote identity bootstrapping
+- quote import/export
+- OpenAI-compatible provider access
+- keyword extraction, retrieval, and grounded response generation
+
+The clients own presentation, input handling, and local workflow orchestration.
 
 ## Repository Structure
 
 ```text
 iRecall/
-├── cmd/
-│   └── irecall/
-│       └── main.go
-├── config/
-│   └── config.go
-├── core/
-│   ├── engine.go
-│   ├── models.go
-│   ├── db/
-│   │   ├── migrations.go
-│   │   └── store.go
-│   └── llm/
-│       ├── client.go
-│       └── provider.go
-├── tui/
-│   ├── app.go
+├── cmd/irecall/              # terminal entrypoint
+├── config/                   # XDG-style path helpers
+├── core/                     # shared domain logic
+│   ├── db/                   # SQLite store + migrations
+│   └── llm/                  # OpenAI-compatible client
+├── desktop/                  # Wails desktop app
+│   ├── backend/
+│   └── frontend/
+├── docs/                     # roadmap, plans, specs, design references
+├── tools/
+│   └── redmine_export/       # Redmine -> iRecall share payload exporter
+├── tui/                      # Bubble Tea app and pages
 │   ├── pages/
-│   │   ├── addquote.go
-│   │   ├── quotes.go
-│   │   ├── recall.go
-│   │   └── settings.go
 │   └── styles/
-│       └── theme.go
 ├── Makefile
-├── PLAN.md
-├── README.md
-└── SPEC.md
+└── README.md
 ```
 
-## Runtime and Entry Point
+## Runtime Entry Points
+
+### TUI binary
 
 `cmd/irecall/main.go` is responsible for:
 
-- parsing `--debug` and `--version`
-- creating XDG-style directories with `config.EnsureDirs()`
-- configuring structured JSON logging to `~/.local/state/irecall/irecall.log`
-- opening SQLite with migrations
-- creating `core.Engine`
-- loading saved settings from the database
-- starting the Bubble Tea program in the alternate screen
+- parsing `--debug`, `--version`, and `--data-path`
+- initializing XDG-style directories via `config.EnsureDirs()`
+- configuring structured JSON logging
+- opening SQLite and running migrations
+- loading persisted settings
+- loading or bootstrapping the local user profile and quote identity
+- starting the Bubble Tea app in the alternate screen
 
-The binary version string is injected with linker flags and defaults to `dev`.
+### Desktop app
+
+`desktop/backend/app.go` wraps the same core engine for the Wails frontend.
+
+It provides:
+
+- bootstrap state for the frontend shell
+- quote CRUD
+- quote import/export helpers
+- user-profile save/load
+- settings save/load
+- recall execution
 
 ## Data Model
+
+The current application-level schema is defined in `core/models.go`. Field-level semantics live in [schema.md](/home/gigo/workspace/iRecall/docs/schema.md).
 
 ### Quote
 
 ```go
 type Quote struct {
-    ID        int64
-    Content   string
-    Tags      []string
-    CreatedAt time.Time
-    UpdatedAt time.Time
+    ID               int64
+    GlobalID         string
+    AuthorUserID     string
+    AuthorName       string
+    SourceUserID     string
+    SourceName       string
+    SourceBackend    string
+    SourceNamespace  string
+    SourceEntityType string
+    SourceEntityID   string
+    SourceLabel      string
+    SourceURL        string
+    Content          string
+    Tags             []string
+    Version          int64
+    IsOwnedByMe      bool
+    CreatedAt        time.Time
+    UpdatedAt        time.Time
 }
 ```
+
+Key points:
+
+- `ID` is the local SQLite row ID.
+- `GlobalID` is the durable iRecall quote identity used by import/export deduplication.
+- `Author*` captures authorship.
+- `SourceUser*` captures person-level source information.
+- `SourceBackend` through `SourceURL` capture system-level provenance.
+- `IsOwnedByMe` is derived at load time from the local profile.
+
+### User profile
+
+```go
+type UserProfile struct {
+    UserID      string
+    DisplayName string
+    CreatedAt   time.Time
+    UpdatedAt   time.Time
+}
+```
+
+The local profile is required for durable quote identity and sharing metadata. If the display name is missing, the clients block normal usage with a prompt.
+
+### Share envelope
+
+```go
+const ShareSchemaVersion = 2
+
+type SharedQuoteEnvelope struct {
+    SchemaVersion int
+    ExportedAt    time.Time
+    Quotes        []SharedQuoteEntry
+}
+
+type SharedQuoteEntry struct {
+    GlobalID         string
+    AuthorUserID     string
+    AuthorName       string
+    SourceUserID     string
+    SourceName       string
+    SourceBackend    string
+    SourceNamespace  string
+    SourceEntityType string
+    SourceEntityID   string
+    SourceLabel      string
+    SourceURL        string
+    Version          int64
+    Content          string
+    Tags             []string
+    CreatedAtUTC     time.Time
+    UpdatedAtUTC     time.Time
+}
+```
+
+Current compatibility behavior:
+
+- schema version `2` is the current export format
+- schema version `1` is still accepted on import
+- older payloads are normalized to `shared_import` provenance on import
 
 ### Settings
 
@@ -80,6 +161,7 @@ type Quote struct {
 type Settings struct {
     Provider ProviderConfig
     Search   SearchConfig
+    Theme    string
 }
 
 type SearchConfig struct {
@@ -88,25 +170,7 @@ type SearchConfig struct {
 }
 ```
 
-### Provider Configuration
-
-`core.ProviderConfig` is a re-export of `core/llm.ProviderConfig`.
-
-```go
-type ProviderConfig struct {
-    Host   string
-    Port   int
-    HTTPS  bool
-    APIKey string
-    Model  string
-}
-```
-
-`BaseURL()` renders `<scheme>://<host>:<port>/v1`.
-
-### Default Settings
-
-The default configuration is:
+Current defaults:
 
 ```go
 ProviderConfig{
@@ -120,26 +184,36 @@ SearchConfig{
     MaxResults:   5,
     MinRelevance: 0.0,
 }
+
+Theme: "violet"
 ```
+
+`MinRelevance` is a normalized `0.0..1.0` threshold:
+
+- `0.0` disables filtering
+- `0.3` to `0.7` is the practical recommended range
+- `1.0` keeps only very strong keyword coverage matches
 
 ## Persistence
 
-### File System Layout
+### Local paths
 
-`config/config.go` creates and exposes:
+`config/config.go` exposes:
 
-- data dir: `~/.local/share/irecall`
-- config dir: `~/.config/irecall`
-- state dir: `~/.local/state/irecall`
+- data dir
+- config dir
+- state dir
+
+By default those resolve to XDG-style locations under `~/.local/share`, `~/.config`, and `~/.local/state`.
 
 Concrete files currently used:
 
-- database: `~/.local/share/irecall/irecall.db`
-- log file: `~/.local/state/irecall/irecall.log`
+- SQLite database: `data/irecall.db`
+- log file: `state/irecall.log`
 
-The config directory exists but does not currently contain a persisted config file.
+When `--data-path` is provided, iRecall uses that directory as the root for `data/`, `config/`, and `state/`.
 
-### SQLite Pragmas
+### SQLite configuration
 
 The DB layer enables:
 
@@ -149,75 +223,33 @@ PRAGMA foreign_keys = ON;
 PRAGMA busy_timeout = 5000;
 ```
 
-### Schema
+### Migrations
 
-Migration version `1` creates:
+The migration runner uses `schema_migrations` as the authoritative table and still writes the legacy `schema_version` table for backward compatibility.
 
-```sql
-CREATE TABLE IF NOT EXISTS quotes (
-    id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    content    TEXT    NOT NULL,
-    created_at INTEGER NOT NULL,
-    updated_at INTEGER NOT NULL
-);
+Current migration set:
 
-CREATE TABLE IF NOT EXISTS tags (
-    id   INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT    NOT NULL UNIQUE COLLATE NOCASE
-);
+1. `initial_schema`
+   - `quotes`, `tags`, `quote_tags`, `quotes_fts`, `settings`
+   - FTS triggers for insert, update, delete
+2. `quote_identity_and_user_profile`
+   - quote identity columns such as `global_id`, `author_*`, `source_user_*`, `version`
+   - `user_profile`
+3. `quote_source_provenance`
+   - `source_backend`, `source_namespace`, `source_entity_type`, `source_entity_id`, `source_label`, `source_url`
+   - provenance backfill for existing rows
+   - provenance indexes
 
-CREATE TABLE IF NOT EXISTS quote_tags (
-    quote_id INTEGER NOT NULL REFERENCES quotes(id) ON DELETE CASCADE,
-    tag_id   INTEGER NOT NULL REFERENCES tags(id)   ON DELETE CASCADE,
-    PRIMARY KEY (quote_id, tag_id)
-);
-
-CREATE VIRTUAL TABLE IF NOT EXISTS quotes_fts USING fts5(
-    content,
-    tags,
-    content='quotes',
-    content_rowid='id',
-    tokenize='porter unicode61'
-);
-
-CREATE TRIGGER IF NOT EXISTS quotes_ai AFTER INSERT ON quotes BEGIN
-    INSERT INTO quotes_fts(rowid, content, tags)
-    VALUES (new.id, new.content, '');
-END;
-
-CREATE TRIGGER IF NOT EXISTS quotes_ad AFTER DELETE ON quotes BEGIN
-    INSERT INTO quotes_fts(quotes_fts, rowid, content, tags)
-    VALUES ('delete', old.id, old.content, '');
-END;
-
-CREATE TRIGGER IF NOT EXISTS quotes_au AFTER UPDATE ON quotes BEGIN
-    INSERT INTO quotes_fts(quotes_fts, rowid, content, tags)
-    VALUES ('delete', old.id, old.content, '');
-    INSERT INTO quotes_fts(rowid, content, tags)
-    VALUES (new.id, new.content, '');
-END;
-
-CREATE TABLE IF NOT EXISTS settings (
-    key   TEXT PRIMARY KEY,
-    value TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS schema_version (
-    version INTEGER NOT NULL
-);
-```
-
-### Settings Storage
-
-Settings are persisted as a JSON blob under the `settings` key in the `settings` table.
+The schema guide in [schema.md](/home/gigo/workspace/iRecall/docs/schema.md) is the canonical field reference.
 
 ## Core Engine
 
 `core.Engine` owns:
 
 - the SQLite store
-- the active LLM client
+- the active provider client
 - the in-memory settings snapshot
+- the active local user profile
 
 Public behavior currently implemented:
 
@@ -227,262 +259,127 @@ func (e *Engine) Close() error
 
 func (e *Engine) UpdateProvider(cfg ProviderConfig)
 func (e *Engine) UpdateSettings(s *Settings)
+func (e *Engine) UpdateUserProfile(profile *UserProfile)
 
 func (e *Engine) AddQuote(ctx context.Context, content string) (*Quote, error)
 func (e *Engine) ListQuotes(ctx context.Context) ([]Quote, error)
 func (e *Engine) DeleteQuote(ctx context.Context, id int64) error
+func (e *Engine) DeleteQuotes(ctx context.Context, ids []int64) error
+func (e *Engine) UpdateQuote(ctx context.Context, id int64, content string) (*Quote, error)
+func (e *Engine) RefineQuoteDraft(ctx context.Context, content string) (string, error)
 
 func (e *Engine) ExtractTags(ctx context.Context, text string) ([]string, error)
 func (e *Engine) ExtractKeywords(ctx context.Context, question string) ([]string, error)
 func (e *Engine) SearchQuotes(ctx context.Context, keywords []string) ([]Quote, error)
 func (e *Engine) GenerateResponse(ctx context.Context, question string, candidates []Quote, tokenCh chan<- string) error
 
+func (e *Engine) ExportQuotes(ctx context.Context, ids []int64) ([]byte, error)
+func (e *Engine) ImportSharedQuotes(ctx context.Context, payload []byte) (ImportResult, error)
+
 func (e *Engine) FetchModels(ctx context.Context, cfg ProviderConfig) ([]string, error)
 func (e *Engine) TestProvider(ctx context.Context, cfg ProviderConfig) error
 
 func (e *Engine) LoadSettings(ctx context.Context) (*Settings, error)
 func (e *Engine) SaveSettings(ctx context.Context, s *Settings) error
+
+func (e *Engine) LoadUserProfile(ctx context.Context) (*UserProfile, error)
+func (e *Engine) SaveUserProfile(ctx context.Context, profile *UserProfile) error
+func (e *Engine) BootstrapQuoteIdentity(ctx context.Context) error
 ```
 
-### Add Quote Flow
+### Add / update quote flow
 
-`AddQuote` performs:
+`AddQuote` and `UpdateQuote` both:
 
-1. trim and validate content
-2. insert the quote row
-3. call `ExtractTags`
-4. on tag success:
-   - upsert tags
-   - create `quote_tags` associations
-   - rewrite the FTS row with tag text included
-5. return a `Quote`
+1. validate content
+2. persist the row
+3. ask the configured provider for tags
+4. upsert tags and associations when tag extraction succeeds
+5. rewrite the FTS row so content and tags stay in sync
 
-If tag extraction fails, the note is still saved without tags.
+If tag extraction fails, the quote still persists.
 
-### Recall Flow
+### Recall flow
 
-`RecallPage` drives the following engine sequence:
+The current recall pipeline is:
 
-1. `ExtractKeywords(question)`
-2. `SearchQuotes(keywords)`
-3. render reference notes immediately
-4. `GenerateResponse(question, quotes, tokenCh)`
-5. drain the token channel recursively into Bubble Tea messages
+1. trim and validate the question
+2. call `ExtractKeywords`
+3. run SQLite FTS5 search through `SearchQuotes`
+4. apply `MinRelevance` filtering in the engine
+5. stream a grounded answer through `GenerateResponse`
 
-The response prompt explicitly instructs the model to:
+Retrieval behavior:
 
-- use only the reference notes
-- cite note numbers like `[1]`
-- return a fixed insufficiency sentence if the notes are not enough
-- stay brief
+- FTS5 candidate retrieval is still keyword-based
+- `MaxResults` controls final returned quote count
+- when `MinRelevance > 0`, the engine widens the candidate fetch, filters by normalized keyword coverage, then trims back to `MaxResults`
 
-### Keyword and Tag Parsing
+### Import / export behavior
 
-Both extraction methods expect a JSON string array from the model.
+Export:
 
-`parseJSONStringArray`:
+- selected quotes are serialized into `SharedQuoteEnvelope`
+- current schema version is written
+- source provenance is preserved
 
-- trims the response
-- isolates the first bracketed array if extra text is present
-- tries `json.Unmarshal`
-- falls back to comma splitting if JSON parsing fails
-- lowercases fallback values
+Import:
 
-## DB Store Behavior
+- payload is validated
+- rows are matched by `global_id`
+- newer versions overwrite older ones
+- equal versions count as duplicates
+- older incoming versions count as stale
+- schema version `1` payloads are normalized to current provenance defaults
 
-`core/db/store.go` currently implements:
+## TUI Contract
 
-- `Open(path)`
-- `Close()`
-- `InsertQuote(content)`
-- `UpdateQuoteFTS(id, tags)`
-- `DeleteQuote(id)`
-- `ListQuotes()`
-- `SearchQuotes(keywords, limit)`
-- `UpsertTags(names)`
-- `InsertQuoteTags(quoteID, tagIDs)`
-- `GetSetting(key)`
-- `SetSetting(key, value)`
+The TUI shell owns:
 
-### Search Query Behavior
+- page routing between `Recall`, `Quotes`, and `Settings`
+- blocking overlays:
+  - user-profile prompt
+  - quote editor
+  - delete confirmation
+  - share/export
+  - import
 
-Search currently:
+Important behaviors:
 
-- trims each keyword
-- escapes embedded double quotes
-- wraps each keyword in FTS phrase quotes
-- joins them with `OR`
-- orders by `fts.rank`
-- limits results by `SearchConfig.MaxResults`
+- `Tab` and `Shift+Tab` cycle pages
+- the first run is gated by the user-profile prompt until a display name is saved
+- quote add/edit uses one shared editor with refine preview support
+- share/export and import are file-based
 
-Example generated match expression:
+See [UI_DESIGN.md](/home/gigo/workspace/iRecall/docs/UI_DESIGN.md) for the higher-level UI contract.
 
-```text
-"flash memory" OR "partition" OR "offset"
-```
+## Desktop Contract
 
-Important current limitation:
+The Wails desktop client reuses the same engine and data model.
 
-- `SearchConfig.MinRelevance` is collected and persisted but is not yet used in `SearchQuotes`.
+Current desktop responsibilities:
 
-## LLM Client
+- bootstrap frontend state
+- run recall and quote CRUD through backend methods
+- support import/export through backend file helpers
+- expose settings, model fetch, and user-profile operations
 
-`core/llm/client.go` is a minimal OpenAI-compatible HTTP client.
+See:
 
-### Supported Calls
+- [WAILS_DESKTOP.md](/home/gigo/workspace/iRecall/docs/WAILS_DESKTOP.md)
+- [desktop/README.md](/home/gigo/workspace/iRecall/desktop/README.md)
 
-- `POST /v1/chat/completions`
-- `GET /v1/models`
+## External Tools
 
-### Chat Behavior
+### Redmine exporter
 
-`Chat(...)`:
+`tools/redmine_export` exports Redmine issue descriptions and journal notes into the iRecall share-envelope format.
 
-- sends `model`, `messages`, and `stream`
-- optionally includes `temperature` and `max_tokens`
-- adds a bearer token only when `APIKey` is non-empty
-- uses a 30-second timeout for non-streaming requests
-- disables client timeout for streaming requests
+Current characteristics:
 
-### Streaming
+- connects through the `psql` CLI
+- emits schema version `2` payloads
+- maps Redmine authors into iRecall author/source fields
+- populates source provenance as `redmine` records
 
-When `tokenCh` is non-nil:
-
-- the request is sent with `stream: true`
-- a goroutine parses SSE lines from the response body
-- `data: [DONE]` ends the stream
-- each `choices[0].delta.content` fragment is emitted as one token
-- the token channel is closed when parsing ends
-
-### Model Fetching
-
-`FetchModels`:
-
-- wraps the request in a 10-second context timeout
-- decodes `data[].id`
-- sorts the model IDs lexicographically before returning them
-
-## TUI Structure
-
-### Root App
-
-`tui/app.go` owns:
-
-- active page state
-- overlay state
-- the `Recall`, `Quotes`, and `Settings` pages
-- the `Add Quote` modal
-- global window sizing and page routing
-
-Page cycle:
-
-```text
-Recall -> Quotes -> Settings -> Recall
-```
-
-Overlay behavior:
-
-- the add-quote modal blocks page routing while open
-- `Ctrl+C` still exits globally
-
-### Recall Page
-
-`tui/pages/recall.go` contains:
-
-- single-line `textinput` for the question
-- response `viewport`
-- reference quotes `viewport`
-- spinner-driven busy state
-- keyword display
-- recursive message pattern for streaming tokens
-
-Recall-specific messages:
-
-- `TokenMsg`
-- `RecallDoneMsg`
-- `QuotesReadyMsg`
-- `KeywordsReadyMsg`
-- `OpenAddQuoteMsg`
-- internal `quotesAndStreamMsg`
-- internal `tokenWithChannel`
-
-### Quotes Page
-
-`tui/pages/quotes.go` provides:
-
-- a scrollable viewport of all saved quotes
-- rendered tags per quote
-- reload support with `r`
-- helpful empty-state messaging
-
-### Settings Page
-
-`tui/pages/settings.go` manages:
-
-- host
-- port
-- HTTPS toggle
-- API key
-- fetch-models action
-- selected model
-- max results
-- min relevance
-
-The page validates:
-
-- port: `1..65535`
-- max results: `1..20`
-- min relevance: decimal number between `0.0` and `1.0`
-
-Model selection behavior:
-
-- before fetch, the page shows the initial saved model string
-- after fetch, models are cycled with left and right arrows
-
-### Add Quote Modal
-
-`tui/pages/addquote.go` provides:
-
-- multi-line `textarea`
-- spinner while saving
-- transient status messaging
-- auto-close after a successful save
-
-## Styling
-
-`tui/styles/theme.go` defines the current visual system:
-
-- violet primary and accent colors
-- rounded panel borders
-- double-border modal
-- shared help, status, button, label, and quote styles
-
-## Build and Tooling
-
-The repository currently includes these `Makefile` targets:
-
-- `build`
-- `run`
-- `test`
-- `lint`
-- `tidy`
-- `install`
-- `clean`
-- `build-linux-amd64`
-- `build-linux-arm64`
-- `build-darwin-amd64`
-- `build-darwin-arm64`
-- `build-windows-amd64`
-- `build-all`
-
-The build output defaults to `bin/irecall`.
-
-## Current Gaps
-
-The following are visible in the codebase today:
-
-- no automated tests are checked in
-- no web or native UI exists yet
-- `MinRelevance` is not enforced in search
-- quotes can be deleted through the engine but there is no TUI delete flow
-- the config directory is reserved but unused
+See [tools/redmine_export/README.md](/home/gigo/workspace/iRecall/tools/redmine_export/README.md).

@@ -44,3 +44,10 @@ To build the desktop client directly from the repo:
 3. build the desktop target from the repo root with `go build -tags wails ./desktop/...`
 
 You can also use the Wails CLI once it is installed in your environment.
+
+## Current implementation notes
+
+- the desktop client uses the same SQLite schema and engine behavior as the TUI
+- import/export is still file-based and uses the same share envelope as the terminal client
+- the frontend receives bootstrap metadata including product name, greeting, storage paths, and doc references
+- settings include provider configuration, theme selection, `MaxResults`, and normalized `MinRelevance`

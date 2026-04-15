@@ -2,15 +2,15 @@
 
 ## Purpose
 
-This document defines how the desktop implementation should map to the shared product contract in [UI_DESIGN.md](/home/gigo/workspace/iRecall/docs/UI_DESIGN.md).
+This document defines how the current desktop implementation maps to the shared product contract in [UI_DESIGN.md](/home/gigo/workspace/iRecall/docs/UI_DESIGN.md).
 
 `UI_DESIGN.md` is the source of truth for product behavior.
 
-This file is the platform-specific mapping for:
+This file focuses on:
 
-1. Wails application structure
-2. desktop-native affordances
-3. boundaries between Go backend and frontend shell
+1. the current Wails application structure
+2. boundaries between the Go backend and frontend shell
+3. platform-specific behavior such as file dialogs and bootstrap state
 
 ## Directory Structure
 
@@ -58,12 +58,14 @@ It owns:
 
 `desktop/backend` is the desktop-facing application service.
 
-It should:
+It currently:
 
 1. open the engine
 2. load bootstrap state
 3. expose frontend-friendly methods
 4. translate file-based import/export to UI-level commands
+5. save and load the local profile
+6. run the full recall workflow and return the completed result
 
 It should not:
 
@@ -187,14 +189,25 @@ Keep:
 
 ## Backend API Shape
 
-The current desktop backend already exposes a useful shape:
+The current desktop backend exposes task-level methods rather than raw storage APIs.
 
-1. bootstrap state
-2. quote CRUD
-3. import/export wrappers
-4. profile save/load
-5. settings save/load
-6. recall execution
+The implemented surface includes:
+
+1. `BootstrapState()`
+2. `ListQuotes()`
+3. `AddQuote(content)`
+4. `RefineQuoteDraft(content)`
+5. `UpdateQuote(id, content)`
+6. `DeleteQuotes(ids)`
+7. `PreviewQuoteExport(ids)`
+8. `ExportQuotesToFile(ids, path)`
+9. `ImportQuotesFromFile(path)`
+10. `GetSettings()`
+11. `SaveSettings(settings)`
+12. `FetchModels(settings)`
+13. `GetUserProfile()`
+14. `SaveUserProfile(name)`
+15. `RunRecall(question)`
 
 When extending it, prefer task-level methods over low-level transport methods.
 

@@ -1,100 +1,34 @@
 # iRecall
 
-iRecall is a terminal-first personal knowledge recall tool written in Go. It stores your notes in SQLite, asks an OpenAI-compatible model to extract tags and search keywords, and then answers questions strictly from the notes it retrieved.
+iRecall is a local-first quote and note recall tool written in Go. It stores notes in SQLite, uses an OpenAI-compatible model to extract tags and recall keywords, and generates answers grounded only in the quotes it retrieves.
 
-## Current Capabilities
+The project currently ships with:
 
-- Add free-form notes through a modal composer in the TUI
+- a Bubble Tea terminal client
+- a Wails-based desktop client
+- a shared Go core for persistence, retrieval, import/export, and provider integration
+
+## Features
+
+- Create and edit free-form quotes and notes
 - Auto-tag notes with an OpenAI-compatible chat-completions endpoint
-- Search notes with SQLite FTS5 and BM25 ranking
-- Generate grounded answers with streamed LLM output
-- Browse all stored notes on a dedicated Quotes page
-- Configure provider connection details and search settings from the Settings page
-- Persist notes and settings locally with XDG-style data/state directories
-- Include a Wails-oriented desktop scaffold that reuses the same Go core and UI contract
+- Search the local quote corpus with SQLite FTS5
+- Filter weaker matches with a configurable relevance threshold
+- Generate grounded answers from retrieved quotes
+- Export and import quotes through a versioned JSON share format
+- Preserve author and source provenance on imported content
+- Configure provider settings, search settings, and UI theme
+- Run isolated local instances with a custom data root
 
-## Interface
+## Getting Started
 
-The current TUI has three pages plus a modal overlay:
+### Requirements
 
-- `Recall`: ask questions, see extracted keywords, streamed answers, and matched reference notes
-- `Quotes`: browse every stored quote and its tags
-- `Settings`: configure host, port, HTTPS, API key, model, and search limits
-- `Add Quote` modal: open from the Recall page with `ctrl+n`
+- Go
+- a compatible OpenAI-style API endpoint for chat completions
+- optional: Node.js and npm for the desktop frontend build
 
-Global navigation:
-
-| Key | Action |
-| --- | --- |
-| `Tab` | Cycle `Recall -> Quotes -> Settings -> Recall` |
-| `Shift+Tab` | Cycle `Recall <- Quotes <- Settings <- Recall` |
-| `ctrl+c` | Quit |
-
-Recall page:
-
-| Key | Action |
-| --- | --- |
-| `enter` | Run recall workflow for the current question |
-| `ctrl+n` | Open the Add Quote modal |
-| `ctrl+j` | Jump focus between the input and the Reference Quotes panel |
-
-When the Reference Quotes panel is focused:
-
-| Key | Action |
-| --- | --- |
-| `up` / `down` | Move between retrieved quotes |
-| `x` | Select or unselect the current quote |
-| `e` | Edit the current quote |
-| `d` | Delete the current selection |
-| `s` | Export the current or selected quotes in the Share Quotes modal |
-
-Quotes page:
-
-| Key | Action |
-| --- | --- |
-| `ctrl+n` | Open the Add Quote modal |
-| `i` | Open the Import Quotes modal |
-| `r` | Reload stored quotes |
-| `up` / `down` | Scroll |
-| `x` | Select or unselect the current quote |
-| `e` | Edit the current quote |
-| `d` | Delete the current selection |
-| `s` | Export the current or selected quotes in the Share Quotes modal |
-| `pgup` / `pgdn` | Page scroll |
-
-Settings page:
-
-| Key | Action |
-| --- | --- |
-| `up` / `down` | Move focus between fields |
-| `space` | Toggle HTTPS when focused |
-| `enter` | Fetch models when the button is focused |
-| `left` / `right` | Cycle fetched models when the model field is focused |
-| `ctrl+s` | Save settings |
-
-Add Quote modal:
-
-| Key | Action |
-| --- | --- |
-| `ctrl+r` | Ask the LLM to refine the current draft, then preview the suggestion |
-| `ctrl+s` | Save the note |
-| `esc` | Close the modal if no save is in progress |
-
-Share Quotes modal:
-
-| Key | Action |
-| --- | --- |
-| `ctrl+s` / `enter` | Save the exported JSON payload to the file path in the modal |
-| `esc` | Close the modal |
-
-Import Quotes modal:
-
-| Key | Action |
-| --- | --- |
-| `ctrl+s` / `enter` | Import the JSON payload from the file path in the modal |
-| `esc` | Close the modal |
-
-## Quick Start
+### Build the terminal client
 
 ```bash
 make build
@@ -106,20 +40,16 @@ Useful flags:
 ```bash
 ./bin/irecall --version
 ./bin/irecall --debug
+./bin/irecall -data-path /tmp/irecall-dev
 ```
 
-On first launch:
+### First run
 
-1. Open `Settings` with `tab`.
-2. Enter the provider host, port, HTTPS preference, API key if needed, and a model name.
-3. Optionally use `Fetch Models` to populate the model selector from `/v1/models`.
-4. Save with `ctrl+s`.
-
-After that:
-
-1. Go back to `Recall`.
-2. Press `ctrl+n` to add notes.
-3. Ask questions with `enter`.
+1. Save your display name in the startup prompt.
+2. Open `Settings`.
+3. Configure the provider host, port, HTTPS setting, API key if required, and model.
+4. Optionally fetch available models from `/v1/models`.
+5. Save the settings and start adding quotes.
 
 ## Provider Compatibility
 
@@ -134,47 +64,73 @@ Typical setups:
 | --- | --- | --- | --- | --- |
 | Ollama | `localhost` | `11434` | off | not required |
 | LM Studio | `localhost` | `1234` | off | not required |
-| OpenAI-compatible hosted endpoint | provider host | provider port | usually on | provider-specific |
+| Hosted OpenAI-compatible endpoint | provider host | provider port | usually on | provider-specific |
 
-## Data and Logs
+## Usage
 
-iRecall follows XDG-style directories and stores everything locally:
+The terminal client currently exposes three primary surfaces:
+
+- `Recall`: ask questions and review the retrieved quotes used to answer them
+- `Quotes`: browse, edit, delete, import, and export stored quotes
+- `Settings`: configure provider, retrieval, and theme options
+
+Notable workflows:
+
+- add quotes from the TUI and refine drafts before saving
+- export selected quotes to a JSON payload
+- import shared quotes back into another instance
+- tune retrieval with `MaxResults` and `MinRelevance`
+
+`MinRelevance` uses a normalized `0.0..1.0` scale:
+
+- `0.0` disables filtering
+- `0.3` to `0.7` is a good practical range
+- `1.0` is very strict
+
+## Data Storage
+
+iRecall follows XDG-style directory conventions.
+
+Default locations:
 
 | Item | Default Path |
 | --- | --- |
 | SQLite database | `~/.local/share/irecall/irecall.db` |
 | Log file | `~/.local/state/irecall/irecall.log` |
-| Reserved config directory | `~/.config/irecall/` |
+| Config directory | `~/.config/irecall/` |
 
-Notes:
+To run an isolated instance:
 
-- Settings are currently stored in the SQLite `settings` table, not in a JSON config file.
-- The config directory is created up front but is not yet used for persisted configuration.
-- Use `irecall -data-path /path/to/instance` to run an isolated local instance. That root will contain `data/irecall.db`, `config/`, and `state/irecall.log`.
+```bash
+./bin/irecall -data-path /path/to/instance
+```
+
+That root will contain `data/`, `config/`, and `state/`.
 
 ## Project Layout
 
 ```text
 iRecall/
-├── cmd/irecall/      # CLI entry point and TUI startup
-├── config/           # XDG directory helpers
-├── core/             # Engine, data models, DB layer, LLM client
+├── cmd/irecall/      # terminal entry point
+├── config/           # XDG path helpers
+├── core/             # engine, models, DB layer, LLM client
 │   ├── db/
 │   └── llm/
-├── desktop/          # Wails-oriented desktop scaffold
+├── desktop/          # Wails desktop client
 │   ├── backend/
 │   └── frontend/
-├── docs/             # Roadmap, detailed plans, and design references
-│   ├── PLAN.md
-│   └── plans/
+├── docs/             # roadmap, specs, design docs, plans
+├── tools/            # auxiliary tools such as Redmine export
 ├── tui/              # Bubble Tea application and pages
 │   ├── pages/
 │   └── styles/
-├── README.md
-└── Makefile
+├── Makefile
+└── README.md
 ```
 
 ## Development
+
+Common targets:
 
 ```bash
 make build
@@ -184,12 +140,25 @@ make lint
 make build-all
 ```
 
-Current implementation notes:
+Desktop build:
 
-- Search uses `MaxResults` today.
-- `MinRelevance` filters search results by normalized keyword coverage on a `0.0..1.0` scale.
-- Start with `0.3` to `0.7` for cleaner matches. Use `0.0` to disable filtering.
-- `docs/PLAN.md` is the project roadmap and index for detailed plans in `docs/plans/`.
-- `docs/schema.md` describes the quote, share, and source provenance field semantics.
-- `docs/UI_DESIGN.md` is the shared UI contract for future clients.
-- `desktop/` contains the current Wails-oriented desktop scaffold and backend service layer.
+```bash
+make build-desktop
+```
+
+Desktop frontend dependencies:
+
+```bash
+make desktop-frontend-install
+make desktop-frontend-build
+```
+
+## Documentation
+
+- [docs/PLAN.md](/home/gigo/workspace/iRecall/docs/PLAN.md): roadmap and planning index
+- [docs/SPEC.md](/home/gigo/workspace/iRecall/docs/SPEC.md): technical specification
+- [docs/schema.md](/home/gigo/workspace/iRecall/docs/schema.md): quote, share, and provenance schema guide
+- [docs/UI_DESIGN.md](/home/gigo/workspace/iRecall/docs/UI_DESIGN.md): shared UI contract
+- [docs/WAILS_DESKTOP.md](/home/gigo/workspace/iRecall/docs/WAILS_DESKTOP.md): desktop mapping
+- [docs/QUOTES_SHARING_DESIGN.md](/home/gigo/workspace/iRecall/docs/QUOTES_SHARING_DESIGN.md): sharing model
+- [tools/redmine_export/README.md](/home/gigo/workspace/iRecall/tools/redmine_export/README.md): Redmine export tool usage

@@ -18,9 +18,10 @@ This plan captures the work that has already established the current iRecall bas
 - SQLite store
 - migration runner
 - schema version tracking
-- `quotes`, `tags`, `quote_tags`, `quotes_fts`, and `settings` tables
+- `quotes`, `tags`, `quote_tags`, `quotes_fts`, `settings`, `user_profile`, and migration tracking tables
 - FTS triggers for quote insert, update, and delete
 - explicit FTS refresh with tag text after tag association writes
+- quote identity backfill and generalized source provenance columns
 
 ### LLM integration
 
@@ -33,9 +34,10 @@ This plan captures the work that has already established the current iRecall bas
 ### Product surfaces
 
 - Bubble Tea TUI with `Recall`, `Quotes`, and `Settings`
+- startup user-profile gating
 - add/edit quote modal flow
 - quote sharing export/import flow
-- Wails-oriented desktop scaffold that reuses the same Go core
+- Wails desktop client that reuses the same Go core
 
 ## Current User Flow
 

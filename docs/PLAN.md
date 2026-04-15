@@ -45,16 +45,16 @@ The next layer of work is improving retrieval quality, coverage, validation, and
 
 ### External source provenance and Redmine import
 
-Status: planned
+Status: in progress
 
-Before broader import, sync, or LAN discovery features land, the quote model needs a first-class source identity design. The Redmine importer is the first concrete feature depending on that model. The detailed plan lives in [redmine-import-and-source-provenance.md](./plans/redmine-import-and-source-provenance.md).
+The quote model now has first-class source identity fields and a Redmine export tool exists under `tools/redmine_export`. The remaining work is hardening the workflow, validating it against live data, and deciding how far import UX should go beyond the current share-envelope path. The detailed plan lives in [redmine-import-and-source-provenance.md](./plans/redmine-import-and-source-provenance.md).
 
 ## Near-Term Priorities
 
 1. Strengthen retrieval and search correctness.
 2. Improve automated coverage around persistence, imports, and recall flows.
-3. Introduce a generalized source provenance model.
-4. Build the Redmine export/import path on top of that source model.
+3. Harden the generalized source provenance model as more import paths land.
+4. Mature the Redmine export/import workflow on top of that source model.
 
 ## Medium-Term Priorities
 

@@ -86,25 +86,34 @@ Future clients should keep this density and clarity balance.
 
 The current visual system is defined in [tui/styles/theme.go](/home/gigo/workspace/iRecall/tui/styles/theme.go).
 
-### Palette
+### Themes and palette
 
-Current colors:
+The current UI supports multiple named themes in [tui/styles/theme.go](/home/gigo/workspace/iRecall/tui/styles/theme.go):
 
-1. primary: violet `#7C3AED`
-2. accent: light violet `#A78BFA`
-3. muted text: gray `#6B7280`
-4. success: green `#10B981`
-5. error: red `#EF4444`
-6. warning: amber `#F59E0B`
-7. foreground: near white `#F9FAFB`
-8. border: dark gray `#374151`
-9. selected/active background: dark slate `#1F2937`
+1. `violet`
+2. `forest`
+3. `sunset`
+4. `ocean`
+5. `paper`
+
+Each theme defines the same semantic color roles:
+
+1. primary
+2. accent
+3. muted text
+4. success
+5. error
+6. warning
+7. foreground
+8. border
+9. selected background
 
 Cross-platform rule:
 
-1. preserve the semantic roles above even if exact colors change
+1. preserve the semantic roles above even if exact colors differ by client
 2. active state must be clearly distinct from inactive state
 3. success and error colors must remain reserved for outcome feedback
+4. clients should expose theme selection rather than hard-coding one palette
 
 ### Typography and emphasis
 
@@ -429,6 +438,8 @@ Rules:
 1. these paths are informational, not editable in the current design
 2. they should reflect the active runtime root, including `-data-path` overrides
 3. the desktop and TUI settings screens should expose the same storage metadata
+4. `Min relevance` should explain the user-facing scale:
+   `0.0` keeps broad matches, `0.3-0.7` is the recommended range, and `1.0` is very strict
 
 ### Interaction model
 

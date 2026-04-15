@@ -12,6 +12,22 @@ The script should:
 - preserve as much provenance as possible from the original Redmine data
 - include the Redmine user information relevant to each exported quote
 
+## Status
+
+This plan is partially implemented.
+
+Implemented:
+
+- generalized source provenance fields in the quote model and share envelope
+- migration support and provenance backfill
+- Redmine export tool under `tools/redmine_export`
+
+Still open:
+
+- broader validation against real Redmine data
+- final UX/documentation decisions for routine import flows
+- any future direct integration beyond the current file-based handoff
+
 ## Current Findings
 
 ### Existing iRecall import format
@@ -25,9 +41,9 @@ The short version is:
 - existing fields already cover quote identity, authorship, person-level source, content, tags, and import versioning
 - they do not fully describe system-level origin such as Redmine issue IDs, journal IDs, LAN node identities, or repository identities
 
-### Important schema gap
+### Historical schema gap
 
-The current model does not yet have a complete provenance model for external or network-discovered sources such as:
+Before the current provenance work landed, the model did not have a complete system-level provenance model for external or network-discovered sources such as:
 
 - source backend: `redmine`, `lan`, `node`, `file_import`
 - source scope: a remote system, host, node, or repository
@@ -35,11 +51,11 @@ The current model does not yet have a complete provenance model for external or 
 - source object ID: Redmine issue ID / journal ID / remote quote ID
 - source URL or canonical reference
 
-That means the current person-level source fields are not sufficient if imports need durable source metadata or future filtering and discovery features.
+That is why the current provenance fields were added. The person-level source fields alone are still not sufficient for durable external-source identity or future filtering/discovery features.
 
-## Recommendation
+## Current recommendation
 
-Implement a flexible, first-class source metadata model in iRecall before building the Redmine importer.
+Keep the flexible source metadata model as the foundation for any further import work, and build the remaining Redmine workflow on top of it.
 
 Minimum recommended fields on quotes:
 

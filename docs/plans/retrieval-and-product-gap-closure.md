@@ -6,17 +6,15 @@ This plan tracks near-term improvements to the current product baseline. It is t
 
 ## Active Gaps
 
-- `SearchConfig.MinRelevance` is collected and saved but not applied in search queries
 - test coverage is present in parts of the repo, but the project still needs stronger automated coverage across persistence, search, and UI flows
 - the config directory is created but not meaningfully used for stored configuration
 - CI is not yet established in the repository
-- the desktop client exists as a scaffold, but the project still relies mainly on the TUI surface
+- the desktop client exists, but the project still relies mainly on the TUI surface for day-to-day maturity
 
 ## Near-Term Work
 
 ### Retrieval quality
 
-- apply `MinRelevance` to the FTS query so saved search settings affect retrieval
 - add better retrieval controls such as AND/OR strategies, tag filters, or score thresholds
 - verify that search ranking and filtering remain stable as provenance and import features expand
 
