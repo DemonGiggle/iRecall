@@ -111,6 +111,31 @@ func TestRecallPageResponseShowsQuestionContext(t *testing.T) {
 	}
 }
 
+func TestRecallPageSaveAsQuoteStatus(t *testing.T) {
+	t.Parallel()
+
+	page := NewRecallPage(nil, 120, 40)
+
+	model, cmd := page.Update(RecallQuoteSavedMsg{Quote: &core.Quote{ID: 1}, Err: nil})
+	page = model
+	if cmd == nil {
+		t.Fatal("notice command = nil")
+	}
+	msg := cmd()
+	open, ok := msg.(OpenNoticeMsg)
+	if !ok {
+		t.Fatalf("notice msg type = %T, want OpenNoticeMsg", msg)
+	}
+	if open.Title != "Recall Saved as Quote" {
+		t.Fatalf("notice title = %q, want Recall Saved as Quote", open.Title)
+	}
+
+	view := page.View()
+	if !containsAllText(view, "Saved recall as quote.") {
+		t.Fatalf("recall view missing save status:\n%s", view)
+	}
+}
+
 func containsAllText(s string, parts ...string) bool {
 	for _, part := range parts {
 		if !strings.Contains(s, part) {

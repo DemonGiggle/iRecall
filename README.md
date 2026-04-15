@@ -15,6 +15,8 @@ The project currently ships with:
 - Search the local quote corpus with SQLite FTS5
 - Filter weaker matches with a configurable relevance threshold
 - Generate grounded answers from retrieved quotes
+- Save Recall question/response pairs as quotes with generated tags
+- Review Recall history and promote past sessions into quotes
 - Export and import quotes through a versioned JSON share format
 - Preserve author and source provenance on imported content
 - Configure provider settings, search settings, and UI theme
@@ -68,15 +70,18 @@ Typical setups:
 
 ## Usage
 
-The terminal client currently exposes three primary surfaces:
+The terminal client currently exposes four primary surfaces:
 
 - `Recall`: ask questions and review the retrieved quotes used to answer them
+- `History`: review saved recall sessions and reopen their reference quotes
 - `Quotes`: browse, edit, delete, import, and export stored quotes
 - `Settings`: configure provider, retrieval, and theme options
 
 Notable workflows:
 
 - add quotes from the TUI and refine drafts before saving
+- save the current Recall question/response as a quote
+- reopen a past History entry and save it as a quote later
 - export selected quotes to a JSON payload
 - import shared quotes back into another instance
 - tune retrieval with `MaxResults` and `MinRelevance`

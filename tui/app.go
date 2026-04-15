@@ -30,6 +30,7 @@ const (
 	overlayDeleteRecallHistory
 	overlayQuoteShare
 	overlayQuoteImport
+	overlayNotice
 )
 
 // App is the root Bubbletea model. It owns page routing and global key handling.
@@ -51,6 +52,7 @@ type App struct {
 	deleteHistory pages.DeleteRecallHistoryPage
 	quoteShare    pages.QuoteSharePage
 	quoteImport   pages.QuoteImportPage
+	notice        pages.NoticePage
 
 	width  int
 	height int
@@ -78,6 +80,7 @@ func NewApp(engine *core.Engine, settings *core.Settings, profile *core.UserProf
 		deleteHistory: pages.NewDeleteRecallHistoryPage(engine, width, height),
 		quoteShare:    pages.NewQuoteSharePage(engine, width, height),
 		quoteImport:   pages.NewQuoteImportPage(engine, width, height),
+		notice:        pages.NewNoticePage(width, height),
 		width:         width,
 		height:        height,
 	}
@@ -107,6 +110,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.deleteHistory.SetSize(msg.Width, msg.Height)
 		a.quoteShare.SetSize(msg.Width, msg.Height)
 		a.quoteImport.SetSize(msg.Width, msg.Height)
+		a.notice.SetSize(msg.Width, msg.Height)
 		return a, nil
 
 	case tea.KeyMsg:
@@ -184,6 +188,11 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.quoteImport.Reset()
 		return a, a.quoteImport.Init()
 
+	case pages.OpenNoticeMsg:
+		a.overlay = overlayNotice
+		a.notice.Reset(msg.Title, msg.Message)
+		return a, a.notice.Init()
+
 	case pages.CloseDeleteQuotesMsg:
 		a.overlay = overlayNone
 		if len(msg.DeletedIDs) > 0 {
@@ -211,6 +220,10 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmds = append(cmds, a.quotes.Reload())
 			return a, tea.Batch(cmds...)
 		}
+		return a, nil
+
+	case pages.CloseNoticeMsg:
+		a.overlay = overlayNone
 		return a, nil
 
 	case pages.QuotesLoadedMsg:
@@ -260,6 +273,12 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if a.overlay == overlayQuoteImport {
 		var cmd tea.Cmd
 		a.quoteImport, cmd = a.quoteImport.Update(msg)
+		cmds = append(cmds, cmd)
+		return a, tea.Batch(cmds...)
+	}
+	if a.overlay == overlayNotice {
+		var cmd tea.Cmd
+		a.notice, cmd = a.notice.Update(msg)
 		cmds = append(cmds, cmd)
 		return a, tea.Batch(cmds...)
 	}
@@ -347,6 +366,14 @@ func (a App) View() string {
 		return lipgloss.Place(a.width, a.height,
 			lipgloss.Center, lipgloss.Center,
 			a.quoteImport.View(),
+			lipgloss.WithWhitespaceChars(" "),
+			lipgloss.WithWhitespaceForeground(styles.ColorMuted),
+		)
+	}
+	if a.overlay == overlayNotice {
+		return lipgloss.Place(a.width, a.height,
+			lipgloss.Center, lipgloss.Center,
+			a.notice.View(),
 			lipgloss.WithWhitespaceChars(" "),
 			lipgloss.WithWhitespaceForeground(styles.ColorMuted),
 		)

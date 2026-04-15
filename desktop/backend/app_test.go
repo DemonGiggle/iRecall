@@ -158,3 +158,35 @@ func TestDesktopBackendRecallHistoryLifecycle(t *testing.T) {
 		t.Fatalf("history count after delete = %d, want 0", len(history))
 	}
 }
+
+func TestDesktopBackendSaveRecallAsQuote(t *testing.T) {
+	t.Parallel()
+
+	app, err := NewApp(filepath.Join(t.TempDir(), "desktop-recall-quote"))
+	if err != nil {
+		t.Fatalf("NewApp() error = %v", err)
+	}
+	t.Cleanup(func() { app.Shutdown(context.Background()) })
+
+	if _, err := app.SaveUserProfile("Alice"); err != nil {
+		t.Fatalf("SaveUserProfile() error = %v", err)
+	}
+
+	quote, err := app.SaveRecallAsQuote(
+		"How do I export quotes?",
+		"Use the share flow and select the quotes you want to export.",
+		[]string{"export", "sharing"},
+	)
+	if err != nil {
+		t.Fatalf("SaveRecallAsQuote() error = %v", err)
+	}
+	if quote.ID == 0 {
+		t.Fatalf("quote id = %d, want persisted quote", quote.ID)
+	}
+	if quote.Content == "" || quote.Content[:9] != "Question:" {
+		t.Fatalf("quote content = %q, want formatted recall quote", quote.Content)
+	}
+	if len(quote.Tags) == 0 {
+		t.Fatalf("quote tags = %#v, want saved tags", quote.Tags)
+	}
+}

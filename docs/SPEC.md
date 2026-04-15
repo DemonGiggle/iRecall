@@ -13,6 +13,7 @@ The shared core owns:
 - migration management
 - user profile and quote identity bootstrapping
 - quote import/export
+- recall history persistence
 - OpenAI-compatible provider access
 - keyword extraction, retrieval, and grounded response generation
 
@@ -63,9 +64,11 @@ It provides:
 - bootstrap state for the frontend shell
 - quote CRUD
 - quote import/export helpers
+- recall-history CRUD
 - user-profile save/load
 - settings save/load
 - recall execution
+- save-recall-as-quote actions
 
 ## Data Model
 
@@ -315,6 +318,34 @@ Retrieval behavior:
 - `MaxResults` controls final returned quote count
 - when `MinRelevance > 0`, the engine widens the candidate fetch, filters by normalized keyword coverage, then trims back to `MaxResults`
 
+After a recall completes, the engine can also persist the question/response pair as a normal quote:
+
+1. format the saved content as `Question: ...` plus `Response: ...`
+2. reuse the recall keywords when available
+3. merge those keywords with freshly extracted tags from the saved content
+4. persist the saved quote through the normal quote/tag/FTS path
+
+### Recall history flow
+
+The engine persists completed recall sessions as history entries containing:
+
+1. the original question
+2. the grounded response
+3. the exact reference quotes used for that response
+4. the history entry creation timestamp
+
+Clients can:
+
+- list history summaries
+- open one history entry in full detail
+- delete selected history entries
+- save a history entry as a quote, regenerating recall keywords when necessary
+
+Frontend behavior:
+
+- successful save-to-quote actions are confirmed with a notice modal
+- save failures remain inline on the active page
+
 ### Import / export behavior
 
 Export:
@@ -336,7 +367,7 @@ Import:
 
 The TUI shell owns:
 
-- page routing between `Recall`, `Quotes`, and `Settings`
+- page routing between `Recall`, `History`, `Quotes`, and `Settings`
 - blocking overlays:
   - user-profile prompt
   - quote editor
@@ -350,6 +381,7 @@ Important behaviors:
 - the first run is gated by the user-profile prompt until a display name is saved
 - quote add/edit uses one shared editor with refine preview support
 - share/export and import are file-based
+- Recall and History both support saving a question/response pair as a quote
 
 See [UI_DESIGN.md](/home/gigo/workspace/iRecall/docs/UI_DESIGN.md) for the higher-level UI contract.
 

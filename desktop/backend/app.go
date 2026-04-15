@@ -124,6 +124,10 @@ func (a *App) AddQuote(content string) (*core.Quote, error) {
 	return a.engine.AddQuote(a.context(), content)
 }
 
+func (a *App) SaveRecallAsQuote(question, response string, keywords []string) (*core.Quote, error) {
+	return a.engine.SaveRecallAsQuote(a.context(), question, response, keywords)
+}
+
 func (a *App) RefineQuoteDraft(content string) (string, error) {
 	content = strings.TrimSpace(content)
 	if content == "" {

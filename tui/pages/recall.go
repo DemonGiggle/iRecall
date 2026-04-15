@@ -29,6 +29,10 @@ type QuotesReadyMsg struct{ Quotes []core.Quote }
 type KeywordsReadyMsg struct{ Keywords []string }
 
 type RecallHistorySavedMsg struct{ Err error }
+type RecallQuoteSavedMsg struct {
+	Quote *core.Quote
+	Err   error
+}
 
 // --- RecallPage ---
 
@@ -42,6 +46,7 @@ type RecallPage struct {
 	spinner   spinner.Model
 	busy      bool
 	statusMsg string
+	statusErr bool
 	focus     recallFocus
 
 	quotes   []core.Quote
@@ -102,6 +107,13 @@ func (p RecallPage) Update(msg tea.Msg) (RecallPage, tea.Cmd) {
 		switch msg.String() {
 		case "ctrl+n":
 			return p, func() tea.Msg { return OpenQuoteEditorMsg{Mode: QuoteEditorModeAdd} }
+		case "ctrl+s":
+			if p.busy || strings.TrimSpace(p.question) == "" || strings.TrimSpace(p.respBuf) == "" {
+				break
+			}
+			p.statusMsg = ""
+			p.statusErr = false
+			return p, p.saveRecallAsQuote()
 
 		case "enter":
 			if p.focus != focusInput {
@@ -121,6 +133,7 @@ func (p RecallPage) Update(msg tea.Msg) (RecallPage, tea.Cmd) {
 			p.quoteFns.clear()
 			p.busy = true
 			p.statusMsg = ""
+			p.statusErr = false
 			return p, tea.Batch(p.spinner.Tick, p.runRecall(question))
 		case "up":
 			if p.focus != focusReferenceQuotes {
@@ -190,6 +203,7 @@ func (p RecallPage) Update(msg tea.Msg) (RecallPage, tea.Cmd) {
 		p.busy = false
 		if msg.Err != nil {
 			p.statusMsg = "Error: " + msg.Err.Error()
+			p.statusErr = true
 			break
 		}
 		return p, p.saveHistory()
@@ -197,6 +211,22 @@ func (p RecallPage) Update(msg tea.Msg) (RecallPage, tea.Cmd) {
 	case RecallHistorySavedMsg:
 		if msg.Err != nil {
 			p.statusMsg = "Error saving history: " + msg.Err.Error()
+			p.statusErr = true
+		}
+
+	case RecallQuoteSavedMsg:
+		if msg.Err != nil {
+			p.statusMsg = "Error saving recall quote: " + msg.Err.Error()
+			p.statusErr = true
+			break
+		}
+		p.statusMsg = "Saved recall as quote."
+		p.statusErr = false
+		return p, func() tea.Msg {
+			return OpenNoticeMsg{
+				Title:   "Recall Saved as Quote",
+				Message: "The current question and grounded response were saved as a quote with generated tags.",
+			}
 		}
 
 	case quotesAndStreamMsg:
@@ -237,7 +267,7 @@ func (p RecallPage) Update(msg tea.Msg) (RecallPage, tea.Cmd) {
 
 func (p RecallPage) View() string {
 	helpLine := styles.HelpBar.Render(
-		"enter: Ask   ctrl+n: Add Quote   ctrl+j: Jump focus   tab/shift+tab: Switch Page",
+		"enter: Ask   ctrl+n: Add Quote   ctrl+s: Save Q/A as Quote   ctrl+j: Jump focus   tab/shift+tab: Switch Page",
 	)
 	if p.busy {
 		helpLine = styles.HelpBar.Render(p.spinner.View() + " Thinking...")
@@ -277,7 +307,11 @@ func (p RecallPage) View() string {
 
 	var status string
 	if p.statusMsg != "" {
-		status = styles.StatusErr.Render(p.statusMsg)
+		if p.statusErr {
+			status = styles.StatusErr.Render(p.statusMsg)
+		} else {
+			status = styles.StatusOK.Render(p.statusMsg)
+		}
 	}
 
 	return lipgloss.JoinVertical(lipgloss.Left,
@@ -445,5 +479,16 @@ func (p *RecallPage) saveHistory() tea.Cmd {
 	return func() tea.Msg {
 		_, err := engine.SaveRecallHistory(context.Background(), question, response, quotes)
 		return RecallHistorySavedMsg{Err: err}
+	}
+}
+
+func (p *RecallPage) saveRecallAsQuote() tea.Cmd {
+	engine := p.engine
+	question := p.question
+	response := p.respBuf
+	keywords := append([]string(nil), p.keywords...)
+	return func() tea.Msg {
+		quote, err := engine.SaveRecallAsQuote(context.Background(), question, response, keywords)
+		return RecallQuoteSavedMsg{Quote: quote, Err: err}
 	}
 }
