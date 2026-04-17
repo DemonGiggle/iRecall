@@ -517,6 +517,12 @@ async function handleClick(event: MouseEvent): Promise<void> {
     case "quote-import":
       openImportOverlay();
       return;
+    case "quote-select-all":
+      selectAllQuotes(actionEl.dataset.context as QuoteContext);
+      return;
+    case "quote-deselect-all":
+      clearQuoteSelection(actionEl.dataset.context as QuoteContext);
+      return;
     case "quote-edit-current":
       openCurrentQuoteEditor(actionEl.dataset.context as QuoteContext);
       return;
@@ -1473,6 +1479,30 @@ function toggleSelection(context: QuoteContext, id: number, checked: boolean): v
   }
 }
 
+function selectAllQuotes(context: QuoteContext): void {
+  const quotes = context === "quotes" ? state.quotes : context === "recall" ? state.recallQuotes : (state.historyDetail?.Quotes ?? []);
+  const selected = new Set(quotes.map((quote) => quote.ID));
+  if (context === "quotes") {
+    state.quotesSelected = selected;
+  } else if (context === "recall") {
+    state.recallSelected = selected;
+  } else {
+    state.historyQuoteSelected = selected;
+  }
+  render();
+}
+
+function clearQuoteSelection(context: QuoteContext): void {
+  if (context === "quotes") {
+    state.quotesSelected = new Set<number>();
+  } else if (context === "recall") {
+    state.recallSelected = new Set<number>();
+  } else {
+    state.historyQuoteSelected = new Set<number>();
+  }
+  render();
+}
+
 function selectedOrCurrentQuotes(context: QuoteContext): Quote[] {
   const quotes = context === "quotes" ? state.quotes : context === "recall" ? state.recallQuotes : (state.historyDetail?.Quotes ?? []);
   const cursor = context === "quotes" ? state.quotesCursor : context === "recall" ? state.recallCursor : state.historyQuoteCursor;
@@ -1811,6 +1841,8 @@ function renderQuotesPage(): string {
             <button class="button button-primary" data-action="quote-add" type="button">Add Quote</button>
             <button class="button" data-action="quote-import" type="button">Import</button>
             <button class="button" data-action="quotes-refresh" type="button">Refresh</button>
+            <button class="button" data-action="quote-select-all" data-context="quotes" type="button" ${state.quotes.length === 0 ? "disabled" : ""}>Select All</button>
+            <button class="button" data-action="quote-deselect-all" data-context="quotes" type="button" ${state.quotesSelected.size === 0 ? "disabled" : ""}>Deselect All</button>
             <button class="button" data-action="quote-edit-current" data-context="quotes" type="button" ${selected.length === 0 ? "disabled" : ""}>Edit</button>
             <button class="button button-danger" data-action="quote-delete-current" data-context="quotes" type="button" ${selected.length === 0 ? "disabled" : ""}>Delete</button>
             <button class="button" data-action="quote-share-current" data-context="quotes" type="button" ${selected.length === 0 ? "disabled" : ""}>Share</button>

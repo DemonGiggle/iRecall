@@ -98,6 +98,14 @@ func (p QuotesPage) Update(msg tea.Msg) (QuotesPage, tea.Cmd) {
 			p.quoteFns.toggleCurrent(p.quotes)
 			p.viewport.SetContent(p.renderQuotes())
 			return p, nil
+		case "a":
+			p.quoteFns.selectAll(p.quotes)
+			p.viewport.SetContent(p.renderQuotes())
+			return p, nil
+		case "u":
+			p.quoteFns.clear()
+			p.viewport.SetContent(p.renderQuotes())
+			return p, nil
 		case "e":
 			if q := p.quoteFns.current(p.quotes); q != nil {
 				quote := *q
@@ -127,7 +135,7 @@ func (p QuotesPage) Update(msg tea.Msg) (QuotesPage, tea.Cmd) {
 }
 
 func (p QuotesPage) View() string {
-	help := "ctrl+n: Add Quote   i: Import   ↑/↓: Move   enter: Details   x: Select   e: Edit   d: Delete   s: Share   r: Refresh   pgup/pgdn: Page"
+	help := "ctrl+n: Add Quote   i: Import   ↑/↓: Move   enter: Details   x: Select   a: Select all   u: Deselect all   e: Edit   d: Delete   s: Share   r: Refresh   pgup/pgdn: Page"
 	if p.detail {
 		help = "enter/esc: Back to list   x: Select   e: Edit   d: Delete   s: Share"
 	}

@@ -80,6 +80,13 @@ func (s *quoteSelection) clear() {
 	s.selected = map[int64]bool{}
 }
 
+func (s *quoteSelection) selectAll(quotes []core.Quote) {
+	s.selected = make(map[int64]bool, len(quotes))
+	for _, q := range quotes {
+		s.selected[q.ID] = true
+	}
+}
+
 func (s *quoteSelection) selectedQuotes(quotes []core.Quote) []core.Quote {
 	out := make([]core.Quote, 0, len(s.selected))
 	for _, q := range quotes {
