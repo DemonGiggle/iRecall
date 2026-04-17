@@ -135,6 +135,12 @@ declare global {
       backend?: {
         App?: DesktopBackend;
       };
+      app?: {
+        App?: DesktopBackend;
+      };
+      main?: {
+        App?: DesktopBackend;
+      };
     };
   }
 }
@@ -329,7 +335,8 @@ export function renderApp(root: HTMLElement): void {
 
 async function initialize(): Promise<void> {
   try {
-    state.auth = await backend().AuthStatus();
+    const app = await waitForBackend();
+    state.auth = await app.AuthStatus();
     state.authChecked = true;
     if (state.auth.runtime === "web" && !state.auth.authenticated) {
       render();
@@ -345,6 +352,7 @@ async function initialize(): Promise<void> {
 }
 
 async function finishBootstrap(): Promise<void> {
+  await waitForBackend();
   const bootstrap = await backend().BootstrapState();
   state.bootstrap = bootstrap;
   state.bootstrapped = true;
@@ -2648,8 +2656,32 @@ function getErrorMessage(error: unknown): string {
   return String(error);
 }
 
+function resolveBackend(): DesktopBackend | null {
+  const namespaces = [window.go?.backend, window.go?.app, window.go?.main];
+  for (const namespace of namespaces) {
+    if (namespace?.App) {
+      return namespace.App;
+    }
+  }
+  return null;
+}
+
+async function waitForBackend(timeoutMs = 3000): Promise<DesktopBackend> {
+  const start = Date.now();
+  for (;;) {
+    const app = resolveBackend();
+    if (app) {
+      return app;
+    }
+    if (Date.now() - start >= timeoutMs) {
+      throw new Error("Wails backend bridge is unavailable.");
+    }
+    await new Promise((resolve) => window.setTimeout(resolve, 25));
+  }
+}
+
 function backend(): DesktopBackend {
-  const app = window.go?.backend?.App;
+  const app = resolveBackend();
   if (!app) {
     throw new Error("Wails backend bridge is unavailable.");
   }
