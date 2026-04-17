@@ -104,7 +104,6 @@ interface ImportResult {
 
 interface DesktopBackend {
   AuthStatus(): Promise<AuthStatus>;
-  SetupPassword(password: string, confirm: string): Promise<void>;
   Login(password: string): Promise<void>;
   Logout(): Promise<void>;
   ChangePassword(current: string, next: string, confirm: string): Promise<void>;
@@ -408,29 +407,6 @@ async function submitAuthLogin(): Promise<void> {
   }
 }
 
-async function submitAuthSetup(): Promise<void> {
-  if (!state.auth || state.authBusy) {
-    return;
-  }
-  state.authBusy = true;
-  state.authStatus = "";
-  state.authIsError = false;
-  render();
-  try {
-    await backend().SetupPassword(state.authPassword, state.authConfirmPassword);
-    state.authPassword = "";
-    state.authConfirmPassword = "";
-    state.auth = await backend().AuthStatus();
-    await finishBootstrap();
-  } catch (error) {
-    state.authStatus = getErrorMessage(error);
-    state.authIsError = true;
-    render();
-  } finally {
-    state.authBusy = false;
-  }
-}
-
 async function submitAuthLogout(): Promise<void> {
   await backend().Logout();
   state.auth = await backend().AuthStatus();
@@ -501,9 +477,6 @@ async function handleClick(event: MouseEvent): Promise<void> {
   switch (action) {
     case "auth-login":
       await submitAuthLogin();
-      return;
-    case "auth-setup":
-      await submitAuthSetup();
       return;
     case "auth-logout":
       await submitAuthLogout();
@@ -1704,10 +1677,10 @@ function renderShell(): string {
 
 function renderAuthShell(): string {
   const requiresSetup = !state.auth?.passwordConfigured;
-  const action = requiresSetup ? "auth-setup" : "auth-login";
-  const title = requiresSetup ? "Set Web Password" : "Unlock Web UI";
+  const action = "auth-login";
+  const title = requiresSetup ? "Password Required In Terminal" : "Unlock Web UI";
   const copy = requiresSetup
-    ? "This server needs a password before the web UI can be used. Enter it twice to confirm."
+    ? "The web password must be created in the terminal before the server starts listening. Restart the server from a terminal session to finish setup."
     : "Enter the web password to unlock the shared iRecall database.";
 
   return `
@@ -1719,22 +1692,12 @@ function renderAuthShell(): string {
         <form class="modal-form" data-form="${action}">
           <label class="field">
             <span>Password</span>
-            <input class="text-input" data-bind="auth-password" type="password" value="${escapeAttribute(state.authPassword)}" />
+            <input class="text-input" data-bind="auth-password" type="password" value="${escapeAttribute(state.authPassword)}" ${requiresSetup ? "disabled" : ""} />
           </label>
-          ${
-            requiresSetup
-              ? `
-                <label class="field">
-                  <span>Confirm Password</span>
-                  <input class="text-input" data-bind="auth-confirm-password" type="password" value="${escapeAttribute(state.authConfirmPassword)}" />
-                </label>
-              `
-              : ""
-          }
           ${state.authStatus ? `<div class="status ${state.authIsError ? "status-error" : "status-ok"}">${escapeHtml(state.authStatus)}</div>` : ""}
           <div class="modal-actions">
-            <button class="button button-primary" data-action="${action}" type="submit" ${state.authBusy ? "disabled" : ""}>
-              ${state.authBusy ? "Working…" : requiresSetup ? "Save Password" : "Login"}
+            <button class="button button-primary" data-action="${action}" type="submit" ${state.authBusy || requiresSetup ? "disabled" : ""}>
+              ${state.authBusy ? "Working…" : "Login"}
             </button>
           </div>
         </form>
@@ -2127,6 +2090,7 @@ function renderSettingsPage(): string {
               <span>Confirm Password</span>
               <input class="text-input" data-bind="settings-password-confirm" type="password" value="${escapeAttribute(state.passwordForm.confirm)}" />
             </label>
+            <div class="muted subtle">Use at least 12 characters and include at least 3 of: uppercase, lowercase, digit, symbol.</div>
             <div class="toolbar">
               <button class="button" data-action="settings-change-password" type="button" ${state.passwordForm.busy ? "disabled" : ""}>
                 ${state.passwordForm.busy ? "Updating…" : "Change Password"}

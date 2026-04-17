@@ -47,7 +47,6 @@ func NewServer(app *backend.App, assets embed.FS, currentPort int) (*Server, err
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/auth/status", s.handleAuthStatus)
-	mux.HandleFunc("/api/auth/setup", s.handleAuthSetup)
 	mux.HandleFunc("/api/auth/login", s.handleAuthLogin)
 	mux.HandleFunc("/api/auth/logout", s.handleAuthLogout)
 	mux.Handle("/api/auth/change-password", s.requireAuth(http.HandlerFunc(s.handleChangePassword)))
@@ -90,30 +89,6 @@ func (s *Server) handleAuthStatus(w http.ResponseWriter, r *http.Request) {
 		"authenticated":      s.isAuthenticated(r),
 		"currentPort":        s.currentPort,
 	})
-}
-
-func (s *Server) handleAuthSetup(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		writeMethodNotAllowed(w)
-		return
-	}
-	var req struct {
-		Password string `json:"password"`
-		Confirm  string `json:"confirm"`
-	}
-	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, err)
-		return
-	}
-	if err := s.app.SetupPassword(req.Password, req.Confirm); err != nil {
-		writeError(w, http.StatusBadRequest, err)
-		return
-	}
-	if err := s.startSession(w); err != nil {
-		writeError(w, http.StatusInternalServerError, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
 func (s *Server) handleAuthLogin(w http.ResponseWriter, r *http.Request) {

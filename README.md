@@ -70,7 +70,7 @@ Useful flags:
 2. Open `Settings`.
 3. Configure the provider host, port, HTTPS setting, API key if required, and model.
 4. Optionally fetch available models from `/v1/models`.
-5. If you are using the web UI, set the web password on first launch and use `Settings` to change it later.
+5. If you are using the web UI, the first launch prompts for the web password in the terminal before the server starts listening. Use `Settings` to change it later.
 6. Save the settings and start adding quotes.
 
 ## Provider Compatibility

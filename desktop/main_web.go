@@ -4,6 +4,7 @@ package main
 
 import (
 	"embed"
+	"errors"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -12,6 +13,7 @@ import (
 	"os"
 	"strings"
 
+	charmterm "github.com/charmbracelet/x/term"
 	"github.com/gigol/irecall/config"
 	"github.com/gigol/irecall/desktop/backend"
 	"github.com/gigol/irecall/desktop/web"
@@ -53,6 +55,10 @@ func main() {
 		os.Exit(1)
 	}
 	defer app.Shutdown(nil)
+	if err := ensureWebPasswordConfigured(app); err != nil {
+		fmt.Fprintf(os.Stderr, "irecall-web: %v\n", err)
+		os.Exit(1)
+	}
 
 	port := *portFlag
 	if port == 0 && app.GetSettings() != nil {
@@ -74,4 +80,46 @@ func main() {
 		fmt.Fprintf(os.Stderr, "irecall-web: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+func ensureWebPasswordConfigured(app *backend.App) error {
+	status, err := app.AuthStatus()
+	if err != nil {
+		return err
+	}
+	if status.PasswordConfigured {
+		return nil
+	}
+	if !charmterm.IsTerminal(os.Stdin.Fd()) {
+		return errors.New("web password is not configured; launch from an interactive terminal to complete first-time setup")
+	}
+
+	fmt.Println("Create the iRecall web password before the server starts listening.")
+	fmt.Println("Password policy: at least 12 characters and at least 3 of uppercase, lowercase, digit, symbol.")
+	for {
+		password, err := readPasswordPrompt("New password: ")
+		if err != nil {
+			return err
+		}
+		confirm, err := readPasswordPrompt("Confirm password: ")
+		if err != nil {
+			return err
+		}
+		if err := app.SetupPassword(password, confirm); err != nil {
+			fmt.Fprintf(os.Stderr, "Password setup failed: %v\n", err)
+			continue
+		}
+		fmt.Println("Web password configured.")
+		return nil
+	}
+}
+
+func readPasswordPrompt(prompt string) (string, error) {
+	fmt.Print(prompt)
+	password, err := charmterm.ReadPassword(os.Stdin.Fd())
+	fmt.Println()
+	if err != nil {
+		return "", err
+	}
+	return string(password), nil
 }

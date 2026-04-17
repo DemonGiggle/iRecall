@@ -18,16 +18,13 @@ const webBridgeJS = `
     return payload;
   }
 
-  const App = {
-    AuthStatus() {
-      return request("GET", "/api/auth/status");
-    },
-    SetupPassword(password, confirm) {
-      return request("POST", "/api/auth/setup", { password, confirm });
-    },
-    Login(password) {
-      return request("POST", "/api/auth/login", { password });
-    },
+	const App = {
+	    AuthStatus() {
+	      return request("GET", "/api/auth/status");
+	    },
+	    Login(password) {
+	      return request("POST", "/api/auth/login", { password });
+	    },
     Logout() {
       return request("POST", "/api/auth/logout");
     },

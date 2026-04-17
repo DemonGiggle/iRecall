@@ -4,12 +4,28 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
+	"unicode"
 
 	"golang.org/x/crypto/bcrypt"
 )
 
 const webPasswordHashSettingKey = "web.password_hash"
+
+const minWebPasswordLength = 12
+
+var commonWebPasswords = []string{
+	"12345678",
+	"123456789",
+	"1234567890",
+	"password",
+	"password1",
+	"qwerty123",
+	"letmein123",
+	"admin1234",
+	"changeme123",
+}
 
 func (e *Engine) HasWebPassword(ctx context.Context) (bool, error) {
 	_ = ctx
@@ -86,5 +102,43 @@ func validatePasswordChange(current, next, confirm string, requireCurrent bool) 
 	if next != confirm {
 		return errors.New("passwords do not match")
 	}
+	if len(next) < minWebPasswordLength {
+		return fmt.Errorf("password must be at least %d characters", minWebPasswordLength)
+	}
+	if isWeakWebPassword(next) {
+		return errors.New("password is too weak; use a longer password with a mix of upper, lower, digit, or symbol characters")
+	}
 	return nil
+}
+
+func isWeakWebPassword(password string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(password))
+	if slices.Contains(commonWebPasswords, normalized) {
+		return true
+	}
+	if len(normalized) > 0 && normalized == strings.Repeat(string(normalized[0]), len(normalized)) {
+		return true
+	}
+
+	var hasLower, hasUpper, hasDigit, hasSymbol bool
+	for _, r := range password {
+		switch {
+		case unicode.IsLower(r):
+			hasLower = true
+		case unicode.IsUpper(r):
+			hasUpper = true
+		case unicode.IsDigit(r):
+			hasDigit = true
+		default:
+			hasSymbol = true
+		}
+	}
+
+	var classes int
+	for _, present := range []bool{hasLower, hasUpper, hasDigit, hasSymbol} {
+		if present {
+			classes++
+		}
+	}
+	return classes < 3
 }
