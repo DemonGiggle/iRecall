@@ -5,6 +5,7 @@ iRecall is a local-first quote and note recall tool written in Go. It stores not
 The project currently ships with:
 
 - a Bubble Tea terminal client
+- an HTTP web UI server
 - a Wails-based desktop client
 - a shared Go core for persistence, retrieval, import/export, and provider integration
 
@@ -37,6 +38,24 @@ make build
 ./bin/irecall
 ```
 
+### Build the web UI server
+
+```bash
+make build-web
+./bin/irecall-web
+```
+
+Useful flags:
+
+```bash
+./bin/irecall-web --debug
+./bin/irecall-web -host 0.0.0.0
+./bin/irecall-web -port 9527
+./bin/irecall-web -data-path /tmp/irecall-web-dev
+```
+
+The persisted web-port default is `9527`. Port `95270` is not usable because TCP ports must be in the range `1..65535`.
+
 Useful flags:
 
 ```bash
@@ -51,7 +70,8 @@ Useful flags:
 2. Open `Settings`.
 3. Configure the provider host, port, HTTPS setting, API key if required, and model.
 4. Optionally fetch available models from `/v1/models`.
-5. Save the settings and start adding quotes.
+5. If you are using the web UI, set the web password on first launch and use `Settings` to change it later.
+6. Save the settings and start adding quotes.
 
 ## Provider Compatibility
 
@@ -149,6 +169,12 @@ Desktop build:
 
 ```bash
 make build-desktop
+```
+
+Web UI build:
+
+```bash
+make build-web
 ```
 
 Desktop frontend dependencies:

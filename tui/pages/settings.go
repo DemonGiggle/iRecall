@@ -47,6 +47,7 @@ const (
 // SettingsPage manages LLM provider and search configuration.
 type SettingsPage struct {
 	engine *core.Engine
+	web    core.WebConfig
 
 	inputs  [fieldCount]textinput.Model
 	httpsOn bool
@@ -104,6 +105,7 @@ func NewSettingsPage(engine *core.Engine, width, height int, s *core.Settings) S
 		inputs:       inputs,
 		httpsOn:      s.Provider.HTTPS,
 		initialModel: s.Provider.Model,
+		web:          s.Web,
 		themes:       styles.ThemeNames(),
 		themeIdx:     themeIndex(styles.ThemeNames(), s.Theme),
 		modelIdx:     -1,
@@ -391,6 +393,7 @@ func (p *SettingsPage) LoadFrom(s *core.Settings) {
 	p.inputs[fieldMinRelevance].SetValue(fmt.Sprintf("%.1f", s.Search.MinRelevance))
 	p.httpsOn = s.Provider.HTTPS
 	p.initialModel = s.Provider.Model
+	p.web = s.Web
 	p.themeIdx = themeIndex(p.themes, s.Theme)
 	styles.ApplyTheme(p.SelectedTheme())
 	p.syncModelSelection(s.Provider.Model)
@@ -444,6 +447,7 @@ func (p *SettingsPage) CurrentSettings() (*core.Settings, error) {
 			MinRelevance: minRel,
 		},
 		Theme: p.SelectedTheme(),
+		Web:   p.web,
 	}, nil
 }
 

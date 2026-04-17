@@ -514,22 +514,26 @@ func (e *Engine) TestProvider(ctx context.Context, cfg ProviderConfig) error {
 // LoadSettings reads settings from the DB, falling back to defaults.
 func (e *Engine) LoadSettings(ctx context.Context) (*Settings, error) {
 	slog.Debug("engine: loading settings")
+	defaults := DefaultSettings()
 	val, err := e.store.GetSetting("settings")
 	if err != nil {
 		slog.Warn("engine: load settings failed, using defaults", "error", err)
-		return DefaultSettings(), nil
+		return defaults, nil
 	}
 	if val == "" {
 		slog.Debug("engine: no saved settings, using defaults")
-		return DefaultSettings(), nil
+		return defaults, nil
 	}
 	var s Settings
 	if err := json.Unmarshal([]byte(val), &s); err != nil {
 		slog.Error("engine: unmarshal settings failed, using defaults", "error", err, "raw", val)
-		return DefaultSettings(), nil
+		return defaults, nil
 	}
 	if strings.TrimSpace(s.Theme) == "" {
-		s.Theme = DefaultSettings().Theme
+		s.Theme = defaults.Theme
+	}
+	if s.Web.Port < 1 || s.Web.Port > 65535 {
+		s.Web.Port = defaults.Web.Port
 	}
 	slog.Info("engine: settings loaded", "host", s.Provider.Host, "port", s.Provider.Port, "model", s.Provider.Model)
 	return &s, nil
@@ -537,6 +541,13 @@ func (e *Engine) LoadSettings(ctx context.Context) (*Settings, error) {
 
 // SaveSettings persists settings to the DB and updates the engine.
 func (e *Engine) SaveSettings(ctx context.Context, s *Settings) error {
+	defaults := DefaultSettings()
+	if strings.TrimSpace(s.Theme) == "" {
+		s.Theme = defaults.Theme
+	}
+	if s.Web.Port < 1 || s.Web.Port > 65535 {
+		return fmt.Errorf("web port must be a number between 1 and 65535")
+	}
 	slog.Info("engine: saving settings", "host", s.Provider.Host, "port", s.Provider.Port, "model", s.Provider.Model)
 	data, err := json.Marshal(s)
 	if err != nil {

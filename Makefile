@@ -1,18 +1,28 @@
 VERSION  := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 LDFLAGS  := -ldflags "-X main.version=$(VERSION) -s -w"
 BIN      := bin/irecall
+WEB_BIN  := bin/irecall-web
+WEB_WINDOWS_BIN := bin/irecall-web-windows-amd64.exe
 DESKTOP_BIN := bin/irecall-desktop
 DESKTOP_WINDOWS_BIN := bin/irecall-desktop-windows-amd64.exe
 DESKTOP_FRONTEND_DIR := desktop/frontend
 WAILS_BUILD_TAGS := wails,production
 
-.PHONY: build build-cli build-desktop build-desktop-windows build-local build-everything desktop-frontend-install desktop-frontend-build test lint install clean run tidy
+.PHONY: build build-cli build-web build-web-windows build-desktop build-desktop-windows build-local build-everything desktop-frontend-install desktop-frontend-build test lint install clean run tidy
 
 build: build-cli
 
 build-cli:
 	@mkdir -p bin
 	go build $(LDFLAGS) -o $(BIN) ./cmd/irecall
+
+build-web: desktop-frontend-build
+	@mkdir -p bin
+	go build $(LDFLAGS) -o $(WEB_BIN) ./desktop
+
+build-web-windows: desktop-frontend-build
+	@mkdir -p bin
+	GOOS=windows GOARCH=amd64 go build $(LDFLAGS) -o $(WEB_WINDOWS_BIN) ./desktop
 
 desktop-frontend-install:
 	cd $(DESKTOP_FRONTEND_DIR) && if [ -f package-lock.json ]; then rm -rf node_modules && npm ci; else npm install; fi
@@ -28,7 +38,7 @@ build-desktop-windows: desktop-frontend-build
 	@mkdir -p bin
 	GOOS=windows GOARCH=amd64 go build -tags "$(WAILS_BUILD_TAGS)" -o $(DESKTOP_WINDOWS_BIN) ./desktop
 
-build-local: build-cli build-desktop
+build-local: build-cli build-web build-desktop
 
 build-everything: build-local build-all
 

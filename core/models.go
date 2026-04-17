@@ -85,6 +85,11 @@ type Settings struct {
 	Provider ProviderConfig
 	Search   SearchConfig
 	Theme    string
+	Web      WebConfig
+}
+
+type WebConfig struct {
+	Port int
 }
 
 // SearchConfig controls how candidate quotes are retrieved.
@@ -106,5 +111,8 @@ func DefaultSettings() *Settings {
 			MinRelevance: 0.0,
 		},
 		Theme: "violet",
+		Web: WebConfig{
+			Port: 9527,
+		},
 	}
 }
