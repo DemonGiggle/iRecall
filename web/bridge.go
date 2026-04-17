@@ -1,4 +1,4 @@
-package web
+package main
 
 const webBridgeJS = `
 (function () {

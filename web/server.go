@@ -1,4 +1,4 @@
-package web
+package main
 
 import (
 	"crypto/rand"
@@ -16,14 +16,14 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gigol/irecall/app"
 	"github.com/gigol/irecall/core"
-	"github.com/gigol/irecall/desktop/backend"
 )
 
 const sessionCookieName = "irecall_session"
 
 type Server struct {
-	app         *backend.App
+	app         *app.App
 	currentPort int
 	assets      fs.FS
 
@@ -31,8 +31,8 @@ type Server struct {
 	sessions map[string]time.Time
 }
 
-func NewServer(app *backend.App, assets embed.FS, currentPort int) (*Server, error) {
-	sub, err := fs.Sub(assets, "frontend/dist")
+func NewServer(app *app.App, assets embed.FS, currentPort int) (*Server, error) {
+	sub, err := fs.Sub(assets, "dist")
 	if err != nil {
 		return nil, fmt.Errorf("open frontend assets: %w", err)
 	}

@@ -3,7 +3,6 @@
 package main
 
 import (
-	"embed"
 	"errors"
 	"flag"
 	"fmt"
@@ -14,13 +13,10 @@ import (
 	"strings"
 
 	charmterm "github.com/charmbracelet/x/term"
+	"github.com/gigol/irecall/app"
 	"github.com/gigol/irecall/config"
-	"github.com/gigol/irecall/desktop/backend"
-	"github.com/gigol/irecall/desktop/web"
+	frontendassets "github.com/gigol/irecall/frontend"
 )
-
-//go:embed all:frontend/dist
-var assets embed.FS
 
 func main() {
 	debugFlag := flag.Bool("debug", false, "enable debug logging")
@@ -49,26 +45,26 @@ func main() {
 	defer logFile.Close()
 	slog.SetDefault(slog.New(slog.NewJSONHandler(logFile, &slog.HandlerOptions{Level: logLevel})))
 
-	app, err := backend.NewApp(config.RootPath())
+	runtimeApp, err := app.NewApp(config.RootPath())
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "irecall-web: %v\n", err)
 		os.Exit(1)
 	}
-	defer app.Shutdown(nil)
-	if err := ensureWebPasswordConfigured(app); err != nil {
+	defer runtimeApp.Shutdown(nil)
+	if err := ensureWebPasswordConfigured(runtimeApp); err != nil {
 		fmt.Fprintf(os.Stderr, "irecall-web: %v\n", err)
 		os.Exit(1)
 	}
 
 	port := *portFlag
-	if port == 0 && app.GetSettings() != nil {
-		port = app.GetSettings().Web.Port
+	if port == 0 && runtimeApp.GetSettings() != nil {
+		port = runtimeApp.GetSettings().Web.Port
 	}
 	if port < 1 || port > 65535 {
 		port = 9527
 	}
 
-	server, err := web.NewServer(app, assets, port)
+	server, err := NewServer(runtimeApp, frontendassets.Assets, port)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "irecall-web: %v\n", err)
 		os.Exit(1)
@@ -82,7 +78,7 @@ func main() {
 	}
 }
 
-func ensureWebPasswordConfigured(app *backend.App) error {
+func ensureWebPasswordConfigured(app *app.App) error {
 	status, err := app.AuthStatus()
 	if err != nil {
 		return err

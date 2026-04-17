@@ -141,9 +141,10 @@ iRecall/
 ├── core/             # engine, models, DB layer, LLM client
 │   ├── db/
 │   └── llm/
-├── desktop/          # Wails desktop client
-│   ├── backend/
-│   └── frontend/
+├── app/              # Shared desktop/web application orchestration
+├── desktop/          # Wails desktop runtime
+├── frontend/         # Shared frontend assets and source
+├── web/              # HTTP web UI runtime
 ├── docs/             # roadmap, specs, design docs, plans
 ├── tools/            # auxiliary tools such as Redmine export
 ├── tui/              # Bubble Tea application and pages
@@ -177,11 +178,11 @@ Web UI build:
 make build-web
 ```
 
-Desktop frontend dependencies:
+Frontend dependencies:
 
 ```bash
-make desktop-frontend-install
-make desktop-frontend-build
+make frontend-install
+make frontend-build
 ```
 
 ## Documentation
