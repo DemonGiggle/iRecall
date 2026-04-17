@@ -189,6 +189,7 @@ make frontend-build
 
 - [docs/PLAN.md](/home/gigo/workspace/iRecall/docs/PLAN.md): roadmap and planning index
 - [docs/SPEC.md](/home/gigo/workspace/iRecall/docs/SPEC.md): technical specification
+- [docs/KEYWORD_MATCHING.md](/home/gigo/workspace/iRecall/docs/KEYWORD_MATCHING.md): how keyword extraction and quote matching work
 - [docs/schema.md](/home/gigo/workspace/iRecall/docs/schema.md): quote, share, and provenance schema guide
 - [docs/UI_DESIGN.md](/home/gigo/workspace/iRecall/docs/UI_DESIGN.md): shared UI contract
 - [docs/WAILS_DESKTOP.md](/home/gigo/workspace/iRecall/docs/WAILS_DESKTOP.md): desktop mapping

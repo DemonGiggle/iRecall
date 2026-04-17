@@ -320,6 +320,8 @@ Retrieval behavior:
 - `MaxResults` controls final returned quote count
 - when `MinRelevance > 0`, the engine widens the candidate fetch, filters by normalized keyword coverage, then trims back to `MaxResults`
 
+For the detailed implementation behavior, see [KEYWORD_MATCHING.md](/home/gigo/workspace/iRecall/docs/KEYWORD_MATCHING.md).
+
 After a recall completes, the engine can also persist the question/response pair as a normal quote:
 
 1. format the saved content as `Question: ...` plus `Response: ...`
