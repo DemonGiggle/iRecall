@@ -1,6 +1,6 @@
 //go:build wails
 
-package backend
+package app
 
 import (
 	"errors"

@@ -1,3 +1,5 @@
+import { applyTheme, themeNames } from "./theme";
+
 type PageName = "Recall" | "Quotes" | "History" | "Settings";
 type QuoteContext = "quotes" | "recall" | "history";
 
@@ -42,9 +44,15 @@ interface SearchConfig {
   MinRelevance: number;
 }
 
+interface WebConfig {
+  Port: number;
+}
+
 interface SettingsPayload {
   Provider: ProviderConfig;
   Search: SearchConfig;
+  Theme: string;
+  Web: WebConfig;
 }
 
 interface BootstrapState {
@@ -54,6 +62,8 @@ interface BootstrapState {
   settings: {
     Provider: ProviderConfig;
     Search: SearchConfig;
+    Theme: string;
+    Web: WebConfig;
   };
   paths: {
     rootDir: string;
@@ -93,6 +103,10 @@ interface ImportResult {
 }
 
 interface DesktopBackend {
+  AuthStatus(): Promise<AuthStatus>;
+  Login(password: string): Promise<void>;
+  Logout(): Promise<void>;
+  ChangePassword(current: string, next: string, confirm: string): Promise<void>;
   BootstrapState(): Promise<BootstrapState>;
   ListQuotes(): Promise<Quote[]>;
   AddQuote(content: string): Promise<Quote>;
@@ -101,6 +115,7 @@ interface DesktopBackend {
   UpdateQuote(id: number, content: string): Promise<Quote>;
   DeleteQuotes(ids: number[]): Promise<void>;
   PreviewQuoteExport(ids: number[]): Promise<string>;
+  ImportQuotesPayload(payload: string): Promise<ImportResult>;
   SelectQuoteExportFile(): Promise<string>;
   ExportQuotesToFile(ids: number[], path: string): Promise<void>;
   SelectQuoteImportFile(): Promise<string>;
@@ -124,6 +139,13 @@ declare global {
   }
 }
 
+interface AuthStatus {
+  runtime: "desktop" | "web";
+  passwordConfigured: boolean;
+  authenticated: boolean;
+  currentPort: number;
+}
+
 type OverlayState =
   | { type: "namePrompt"; name: string; busy: boolean; status: string; isError: boolean }
   | {
@@ -139,8 +161,26 @@ type OverlayState =
     }
   | { type: "deleteQuotes"; context: QuoteContext; ids: number[]; busy: boolean; status: string; isError: boolean }
   | { type: "deleteHistory"; ids: number[]; busy: boolean; status: string; isError: boolean }
-  | { type: "shareQuotes"; context: QuoteContext; ids: number[]; path: string; payload: string; busy: boolean; status: string; isError: boolean }
-  | { type: "importQuotes"; path: string; busy: boolean; status: string; isError: boolean; result: ImportResult | null }
+  | {
+      type: "shareQuotes";
+      context: QuoteContext;
+      ids: number[];
+      path: string;
+      payload: string;
+      busy: boolean;
+      status: string;
+      isError: boolean;
+    }
+  | {
+      type: "importQuotes";
+      path: string;
+      payload: string;
+      filename: string;
+      busy: boolean;
+      status: string;
+      isError: boolean;
+      result: ImportResult | null;
+    }
   | { type: "notice"; title: string; message: string };
 
 interface SettingsFormState {
@@ -152,12 +192,30 @@ interface SettingsFormState {
   model: string;
   maxResults: string;
   minRelevance: string;
+  theme: string;
+  webPort: string;
   models: string[];
+}
+
+interface PasswordFormState {
+  current: string;
+  next: string;
+  confirm: string;
+  busy: boolean;
+  status: string;
+  isError: boolean;
 }
 
 interface AppState {
   bootstrapped: boolean;
   fatalError: string;
+  authChecked: boolean;
+  auth: AuthStatus | null;
+  authBusy: boolean;
+  authPassword: string;
+  authConfirmPassword: string;
+  authStatus: string;
+  authIsError: boolean;
   page: PageName;
   bootstrap: BootstrapState | null;
   quotes: Quote[];
@@ -192,12 +250,20 @@ interface AppState {
   settingsBusy: boolean;
   settingsStatus: string;
   settingsIsError: boolean;
+  passwordForm: PasswordFormState;
   overlay: OverlayState | null;
 }
 
 const state: AppState = {
   bootstrapped: false,
   fatalError: "",
+  authChecked: false,
+  auth: null,
+  authBusy: false,
+  authPassword: "",
+  authConfirmPassword: "",
+  authStatus: "",
+  authIsError: false,
   page: "Recall",
   bootstrap: null,
   quotes: [],
@@ -232,6 +298,14 @@ const state: AppState = {
   settingsBusy: false,
   settingsStatus: "",
   settingsIsError: false,
+  passwordForm: {
+    current: "",
+    next: "",
+    confirm: "",
+    busy: false,
+    status: "",
+    isError: false,
+  },
   overlay: null,
 };
 
@@ -255,27 +329,39 @@ export function renderApp(root: HTMLElement): void {
 
 async function initialize(): Promise<void> {
   try {
-    const bootstrap = await backend().BootstrapState();
-    state.bootstrap = bootstrap;
-    state.bootstrapped = true;
-    state.page = "Recall";
-    state.settings = settingsFormFromBootstrap(bootstrap);
-    if (!bootstrap.profile?.DisplayName) {
-      state.overlay = {
-        type: "namePrompt",
-        name: "",
-        busy: false,
-        status: "",
-        isError: false,
-      };
+    state.auth = await backend().AuthStatus();
+    state.authChecked = true;
+    if (state.auth.runtime === "web" && !state.auth.authenticated) {
+      render();
+      return;
     }
-    render();
-    await loadQuotes();
+    await finishBootstrap();
   } catch (error) {
+    state.authChecked = true;
     state.bootstrapped = true;
     state.fatalError = getErrorMessage(error);
     render();
   }
+}
+
+async function finishBootstrap(): Promise<void> {
+  const bootstrap = await backend().BootstrapState();
+  state.bootstrap = bootstrap;
+  state.bootstrapped = true;
+  state.page = "Recall";
+  state.settings = settingsFormFromBootstrap(bootstrap);
+  applyTheme(state.settings.theme);
+  if (!bootstrap.profile?.DisplayName) {
+    state.overlay = {
+      type: "namePrompt",
+      name: "",
+      busy: false,
+      status: "",
+      isError: false,
+    };
+  }
+  render();
+  await loadQuotes();
 }
 
 function installHandlers(root: HTMLElement): void {
@@ -292,6 +378,90 @@ function installHandlers(root: HTMLElement): void {
   });
 }
 
+async function submitAuthLogin(): Promise<void> {
+  if (!state.auth || state.authBusy) {
+    return;
+  }
+  if (!state.authPassword.trim()) {
+    state.authStatus = "Password is required.";
+    state.authIsError = true;
+    render();
+    return;
+  }
+  state.authBusy = true;
+  state.authStatus = "";
+  state.authIsError = false;
+  render();
+  try {
+    await backend().Login(state.authPassword);
+    state.authPassword = "";
+    state.authConfirmPassword = "";
+    state.auth = await backend().AuthStatus();
+    await finishBootstrap();
+  } catch (error) {
+    state.authStatus = getErrorMessage(error);
+    state.authIsError = true;
+    render();
+  } finally {
+    state.authBusy = false;
+  }
+}
+
+async function submitAuthLogout(): Promise<void> {
+  await backend().Logout();
+  state.auth = await backend().AuthStatus();
+  state.bootstrapped = false;
+  state.bootstrap = null;
+  state.overlay = null;
+  state.quotes = [];
+  state.historyEntries = [];
+  state.historyDetail = null;
+  state.authPassword = "";
+  state.authConfirmPassword = "";
+  state.authStatus = "";
+  state.authIsError = false;
+  render();
+}
+
+async function submitPasswordChange(): Promise<void> {
+  if (state.passwordForm.busy) {
+    return;
+  }
+  state.passwordForm.busy = true;
+  state.passwordForm.status = "";
+  render();
+  try {
+    await backend().ChangePassword(state.passwordForm.current, state.passwordForm.next, state.passwordForm.confirm);
+    state.passwordForm = {
+      current: "",
+      next: "",
+      confirm: "",
+      busy: false,
+      status: "Password updated.",
+      isError: false,
+    };
+  } catch (error) {
+    state.passwordForm.busy = false;
+    state.passwordForm.status = getErrorMessage(error);
+    state.passwordForm.isError = true;
+  }
+  render();
+}
+
+async function loadImportFile(input: HTMLInputElement): Promise<void> {
+  const file = input.files?.[0];
+  if (!file || state.overlay?.type !== "importQuotes") {
+    return;
+  }
+  const payload = await file.text();
+  state.overlay.filename = file.name;
+  state.overlay.payload = payload;
+  state.overlay.path = file.name;
+  state.overlay.status = `Loaded ${file.name}`;
+  state.overlay.isError = false;
+  render();
+}
+
 async function handleClick(event: MouseEvent): Promise<void> {
   const target = event.target;
   if (!(target instanceof HTMLElement)) {
@@ -305,6 +475,12 @@ async function handleClick(event: MouseEvent): Promise<void> {
 
   const action = actionEl.dataset.action ?? "";
   switch (action) {
+    case "auth-login":
+      await submitAuthLogin();
+      return;
+    case "auth-logout":
+      await submitAuthLogout();
+      return;
     case "nav":
       await switchPage(actionEl.dataset.page as PageName);
       return;
@@ -404,6 +580,9 @@ async function handleClick(event: MouseEvent): Promise<void> {
     case "settings-save":
       await saveSettings();
       return;
+    case "settings-change-password":
+      await submitPasswordChange();
+      return;
     case "recall-run":
       await runRecall();
       return;
@@ -420,6 +599,12 @@ function handleInput(event: Event): void {
 
   const bind = target.dataset.bind ?? "";
   switch (bind) {
+    case "auth-password":
+      state.authPassword = target.value;
+      return;
+    case "auth-confirm-password":
+      state.authConfirmPassword = target.value;
+      return;
     case "recall-question":
       state.recallQuestion = target.value;
       return;
@@ -463,6 +648,22 @@ function handleInput(event: Event): void {
     case "settings-min-relevance":
       state.settings.minRelevance = target.value;
       return;
+    case "settings-theme":
+      state.settings.theme = target.value;
+      applyTheme(state.settings.theme);
+      return;
+    case "settings-web-port":
+      state.settings.webPort = target.value;
+      return;
+    case "settings-password-current":
+      state.passwordForm.current = target.value;
+      return;
+    case "settings-password-next":
+      state.passwordForm.next = target.value;
+      return;
+    case "settings-password-confirm":
+      state.passwordForm.confirm = target.value;
+      return;
     default:
       return;
   }
@@ -490,6 +691,11 @@ function handleChange(event: Event): void {
     case "settings-model":
       state.settings.model = target.value;
       return;
+    case "import-file":
+      if (target instanceof HTMLInputElement) {
+        void loadImportFile(target);
+      }
+      return;
     default:
       return;
   }
@@ -502,6 +708,12 @@ async function handleSubmit(event: Event): Promise<void> {
   }
   event.preventDefault();
   switch (target.dataset.form) {
+    case "auth-login":
+      await submitAuthLogin();
+      return;
+    case "auth-setup":
+      await submitAuthSetup();
+      return;
     case "recall":
       await runRecall();
       return;
@@ -733,6 +945,8 @@ function openImportOverlay(): void {
   state.overlay = {
     type: "importQuotes",
     path: "",
+    payload: "",
+    filename: "",
     busy: false,
     status: "",
     isError: false,
@@ -754,7 +968,7 @@ async function saveProfileName(): Promise<void> {
   }
 
   state.overlay.busy = true;
-  state.overlay.status = state.overlay.mode === "add" ? "Saving quote and generating tags..." : "Saving quote and regenerating tags...";
+  state.overlay.status = "Saving profile…";
   state.overlay.isError = false;
   render();
 
@@ -919,6 +1133,11 @@ async function chooseSharePath(): Promise<void> {
   if (state.overlay?.type !== "shareQuotes" || state.overlay.busy) {
     return;
   }
+  if (isWebRuntime()) {
+    state.overlay.path = "irecall-share.json";
+    render();
+    return;
+  }
   try {
     const path = await backend().SelectQuoteExportFile();
     if (path && state.overlay?.type === "shareQuotes") {
@@ -936,6 +1155,20 @@ async function chooseSharePath(): Promise<void> {
 
 async function saveSharePayload(): Promise<void> {
   if (state.overlay?.type !== "shareQuotes" || state.overlay.busy) {
+    return;
+  }
+  if (isWebRuntime()) {
+    const fileName = state.overlay.path.trim() || "irecall-share.json";
+    if (!state.overlay.payload.trim()) {
+      state.overlay.status = "Export payload is not ready yet.";
+      state.overlay.isError = true;
+      render();
+      return;
+    }
+    downloadTextFile(fileName, state.overlay.payload);
+    state.overlay.status = `Downloaded ${fileName}`;
+    state.overlay.isError = false;
+    render();
     return;
   }
   const path = state.overlay.path.trim();
@@ -978,6 +1211,11 @@ async function chooseImportPath(): Promise<void> {
   if (state.overlay?.type !== "importQuotes" || state.overlay.busy) {
     return;
   }
+  if (isWebRuntime()) {
+    const input = document.querySelector<HTMLInputElement>('[data-bind="import-file"]');
+    input?.click();
+    return;
+  }
   try {
     const path = await backend().SelectQuoteImportFile();
     if (path && state.overlay?.type === "importQuotes") {
@@ -998,7 +1236,15 @@ async function importQuotes(): Promise<void> {
     return;
   }
   const path = state.overlay.path.trim();
-  if (!path) {
+  const payload = state.overlay.payload.trim();
+  if (isWebRuntime()) {
+    if (!payload) {
+      state.overlay.status = "Choose a file to import.";
+      state.overlay.isError = true;
+      render();
+      return;
+    }
+  } else if (!path) {
     state.overlay.status = "Choose a file to import.";
     state.overlay.isError = true;
     render();
@@ -1011,7 +1257,7 @@ async function importQuotes(): Promise<void> {
   render();
 
   try {
-    const result = await backend().ImportQuotesFromFile(path);
+    const result = isWebRuntime() ? await backend().ImportQuotesPayload(payload) : await backend().ImportQuotesFromFile(path);
     if (state.overlay?.type !== "importQuotes") {
       return;
     }
@@ -1174,10 +1420,13 @@ async function saveSettings(): Promise<void> {
   try {
     const saved = await backend().SaveSettings(payload);
     state.settings = settingsFormFromPayload(saved, state.settings.models);
+    applyTheme(state.settings.theme);
     if (state.bootstrap) {
       state.bootstrap.settings = saved;
     }
-    state.settingsStatus = "Saved.";
+    const needsRestart =
+      state.auth?.runtime === "web" && state.auth.currentPort > 0 && state.auth.currentPort !== saved.Web.Port;
+    state.settingsStatus = needsRestart ? "Saved. Restart the web server to apply the new port." : "Saved.";
     state.settingsIsError = false;
   } catch (error) {
     state.settingsStatus = getErrorMessage(error);
@@ -1347,12 +1596,12 @@ function restoreFocusSnapshot(snapshot: FocusSnapshot | null): void {
 }
 
 function renderShell(): string {
-  if (!state.bootstrapped) {
+  if (!state.authChecked) {
     return `
       <div class="shell shell-loading">
         <div class="splash">
           <div class="brand">iRecall</div>
-          <div class="muted">Loading desktop workspace…</div>
+          <div class="muted">Checking workspace access…</div>
         </div>
       </div>
     `;
@@ -1369,6 +1618,21 @@ function renderShell(): string {
     `;
   }
 
+  if (state.auth?.runtime === "web" && !state.auth.authenticated) {
+    return renderAuthShell();
+  }
+
+  if (!state.bootstrapped) {
+    return `
+      <div class="shell shell-loading">
+        <div class="splash">
+          <div class="brand">iRecall</div>
+          <div class="muted">Loading workspace…</div>
+        </div>
+      </div>
+    `;
+  }
+
   const greeting = state.bootstrap?.profile?.DisplayName ? `Hi! ${state.bootstrap.profile.DisplayName}` : "";
 
   return `
@@ -1376,10 +1640,15 @@ function renderShell(): string {
       <header class="titlebar">
         <div class="brand-lockup">
           <div class="brand">${escapeHtml(state.bootstrap?.productName ?? "iRecall")}</div>
-          <div class="muted subtle">Local-first quote recall desktop</div>
+          <div class="muted subtle">${isWebRuntime() ? "Local-first quote recall web UI" : "Local-first quote recall desktop"}</div>
         </div>
         <div class="titlebar-right">
           <div class="greeting">${escapeHtml(greeting)}</div>
+          ${
+            state.auth?.runtime === "web"
+              ? '<button class="button" data-action="auth-logout" type="button">Logout</button>'
+              : ""
+          }
           <nav class="tabs" aria-label="Primary">
             ${navItems
               .map(
@@ -1402,6 +1671,37 @@ function renderShell(): string {
       </main>
 
       ${state.overlay ? renderOverlay(state.overlay) : ""}
+    </div>
+  `;
+}
+
+function renderAuthShell(): string {
+  const requiresSetup = !state.auth?.passwordConfigured;
+  const action = "auth-login";
+  const title = requiresSetup ? "Password Required In Terminal" : "Unlock Web UI";
+  const copy = requiresSetup
+    ? "The web password must be created in the terminal before the server starts listening. Restart the server from a terminal session to finish setup."
+    : "Enter the web password to unlock the shared iRecall database.";
+
+  return `
+    <div class="shell shell-loading">
+      <div class="panel modal">
+        <div class="brand">iRecall</div>
+        <div class="modal-title">${title}</div>
+        <div class="modal-copy">${copy}</div>
+        <form class="modal-form" data-form="${action}">
+          <label class="field">
+            <span>Password</span>
+            <input class="text-input" data-bind="auth-password" type="password" value="${escapeAttribute(state.authPassword)}" ${requiresSetup ? "disabled" : ""} />
+          </label>
+          ${state.authStatus ? `<div class="status ${state.authIsError ? "status-error" : "status-ok"}">${escapeHtml(state.authStatus)}</div>` : ""}
+          <div class="modal-actions">
+            <button class="button button-primary" data-action="${action}" type="submit" ${state.authBusy || requiresSetup ? "disabled" : ""}>
+              ${state.authBusy ? "Working…" : "Login"}
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   `;
 }
@@ -1669,6 +1969,7 @@ function renderHistoryPage(): string {
 function renderSettingsPage(): string {
   const filteredModels = getFilteredModels(state.settings);
   const storagePaths = state.bootstrap?.paths;
+  const currentPort = state.auth?.currentPort;
   const modelSelect =
     state.settings.models.length > 0 && filteredModels.length > 0
       ? `
@@ -1747,9 +2048,55 @@ function renderSettingsPage(): string {
               <input class="text-input" data-bind="settings-min-relevance" value="${escapeAttribute(state.settings.minRelevance)}" placeholder="0.0-1.0" />
             </label>
             <div class="settings-hint muted">
-              Saving updates both the persisted settings and the live engine configuration for the desktop session.
+              Saving updates both the persisted settings and the live engine configuration for the current session.
               0.0 keeps broad matches. Try 0.3-0.7 for cleaner results; 1.0 is very strict.
             </div>
+          </section>
+
+          <section class="panel subpanel">
+            <div class="section-title">Appearance + Web UI</div>
+            <label class="field">
+              <span>Theme</span>
+              <select class="select-input" data-bind="settings-theme">
+                ${themeNames()
+                  .map(
+                    (theme) => `
+                      <option value="${theme}"${theme === state.settings.theme ? " selected" : ""}>${theme}</option>
+                    `,
+                  )
+                  .join("")}
+              </select>
+            </label>
+            <label class="field">
+              <span>Web Port</span>
+              <input class="text-input" data-bind="settings-web-port" value="${escapeAttribute(state.settings.webPort)}" />
+            </label>
+            <div class="settings-hint muted">
+              The web server listens on this port after restart. Current listener: ${escapeHtml(currentPort ? String(currentPort) : "(not running)")}.
+            </div>
+          </section>
+
+          <section class="panel subpanel">
+            <div class="section-title">Change Password</div>
+            <label class="field">
+              <span>Current Password</span>
+              <input class="text-input" data-bind="settings-password-current" type="password" value="${escapeAttribute(state.passwordForm.current)}" />
+            </label>
+            <label class="field">
+              <span>New Password</span>
+              <input class="text-input" data-bind="settings-password-next" type="password" value="${escapeAttribute(state.passwordForm.next)}" />
+            </label>
+            <label class="field">
+              <span>Confirm Password</span>
+              <input class="text-input" data-bind="settings-password-confirm" type="password" value="${escapeAttribute(state.passwordForm.confirm)}" />
+            </label>
+            <div class="muted subtle">Use at least 12 characters and include at least 3 of: uppercase, lowercase, digit, symbol.</div>
+            <div class="toolbar">
+              <button class="button" data-action="settings-change-password" type="button" ${state.passwordForm.busy ? "disabled" : ""}>
+                ${state.passwordForm.busy ? "Updating…" : "Change Password"}
+              </button>
+            </div>
+            ${state.passwordForm.status ? `<div class="status ${state.passwordForm.isError ? "status-error" : "status-ok"}">${escapeHtml(state.passwordForm.status)}</div>` : ""}
           </section>
 
           <section class="panel subpanel">
@@ -1971,18 +2318,28 @@ function renderOverlay(overlay: OverlayState): string {
                 .join("")}
             </div>
             <label class="field">
-              <span>Save To</span>
-              <div class="path-row">
-                <input class="text-input" data-bind="share-path" value="${escapeAttribute(overlay.path)}" placeholder="/path/to/irecall-share.json" />
-                <button class="button" data-action="share-browse" type="button" ${overlay.busy ? "disabled" : ""}>Browse</button>
-              </div>
+              <span>${isWebRuntime() ? "Download As" : "Save To"}</span>
+              ${
+                isWebRuntime()
+                  ? `<input class="text-input" data-bind="share-path" value="${escapeAttribute(overlay.path || "irecall-share.json")}" placeholder="irecall-share.json" />`
+                  : `
+                    <div class="path-row">
+                      <input class="text-input" data-bind="share-path" value="${escapeAttribute(overlay.path)}" placeholder="/path/to/irecall-share.json" />
+                      <button class="button" data-action="share-browse" type="button" ${overlay.busy ? "disabled" : ""}>Browse</button>
+                    </div>
+                  `
+              }
             </label>
-            <div class="muted modal-copy">Export to a JSON file and transfer it manually to the recipient.</div>
+            <div class="muted modal-copy">${
+              isWebRuntime()
+                ? "Download the JSON payload locally, then transfer it manually to the recipient."
+                : "Export to a JSON file and transfer it manually to the recipient."
+            }</div>
             <div class="payload-box"><pre>${escapeHtml(overlay.payload || "Preparing export payload…")}</pre></div>
             ${overlay.status ? `<div class="status ${overlay.isError ? "status-error" : "status-ok"}">${escapeHtml(overlay.status)}</div>` : ""}
             <div class="modal-actions">
               <button class="button button-primary" data-action="share-save" type="button" ${overlay.busy ? "disabled" : ""}>
-                ${overlay.busy ? "Working…" : "Save export file"}
+                ${overlay.busy ? "Working…" : isWebRuntime() ? "Download export file" : "Save export file"}
               </button>
               <button class="button" data-action="overlay-close" type="button" ${overlay.busy ? "disabled" : ""}>Close</button>
             </div>
@@ -1997,10 +2354,22 @@ function renderOverlay(overlay: OverlayState): string {
             <div class="modal-copy">Import a quote share JSON file exported from another iRecall instance.</div>
             <label class="field">
               <span>Import From</span>
-              <div class="path-row">
-                <input class="text-input" data-bind="import-path" value="${escapeAttribute(overlay.path)}" placeholder="/path/to/irecall-share.json" />
-                <button class="button" data-action="import-browse" type="button" ${overlay.busy ? "disabled" : ""}>Browse</button>
-              </div>
+              ${
+                isWebRuntime()
+                  ? `
+                    <input class="text-input" data-bind="import-path" value="${escapeAttribute(overlay.path)}" placeholder="Choose a local JSON file" readonly />
+                    <input data-bind="import-file" type="file" accept="application/json,.json" hidden />
+                    <div class="toolbar">
+                      <button class="button" data-action="import-browse" type="button" ${overlay.busy ? "disabled" : ""}>Choose File</button>
+                    </div>
+                  `
+                  : `
+                    <div class="path-row">
+                      <input class="text-input" data-bind="import-path" value="${escapeAttribute(overlay.path)}" placeholder="/path/to/irecall-share.json" />
+                      <button class="button" data-action="import-browse" type="button" ${overlay.busy ? "disabled" : ""}>Browse</button>
+                    </div>
+                  `
+              }
             </label>
             ${
               overlay.result
@@ -2064,6 +2433,8 @@ function settingsFormFromPayload(payload: SettingsPayload | BootstrapState["sett
     model: payload.Provider.Model,
     maxResults: String(payload.Search.MaxResults),
     minRelevance: String(payload.Search.MinRelevance),
+    theme: payload.Theme || "violet",
+    webPort: String(payload.Web?.Port ?? 9527),
     models,
   };
   syncSelectedModel(form);
@@ -2080,6 +2451,8 @@ function emptySettingsForm(): SettingsFormState {
     model: "",
     maxResults: "5",
     minRelevance: "0",
+    theme: "violet",
+    webPort: "9527",
     models: [],
   };
 }
@@ -2101,8 +2474,12 @@ function providerConfigFromForm(form: SettingsFormState): ProviderConfig {
 function settingsPayloadFromForm(form: SettingsFormState): SettingsPayload {
   const provider = providerConfigFromForm(form);
   const maxResults = Number.parseInt(form.maxResults.trim(), 10);
+  const webPort = Number.parseInt(form.webPort.trim(), 10);
   if (!Number.isInteger(maxResults) || maxResults < 1 || maxResults > 20) {
     throw new Error("Max ref quotes must be between 1 and 20.");
+  }
+  if (!Number.isInteger(webPort) || webPort < 1 || webPort > 65535) {
+    throw new Error("Web port must be a number between 1 and 65535.");
   }
   const minRelevance = Number.parseFloat(form.minRelevance.trim());
   if (Number.isNaN(minRelevance)) {
@@ -2116,6 +2493,10 @@ function settingsPayloadFromForm(form: SettingsFormState): SettingsPayload {
     Search: {
       MaxResults: maxResults,
       MinRelevance: minRelevance,
+    },
+    Theme: form.theme,
+    Web: {
+      Port: webPort,
     },
   };
 }
@@ -2210,6 +2591,22 @@ function previewTags(tags: string[], limit: number): string {
 
 function truncateQuotePreview(content: string, width: number): string {
   return truncate(content, Math.max(8, width));
+}
+
+function isWebRuntime(): boolean {
+  return state.auth?.runtime === "web";
+}
+
+function downloadTextFile(fileName: string, content: string): void {
+  const blob = new Blob([content], { type: "application/json;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
 }
 
 function getErrorMessage(error: unknown): string {

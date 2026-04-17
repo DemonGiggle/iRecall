@@ -1,4 +1,4 @@
-package backend
+package app
 
 import (
 	"context"
@@ -188,5 +188,47 @@ func TestDesktopBackendSaveRecallAsQuote(t *testing.T) {
 	}
 	if len(quote.Tags) == 0 {
 		t.Fatalf("quote tags = %#v, want saved tags", quote.Tags)
+	}
+}
+
+func TestDesktopBackendImportQuotesPayload(t *testing.T) {
+	t.Parallel()
+
+	app, err := NewApp(filepath.Join(t.TempDir(), "desktop-import-payload"))
+	if err != nil {
+		t.Fatalf("NewApp() error = %v", err)
+	}
+	t.Cleanup(func() { app.Shutdown(context.Background()) })
+
+	if _, err := app.SaveUserProfile("Alice"); err != nil {
+		t.Fatalf("SaveUserProfile() error = %v", err)
+	}
+
+	quote, err := app.AddQuote("payload import roundtrip")
+	if err != nil {
+		t.Fatalf("AddQuote() error = %v", err)
+	}
+
+	payload, err := app.PreviewQuoteExport([]int64{quote.ID})
+	if err != nil {
+		t.Fatalf("PreviewQuoteExport() error = %v", err)
+	}
+
+	target, err := NewApp(filepath.Join(t.TempDir(), "desktop-import-target"))
+	if err != nil {
+		t.Fatalf("NewApp(target) error = %v", err)
+	}
+	t.Cleanup(func() { target.Shutdown(context.Background()) })
+
+	if _, err := target.SaveUserProfile("Bob"); err != nil {
+		t.Fatalf("SaveUserProfile(target) error = %v", err)
+	}
+
+	result, err := target.ImportQuotesPayload(payload)
+	if err != nil {
+		t.Fatalf("ImportQuotesPayload() error = %v", err)
+	}
+	if result.Inserted != 1 {
+		t.Fatalf("ImportQuotesPayload() result = %+v, want inserted=1", result)
 	}
 }

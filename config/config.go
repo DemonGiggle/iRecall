@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 )
 
 const appName = "irecall"
@@ -26,6 +27,11 @@ func DataDir() string {
 	if rootOverride != "" {
 		return filepath.Join(rootOverride, "data")
 	}
+	if runtime.GOOS == "windows" {
+		if root := windowsRoot(); root != "" {
+			return filepath.Join(root, "data")
+		}
+	}
 	if d := os.Getenv("XDG_DATA_HOME"); d != "" {
 		return filepath.Join(d, appName)
 	}
@@ -39,6 +45,11 @@ func ConfigDir() string {
 	if rootOverride != "" {
 		return filepath.Join(rootOverride, "config")
 	}
+	if runtime.GOOS == "windows" {
+		if root := windowsRoot(); root != "" {
+			return filepath.Join(root, "config")
+		}
+	}
 	if d := os.Getenv("XDG_CONFIG_HOME"); d != "" {
 		return filepath.Join(d, appName)
 	}
@@ -51,6 +62,11 @@ func ConfigDir() string {
 func StateDir() string {
 	if rootOverride != "" {
 		return filepath.Join(rootOverride, "state")
+	}
+	if runtime.GOOS == "windows" {
+		if root := windowsRoot(); root != "" {
+			return filepath.Join(root, "state")
+		}
 	}
 	if d := os.Getenv("XDG_STATE_HOME"); d != "" {
 		return filepath.Join(d, appName)
@@ -77,4 +93,14 @@ func EnsureDirs() error {
 		}
 	}
 	return nil
+}
+
+func windowsRoot() string {
+	if d := os.Getenv("LOCALAPPDATA"); d != "" {
+		return filepath.Join(d, appName)
+	}
+	if d, err := os.UserCacheDir(); err == nil && d != "" {
+		return filepath.Join(d, appName)
+	}
+	return ""
 }

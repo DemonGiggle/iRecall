@@ -17,8 +17,8 @@ This file focuses on:
 The desktop implementation lives under `desktop/`.
 
 ```text
-desktop/
-├── backend/
+iRecall/
+├── app/
 │   ├── app.go
 │   └── app_test.go
 ├── frontend/
@@ -27,9 +27,10 @@ desktop/
 │   ├── vite.config.ts
 │   ├── index.html
 │   └── src/
-├── main_wails.go
-├── wails.json
-└── README.md
+└── desktop/
+    ├── main_wails.go
+    ├── wails.json
+    └── README.md
 ```
 
 Rules:
@@ -56,7 +57,7 @@ It owns:
 
 ### Desktop application layer
 
-`desktop/backend` is the desktop-facing application service.
+`app/` is the shared desktop/web application service.
 
 It currently:
 
@@ -75,12 +76,12 @@ It should not:
 
 ### Frontend shell
 
-`desktop/frontend` owns:
+`frontend/` owns:
 
 1. shell layout
 2. desktop page composition
 3. dialog rendering
-4. command invocation against the backend
+4. command invocation against the shared application service
 
 It should follow `UI_DESIGN.md` rather than the terminal layout literally.
 
@@ -239,7 +240,7 @@ Avoid:
 
 Recommended order:
 
-1. bootstrap shell from `desktop/backend.App`
+1. bootstrap shell from `app.App`
 2. implement user-profile startup gating
 3. implement Quotes page CRUD
 4. implement import/export with native file pickers

@@ -2,10 +2,11 @@
 
 ## Overview
 
-iRecall is a local-first quote recall application with two clients built on one Go core:
+iRecall is a local-first quote recall application with three clients built on one Go core:
 
 - a Bubble Tea TUI launched from `cmd/irecall`
 - a Wails desktop client under `desktop/`
+- an HTTP web UI server under `web/`
 
 The shared core owns:
 
@@ -28,9 +29,10 @@ iRecall/
 ├── core/                     # shared domain logic
 │   ├── db/                   # SQLite store + migrations
 │   └── llm/                  # OpenAI-compatible client
-├── desktop/                  # Wails desktop app
-│   ├── backend/
-│   └── frontend/
+├── app/                      # shared desktop/web orchestration
+├── desktop/                  # Wails desktop app runtime
+├── frontend/                 # shared frontend assets and source
+├── web/                      # HTTP web UI runtime
 ├── docs/                     # roadmap, plans, specs, design references
 ├── tools/
 │   └── redmine_export/       # Redmine -> iRecall share payload exporter
@@ -57,7 +59,7 @@ iRecall/
 
 ### Desktop app
 
-`desktop/backend/app.go` wraps the same core engine for the Wails frontend.
+`app/app.go` wraps the same core engine for both the Wails frontend and the web UI runtime.
 
 It provides:
 

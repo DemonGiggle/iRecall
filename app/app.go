@@ -1,4 +1,4 @@
-package backend
+package app
 
 import (
 	"context"
@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/gigol/irecall/config"
 	"github.com/gigol/irecall/core"
 	"github.com/gigol/irecall/core/db"
 )
@@ -44,6 +45,13 @@ type RecallResult struct {
 	Keywords []string     `json:"keywords"`
 	Quotes   []core.Quote `json:"quotes"`
 	Response string       `json:"response"`
+}
+
+type AuthStatus struct {
+	Runtime            string `json:"runtime"`
+	PasswordConfigured bool   `json:"passwordConfigured"`
+	Authenticated      bool   `json:"authenticated"`
+	CurrentPort        int    `json:"currentPort"`
 }
 
 func NewApp(root string) (*App, error) {
@@ -192,6 +200,14 @@ func (a *App) ImportQuotesFromFile(path string) (core.ImportResult, error) {
 	return a.engine.ImportSharedQuotes(a.context(), payload)
 }
 
+func (a *App) ImportQuotesPayload(payload string) (core.ImportResult, error) {
+	payload = strings.TrimSpace(payload)
+	if payload == "" {
+		return core.ImportResult{}, errors.New("import payload is empty")
+	}
+	return a.engine.ImportSharedQuotes(a.context(), []byte(payload))
+}
+
 func (a *App) GetSettings() *core.Settings {
 	return a.settings
 }
@@ -203,6 +219,38 @@ func (a *App) SaveSettings(settings core.Settings) (*core.Settings, error) {
 	a.engine.UpdateSettings(&settings)
 	a.settings = &settings
 	return a.settings, nil
+}
+
+func (a *App) AuthStatus() (AuthStatus, error) {
+	hasPassword, err := a.engine.HasWebPassword(a.context())
+	if err != nil {
+		return AuthStatus{}, err
+	}
+	return AuthStatus{
+		Runtime:            "desktop",
+		PasswordConfigured: hasPassword,
+		Authenticated:      true,
+		CurrentPort:        0,
+	}, nil
+}
+
+func (a *App) SetupPassword(password, confirm string) error {
+	return a.engine.SetupWebPassword(a.context(), password, confirm)
+}
+
+func (a *App) Login(password string) error {
+	ok, err := a.engine.VerifyWebPassword(a.context(), password)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return errors.New("invalid password")
+	}
+	return nil
+}
+
+func (a *App) ChangePassword(current, next, confirm string) error {
+	return a.engine.ChangeWebPassword(a.context(), current, next, confirm)
 }
 
 func (a *App) FetchModels(settings core.ProviderConfig) ([]string, error) {
@@ -281,11 +329,14 @@ func (a *App) context() context.Context {
 func resolvePaths(root string) (AppPaths, error) {
 	root = strings.TrimSpace(root)
 	if root == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return AppPaths{}, fmt.Errorf("resolve user home: %w", err)
-		}
-		root = filepath.Join(home, "AppData", "Local", "iRecallDesktop")
+		return AppPaths{
+			RootDir:   filepath.Dir(config.DataDir()),
+			DataDir:   config.DataDir(),
+			ConfigDir: config.ConfigDir(),
+			StateDir:  config.StateDir(),
+			DBPath:    config.DBPath(),
+			LogPath:   config.LogPath(),
+		}, nil
 	}
 	root, err := filepath.Abs(root)
 	if err != nil {
