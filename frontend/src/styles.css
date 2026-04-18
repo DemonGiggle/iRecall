@@ -30,8 +30,9 @@ body {
   font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
   color: var(--fg);
   background:
-    radial-gradient(circle at top left, rgba(124, 58, 237, 0.3), transparent 28%),
-    radial-gradient(circle at bottom right, rgba(167, 139, 250, 0.18), transparent 24%),
+    radial-gradient(circle at top left, rgba(251, 191, 36, 0.16), transparent 24%),
+    radial-gradient(circle at top right, rgba(14, 165, 233, 0.16), transparent 22%),
+    radial-gradient(circle at bottom left, rgba(52, 211, 153, 0.14), transparent 24%),
     linear-gradient(180deg, var(--bg-strong) 0%, var(--bg) 100%);
 }
 
@@ -75,7 +76,7 @@ pre {
 .titlebar {
   display: flex;
   justify-content: space-between;
-  align-items: end;
+  align-items: center;
   gap: 24px;
   padding: 24px 28px 14px;
 }
@@ -96,6 +97,7 @@ pre {
   display: flex;
   align-items: center;
   gap: 16px;
+  flex-wrap: wrap;
 }
 
 .greeting {
@@ -161,6 +163,75 @@ pre {
   padding: 10px 28px 28px;
 }
 
+.hero-card {
+  display: grid;
+  gap: 18px;
+  padding: 24px;
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02)),
+    var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.hero-copy {
+  display: grid;
+  gap: 10px;
+}
+
+.eyebrow {
+  font-size: 0.84rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.hero-title {
+  margin: 0;
+  font-size: clamp(1.8rem, 3vw, 2.7rem);
+  line-height: 1.08;
+}
+
+.hero-text {
+  margin: 0;
+  max-width: 60ch;
+  color: var(--muted);
+  font-size: 1.04rem;
+  line-height: 1.6;
+}
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.stat-grid-wide {
+  margin-top: -4px;
+}
+
+.mini-stat {
+  display: grid;
+  gap: 6px;
+  padding: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.mini-stat-value {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--fg);
+}
+
+.mini-stat-label {
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
 .page,
 .page-panel {
   min-height: 100%;
@@ -207,10 +278,19 @@ pre {
   flex-wrap: wrap;
 }
 
+.toolbar-soft {
+  margin-top: -4px;
+}
+
 .question-bar {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 12px;
+}
+
+.question-input {
+  min-height: 64px;
+  font-size: 1.05rem;
 }
 
 .text-input,
@@ -269,6 +349,30 @@ pre {
   flex-wrap: wrap;
 }
 
+.helper-strip {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 16px 18px;
+  border: 1px dashed rgba(255, 255, 255, 0.12);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.helper-title {
+  margin-bottom: 6px;
+  font-weight: 700;
+  color: var(--fg);
+}
+
+.helper-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 .keyword-list {
   display: flex;
   gap: 10px;
@@ -319,7 +423,7 @@ pre {
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 18px;
   background: rgba(15, 23, 42, 0.58);
-  padding: 14px;
+  padding: 16px;
   cursor: pointer;
   display: grid;
   gap: 10px;
@@ -341,6 +445,7 @@ pre {
   display: inline-flex;
   align-items: center;
   gap: 10px;
+  flex-wrap: wrap;
 }
 
 .selection-toggle {
@@ -373,6 +478,7 @@ pre {
 .quote-content {
   line-height: 1.55;
   color: #eef2ff;
+  font-size: 1rem;
 }
 
 .quote-meta {
@@ -380,6 +486,19 @@ pre {
   gap: 8px;
   flex-wrap: wrap;
   font-size: 0.94rem;
+}
+
+.pill-badge {
+  border-radius: 999px;
+  padding: 4px 10px;
+  background: rgba(16, 185, 129, 0.14);
+  color: #d1fae5;
+  font-size: 0.8rem;
+}
+
+.pill-badge-soft {
+  background: rgba(148, 163, 184, 0.16);
+  color: var(--muted);
 }
 
 .meta-accent {
@@ -536,7 +655,8 @@ pre {
 @media (max-width: 1100px) {
   .recall-grid,
   .settings-grid,
-  .compare-grid {
+  .compare-grid,
+  .stat-grid {
     grid-template-columns: 1fr;
   }
 }
@@ -565,6 +685,10 @@ pre {
   .titlebar {
     padding-left: 18px;
     padding-right: 18px;
+  }
+
+  .helper-strip {
+    padding: 14px;
   }
 
   .overlay-backdrop {
