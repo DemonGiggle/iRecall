@@ -84,8 +84,13 @@ type RecallHistoryEntry struct {
 type Settings struct {
 	Provider ProviderConfig
 	Search   SearchConfig
+	Debug    DebugConfig
 	Theme    string
 	Web      WebConfig
+}
+
+type DebugConfig struct {
+	MockLLM bool
 }
 
 type WebConfig struct {
@@ -109,6 +114,9 @@ func DefaultSettings() *Settings {
 		Search: SearchConfig{
 			MaxResults:   5,
 			MinRelevance: 0.0,
+		},
+		Debug: DebugConfig{
+			MockLLM: false,
 		},
 		Theme: "violet",
 		Web: WebConfig{

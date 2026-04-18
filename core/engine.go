@@ -230,6 +230,10 @@ func (e *Engine) RefineQuoteDraft(ctx context.Context, content string) (string, 
 	if content == "" {
 		return "", fmt.Errorf("quote content is empty")
 	}
+	if e.isMockLLMEnabled() {
+		slog.Info("engine: mock llm enabled for quote refinement")
+		return content, nil
+	}
 
 	slog.Info("engine: refining quote draft", "content_len", len(content), "content_preview", truncate(content, 100))
 
@@ -350,6 +354,10 @@ func (e *Engine) repairTags(ctx context.Context, text string, initial []string) 
 // ExtractKeywords asks the LLM to produce search keywords for a question.
 func (e *Engine) ExtractKeywords(ctx context.Context, question string) ([]string, error) {
 	slog.Info("engine: extracting keywords for question", "question", question)
+	if e.isMockLLMEnabled() {
+		slog.Info("engine: mock llm enabled for keyword extraction")
+		return mockSplitKeywords(question), nil
+	}
 	msgs := []llm.Message{
 		{
 			Role: "system",
@@ -453,6 +461,10 @@ func (e *Engine) GenerateResponse(
 	tokenCh chan<- string,
 ) error {
 	slog.Info("engine: generating response", "question", question, "candidate_count", len(candidates))
+	if e.isMockLLMEnabled() {
+		slog.Info("engine: mock llm enabled for response generation")
+		return e.generateMockResponse(candidates, tokenCh)
+	}
 	var sb strings.Builder
 	for i, q := range candidates {
 		sb.WriteString(fmt.Sprintf("[%d] %s\n", i+1, q.Content))
@@ -561,6 +573,44 @@ func (e *Engine) SaveSettings(ctx context.Context, s *Settings) error {
 	e.UpdateSettings(s)
 	slog.Info("engine: settings saved and applied")
 	return nil
+}
+
+func (e *Engine) isMockLLMEnabled() bool {
+	return e != nil && e.cfg != nil && e.cfg.Debug.MockLLM
+}
+
+func mockSplitKeywords(text string) []string {
+	parts := strings.Fields(strings.TrimSpace(text))
+	if len(parts) == 0 {
+		return nil
+	}
+	return parts
+}
+
+func (e *Engine) generateMockResponse(candidates []Quote, tokenCh chan<- string) error {
+	response := strings.TrimSpace(joinQuoteContents(candidates))
+	if tokenCh == nil {
+		return nil
+	}
+	defer close(tokenCh)
+	if response != "" {
+		tokenCh <- response
+	}
+	return nil
+}
+
+func joinQuoteContents(candidates []Quote) string {
+	if len(candidates) == 0 {
+		return ""
+	}
+	parts := make([]string, 0, len(candidates))
+	for _, q := range candidates {
+		content := strings.TrimSpace(q.Content)
+		if content != "" {
+			parts = append(parts, content)
+		}
+	}
+	return strings.Join(parts, "\n\n")
 }
 
 func (e *Engine) LoadUserProfile(ctx context.Context) (*UserProfile, error) {
