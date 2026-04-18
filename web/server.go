@@ -277,6 +277,9 @@ func (s *Server) handleSaveSettings(w http.ResponseWriter, r *http.Request) {
 			MaxResults   int     `json:"MaxResults"`
 			MinRelevance float64 `json:"MinRelevance"`
 		} `json:"Search"`
+		Debug struct {
+			MockLLM bool `json:"MockLLM"`
+		} `json:"Debug"`
 		Theme string `json:"Theme"`
 		Web   struct {
 			Port int `json:"Port"`
@@ -532,6 +535,9 @@ func backendToCoreSettings(v struct {
 		MaxResults   int     `json:"MaxResults"`
 		MinRelevance float64 `json:"MinRelevance"`
 	} `json:"Search"`
+	Debug struct {
+		MockLLM bool `json:"MockLLM"`
+	} `json:"Debug"`
 	Theme string `json:"Theme"`
 	Web   struct {
 		Port int `json:"Port"`
@@ -548,6 +554,9 @@ func backendToCoreSettings(v struct {
 		Search: core.SearchConfig{
 			MaxResults:   v.Search.MaxResults,
 			MinRelevance: v.Search.MinRelevance,
+		},
+		Debug: core.DebugConfig{
+			MockLLM: v.Debug.MockLLM,
 		},
 		Theme: v.Theme,
 		Web: core.WebConfig{

@@ -44,6 +44,10 @@ interface SearchConfig {
   MinRelevance: number;
 }
 
+interface DebugConfig {
+  MockLLM: boolean;
+}
+
 interface WebConfig {
   Port: number;
 }
@@ -51,6 +55,7 @@ interface WebConfig {
 interface SettingsPayload {
   Provider: ProviderConfig;
   Search: SearchConfig;
+  Debug: DebugConfig;
   Theme: string;
   Web: WebConfig;
 }
@@ -62,6 +67,7 @@ interface BootstrapState {
   settings: {
     Provider: ProviderConfig;
     Search: SearchConfig;
+    Debug: DebugConfig;
     Theme: string;
     Web: WebConfig;
   };
@@ -198,6 +204,7 @@ interface SettingsFormState {
   model: string;
   maxResults: string;
   minRelevance: string;
+  mockLLM: boolean;
   theme: string;
   webPort: string;
   models: string[];
@@ -209,6 +216,11 @@ interface PasswordFormState {
   confirm: string;
   busy: boolean;
   status: string;
+  isError: boolean;
+}
+
+interface ToastState {
+  message: string;
   isError: boolean;
 }
 
@@ -259,6 +271,7 @@ interface AppState {
   settingsIsError: boolean;
   passwordForm: PasswordFormState;
   overlay: OverlayState | null;
+  toast: ToastState | null;
 }
 
 const state: AppState = {
@@ -315,11 +328,13 @@ const state: AppState = {
     isError: false,
   },
   overlay: null,
+  toast: null,
 };
 
 let rootEl: HTMLElement | null = null;
 let handlersInstalled = false;
 let bootPromise: Promise<void> | null = null;
+let toastTimer: number | null = null;
 
 const navItems: PageName[] = ["Recall", "History", "Quotes", "Settings"];
 
@@ -710,6 +725,11 @@ function handleChange(event: Event): void {
       return;
     case "settings-model":
       state.settings.model = target.value;
+      return;
+    case "settings-mock-llm":
+      if (target instanceof HTMLInputElement) {
+        state.settings.mockLLM = target.checked;
+      }
       return;
     case "import-file":
       if (target instanceof HTMLInputElement) {
@@ -1448,6 +1468,7 @@ async function saveSettings(): Promise<void> {
       state.auth?.runtime === "web" && state.auth.currentPort > 0 && state.auth.currentPort !== saved.Web.Port;
     state.settingsStatus = needsRestart ? "Saved. Restart the web server to apply the new port." : "Saved.";
     state.settingsIsError = false;
+    showToast(state.settingsStatus);
   } catch (error) {
     state.settingsStatus = getErrorMessage(error);
     state.settingsIsError = true;
@@ -1715,6 +1736,7 @@ function renderShell(): string {
       </main>
 
       ${state.overlay ? renderOverlay(state.overlay) : ""}
+      ${state.toast ? renderToast(state.toast) : ""}
     </div>
   `;
 }
@@ -1855,11 +1877,6 @@ function renderQuotesPage(): string {
             <button class="button" data-action="quote-share-current" data-context="quotes" type="button" ${selected.length === 0 ? "disabled" : ""}>Share Quote</button>
           </div>
         </div>
-        <div class="stat-grid stat-grid-wide">
-          ${renderMiniStat("All quotes", String(state.quotes.length))}
-          ${renderMiniStat("Picked now", String(selected.length > 0 ? selected.length : state.quotes.length > 0 ? 1 : 0))}
-          ${renderMiniStat("Ready to share", selected.length > 0 ? String(selected.length) : "0")}
-        </div>
         <div class="helper-strip">
           <div>
             <div class="helper-title">Simple way to use this page</div>
@@ -1969,7 +1986,6 @@ function renderHistoryPage(): string {
                       data-id="${entry.ID}"
                       ${state.historySelected.has(entry.ID) ? "checked" : ""}
                     />
-                    <span>${state.historySelected.has(entry.ID) ? "[x]" : "[ ]"}</span>
                   </label>
                   <div class="quote-topline-meta">
                     <span class="quote-index${isCurrent ? " is-current" : ""}">${isCurrent ? "&gt; " : ""}Question ${index + 1}</span>
@@ -2112,6 +2128,13 @@ function renderSettingsPage(): string {
             <div class="settings-hint muted">
               0.0 keeps broad matches. Try 0.3 to 0.7 for cleaner results. 1.0 is very strict and may hide useful notes.
             </div>
+            <label class="field checkbox-field">
+              <input type="checkbox" data-bind="settings-mock-llm"${state.settings.mockLLM ? " checked" : ""} />
+              <span>Use Mock LLM</span>
+            </label>
+            <div class="settings-hint muted">
+              Same as TUI mock mode: refine keeps the original quote, keywords split on spaces, and answers are built from matching quotes.
+            </div>
           </section>
 
           <section class="panel subpanel">
@@ -2183,7 +2206,7 @@ function renderSettingsPage(): string {
           </section>
         </div>
 
-        ${state.settingsStatus ? `<div class="status ${state.settingsIsError ? "status-error" : "status-ok"}">${escapeHtml(state.settingsStatus)}</div>` : ""}
+        ${state.settingsStatus && state.settingsIsError ? `<div class="status status-error">${escapeHtml(state.settingsStatus)}</div>` : ""}
       </div>
     </section>
   `;
@@ -2229,7 +2252,6 @@ function renderQuoteList(
                     data-id="${quote.ID}"
                     ${selected.has(quote.ID) ? "checked" : ""}
                   />
-                  <span>${selected.has(quote.ID) ? "[x]" : "[ ]"}</span>
                 </label>
                 <div class="quote-topline-meta">
                   <span class="quote-index${isCurrent ? " is-current" : ""}">${isCurrent ? "&gt; " : ""}Quote ${index + 1}</span>
@@ -2471,6 +2493,14 @@ function renderOverlay(overlay: OverlayState): string {
   }
 }
 
+function renderToast(toast: ToastState): string {
+  return `
+    <div class="toast-layer" aria-live="polite" aria-atomic="true">
+      <div class="toast ${toast.isError ? "toast-error" : "toast-ok"}">${escapeHtml(toast.message)}</div>
+    </div>
+  `;
+}
+
 function selectedQuotesByIds(context: QuoteContext, ids: number[]): Quote[] {
   const source = context === "quotes" ? state.quotes : context === "recall" ? state.recallQuotes : (state.historyDetail?.Quotes ?? []);
   const wanted = new Set(ids);
@@ -2496,12 +2526,25 @@ function settingsFormFromPayload(payload: SettingsPayload | BootstrapState["sett
     model: payload.Provider.Model,
     maxResults: String(payload.Search.MaxResults),
     minRelevance: String(payload.Search.MinRelevance),
+    mockLLM: payload.Debug?.MockLLM ?? false,
     theme: payload.Theme || "violet",
     webPort: String(payload.Web?.Port ?? 9527),
     models,
   };
   syncSelectedModel(form);
   return form;
+}
+
+function showToast(message: string, isError = false): void {
+  state.toast = { message, isError };
+  if (toastTimer !== null) {
+    window.clearTimeout(toastTimer);
+  }
+  toastTimer = window.setTimeout(() => {
+    state.toast = null;
+    toastTimer = null;
+    render();
+  }, 2200);
 }
 
 function emptySettingsForm(): SettingsFormState {
@@ -2514,6 +2557,7 @@ function emptySettingsForm(): SettingsFormState {
     model: "",
     maxResults: "5",
     minRelevance: "0",
+    mockLLM: false,
     theme: "violet",
     webPort: "9527",
     models: [],
@@ -2556,6 +2600,9 @@ function settingsPayloadFromForm(form: SettingsFormState): SettingsPayload {
     Search: {
       MaxResults: maxResults,
       MinRelevance: minRelevance,
+    },
+    Debug: {
+      MockLLM: form.mockLLM,
     },
     Theme: form.theme,
     Web: {

@@ -451,13 +451,40 @@ pre {
 .selection-toggle {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
   color: var(--accent);
   cursor: pointer;
 }
 
 .selection-toggle input {
-  accent-color: var(--accent);
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  border: 1px solid rgba(167, 139, 250, 0.45);
+  border-radius: 4px;
+  background: rgba(15, 23, 42, 0.8);
+  display: inline-grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+.selection-toggle input::after {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--accent);
+  transform: scale(0);
+  transition: transform 120ms ease;
+}
+
+.selection-toggle input:checked::after {
+  transform: scale(1);
+}
+
+.selection-toggle input:focus-visible {
+  outline: 2px solid rgba(167, 139, 250, 0.45);
+  outline-offset: 2px;
 }
 
 .quote-index {
@@ -575,6 +602,38 @@ pre {
   place-items: center;
   padding: 28px;
   z-index: 10;
+}
+
+.toast-layer {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  z-index: 20;
+  padding: 24px;
+}
+
+.toast {
+  max-width: min(520px, calc(100vw - 32px));
+  padding: 16px 22px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 24px 80px rgba(2, 6, 23, 0.46);
+  backdrop-filter: blur(10px);
+  text-align: center;
+}
+
+.toast-ok {
+  background: rgba(16, 185, 129, 0.18);
+  border-color: rgba(16, 185, 129, 0.3);
+  color: #ecfdf5;
+}
+
+.toast-error {
+  background: rgba(239, 68, 68, 0.2);
+  border-color: rgba(239, 68, 68, 0.34);
+  color: #fef2f2;
 }
 
 .modal {
