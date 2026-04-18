@@ -134,6 +134,21 @@ func TestRefineQuoteDraft(t *testing.T) {
 	}
 }
 
+func TestRefineQuoteDraftMockLLMReturnsOriginal(t *testing.T) {
+	t.Parallel()
+
+	engine := newTestEngine(t, "localhost")
+	engine.cfg.Debug.MockLLM = true
+
+	refined, err := engine.RefineQuoteDraft(context.Background(), "messy draft note")
+	if err != nil {
+		t.Fatalf("RefineQuoteDraft() error = %v", err)
+	}
+	if refined != "messy draft note" {
+		t.Fatalf("RefineQuoteDraft() = %q, want original content", refined)
+	}
+}
+
 func TestExtractTagsRequestsBroaderTagSet(t *testing.T) {
 	t.Parallel()
 
@@ -301,6 +316,50 @@ func TestSearchQuotesAppliesMinRelevance(t *testing.T) {
 	}
 	if got[0].GlobalID != "quote-1" {
 		t.Fatalf("SearchQuotes() returned %q, want quote-1", got[0].GlobalID)
+	}
+}
+
+func TestExtractKeywordsMockLLMSplitsBySpaces(t *testing.T) {
+	t.Parallel()
+
+	engine := newTestEngine(t, "localhost")
+	engine.cfg.Debug.MockLLM = true
+
+	keywords, err := engine.ExtractKeywords(context.Background(), "alpha beta  gamma")
+	if err != nil {
+		t.Fatalf("ExtractKeywords() error = %v", err)
+	}
+	want := []string{"alpha", "beta", "gamma"}
+	if !reflect.DeepEqual(keywords, want) {
+		t.Fatalf("ExtractKeywords() = %#v, want %#v", keywords, want)
+	}
+}
+
+func TestGenerateResponseMockLLMCombinesQuoteContents(t *testing.T) {
+	t.Parallel()
+
+	engine := newTestEngine(t, "localhost")
+	engine.cfg.Debug.MockLLM = true
+
+	tokenCh := make(chan string, 8)
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- engine.GenerateResponse(context.Background(), "question", []Quote{
+			{Content: "first reference"},
+			{Content: "second reference"},
+		}, tokenCh)
+	}()
+
+	var got strings.Builder
+	for token := range tokenCh {
+		got.WriteString(token)
+	}
+	if err := <-errCh; err != nil {
+		t.Fatalf("GenerateResponse() error = %v", err)
+	}
+	want := "first reference\n\nsecond reference"
+	if got.String() != want {
+		t.Fatalf("GenerateResponse() = %q, want %q", got.String(), want)
 	}
 }
 

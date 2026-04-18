@@ -1,6 +1,7 @@
 package pages
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -95,9 +96,9 @@ func TestSettingsPageShowsStoragePaths(t *testing.T) {
 
 	for _, want := range []string{
 		"Local Storage",
-		"/tmp/irecall-test/data",
-		"/tmp/irecall-test/config",
-		"/tmp/irecall-test/state",
+		filepath.FromSlash("/tmp/irecall-test/data"),
+		filepath.FromSlash("/tmp/irecall-test/config"),
+		filepath.FromSlash("/tmp/irecall-test/state"),
 	} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("settings view missing %q:\n%s", want, view)
@@ -112,5 +113,24 @@ func TestSettingsPageCurrentSettingsRejectsMinRelevanceOutsideRange(t *testing.T
 	_, err := page.CurrentSettings()
 	if err == nil || !strings.Contains(err.Error(), "between 0.0 and 1.0") {
 		t.Fatalf("CurrentSettings() error = %v, want range validation", err)
+	}
+}
+
+func TestSettingsPageMockLLMToggleUpdatesCurrentSettings(t *testing.T) {
+	page := NewSettingsPage(nil, 120, 40, core.DefaultSettings())
+	page.focused = fieldMockLLM
+
+	model, _ := page.Update(tea.KeyMsg{Type: tea.KeySpace})
+	page = model
+
+	current, err := page.CurrentSettings()
+	if err != nil {
+		t.Fatalf("CurrentSettings() error = %v", err)
+	}
+	if !current.Debug.MockLLM {
+		t.Fatal("CurrentSettings().Debug.MockLLM = false, want true")
+	}
+	if !strings.Contains(page.View(), "Mock LLM") {
+		t.Fatalf("settings view missing debug control:\n%s", page.View())
 	}
 }

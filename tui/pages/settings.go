@@ -41,6 +41,7 @@ const (
 	fieldTheme
 	fieldMaxResults
 	fieldMinRelevance
+	fieldMockLLM
 	fieldCount // sentinel
 )
 
@@ -48,6 +49,7 @@ const (
 type SettingsPage struct {
 	engine *core.Engine
 	web    core.WebConfig
+	debug  core.DebugConfig
 
 	inputs  [fieldCount]textinput.Model
 	httpsOn bool
@@ -106,6 +108,7 @@ func NewSettingsPage(engine *core.Engine, width, height int, s *core.Settings) S
 		httpsOn:      s.Provider.HTTPS,
 		initialModel: s.Provider.Model,
 		web:          s.Web,
+		debug:        s.Debug,
 		themes:       styles.ThemeNames(),
 		themeIdx:     themeIndex(styles.ThemeNames(), s.Theme),
 		modelIdx:     -1,
@@ -135,6 +138,9 @@ func (p SettingsPage) Update(msg tea.Msg) (SettingsPage, tea.Cmd) {
 		case " ":
 			if p.focused == fieldHTTPS {
 				p.httpsOn = !p.httpsOn
+			}
+			if p.focused == fieldMockLLM {
+				p.debug.MockLLM = !p.debug.MockLLM
 			}
 
 		case "enter":
@@ -294,6 +300,20 @@ func (p SettingsPage) View() string {
 		styles.Muted.Render("0.0 keeps broad matches. Try 0.3-0.7 for cleaner results; 1.0 is very strict."),
 	)
 
+	mockLLMLabel := "[ ] off"
+	if p.debug.MockLLM {
+		mockLLMLabel = "[x] on"
+	}
+	if p.focused == fieldMockLLM {
+		mockLLMLabel = styles.Accent.Render(mockLLMLabel) + styles.Muted.Render("  Space to toggle")
+	}
+
+	debugSection := lipgloss.JoinVertical(lipgloss.Left,
+		styles.SectionHeader.Render("Debug"),
+		row("Mock LLM", mockLLMLabel),
+		styles.Muted.Render("Refine returns the original text, keywords split on spaces, and answers combine reference quotes."),
+	)
+
 	pathsSection := lipgloss.JoinVertical(lipgloss.Left,
 		styles.SectionHeader.Render("Local Storage"),
 		row("Data dir", styles.Muted.Render(config.DataDir())),
@@ -317,6 +337,8 @@ func (p SettingsPage) View() string {
 			providerSection,
 			"",
 			searchSection,
+			"",
+			debugSection,
 			"",
 			pathsSection,
 			"",
@@ -394,6 +416,7 @@ func (p *SettingsPage) LoadFrom(s *core.Settings) {
 	p.httpsOn = s.Provider.HTTPS
 	p.initialModel = s.Provider.Model
 	p.web = s.Web
+	p.debug = s.Debug
 	p.themeIdx = themeIndex(p.themes, s.Theme)
 	styles.ApplyTheme(p.SelectedTheme())
 	p.syncModelSelection(s.Provider.Model)
@@ -446,6 +469,7 @@ func (p *SettingsPage) CurrentSettings() (*core.Settings, error) {
 			MaxResults:   maxResults,
 			MinRelevance: minRel,
 		},
+		Debug: p.debug,
 		Theme: p.SelectedTheme(),
 		Web:   p.web,
 	}, nil
