@@ -58,6 +58,7 @@ interface SettingsPayload {
   Debug: DebugConfig;
   Theme: string;
   Web: WebConfig;
+  RootDir: string;
 }
 
 interface BootstrapState {
@@ -70,6 +71,7 @@ interface BootstrapState {
     Debug: DebugConfig;
     Theme: string;
     Web: WebConfig;
+    RootDir: string;
   };
   paths: {
     rootDir: string;
@@ -207,6 +209,7 @@ interface SettingsFormState {
   mockLLM: boolean;
   theme: string;
   webPort: string;
+  rootDir: string;
   models: string[];
 }
 
@@ -689,6 +692,9 @@ function handleInput(event: Event): void {
       return;
     case "settings-web-port":
       state.settings.webPort = target.value;
+      return;
+    case "settings-root-dir":
+      state.settings.rootDir = target.value;
       return;
     case "settings-password-current":
       state.passwordForm.current = target.value;
@@ -1458,15 +1464,21 @@ async function saveSettings(): Promise<void> {
   render();
 
   try {
+    const previousRoot = normalizeRootDirForCompare(state.settings.rootDir);
+    const previousPort = state.auth?.currentPort ?? 0;
     const saved = await backend().SaveSettings(payload);
-    state.settings = settingsFormFromPayload(saved, state.settings.models);
-    applyTheme(state.settings.theme);
-    if (state.bootstrap) {
-      state.bootstrap.settings = saved;
+    await refreshRuntimeStateAfterSettingsSave(saved);
+    const rootChanged = previousRoot !== normalizeRootDirForCompare(saved.RootDir);
+    const needsRestart = state.auth?.runtime === "web" && previousPort > 0 && previousPort !== saved.Web.Port;
+    if (rootChanged && needsRestart) {
+      state.settingsStatus = "Saved. Switched storage root. Restart the web server to apply the new port.";
+    } else if (rootChanged) {
+      state.settingsStatus = "Saved. Switched storage root.";
+    } else if (needsRestart) {
+      state.settingsStatus = "Saved. Restart the web server to apply the new port.";
+    } else {
+      state.settingsStatus = "Saved.";
     }
-    const needsRestart =
-      state.auth?.runtime === "web" && state.auth.currentPort > 0 && state.auth.currentPort !== saved.Web.Port;
-    state.settingsStatus = needsRestart ? "Saved. Restart the web server to apply the new port." : "Saved.";
     state.settingsIsError = false;
     showToast(state.settingsStatus);
   } catch (error) {
@@ -1475,6 +1487,45 @@ async function saveSettings(): Promise<void> {
   } finally {
     state.settingsBusy = false;
     render();
+  }
+}
+
+async function refreshRuntimeStateAfterSettingsSave(saved: SettingsPayload): Promise<void> {
+  const models = [...state.settings.models];
+  const bootstrap = await backend().BootstrapState();
+  state.bootstrap = bootstrap;
+  state.settings = settingsFormFromBootstrap(bootstrap);
+  state.settings.models = models;
+  syncSelectedModel(state.settings);
+  applyTheme(state.settings.theme);
+  state.recallKeywords = [];
+  state.recallQuotes = [];
+  state.recallResponse = "";
+  state.recallLastQuestion = "";
+  state.recallSelected = new Set<number>();
+  state.recallCursor = 0;
+  state.historyEntries = [];
+  state.historySelected = new Set<number>();
+  state.historyCursor = 0;
+  state.historyDetail = null;
+  state.historyDetailError = "";
+  state.historyQuoteSelected = new Set<number>();
+  state.historyQuoteCursor = 0;
+  if (!bootstrap.profile?.DisplayName) {
+    state.overlay = {
+      type: "namePrompt",
+      name: "",
+      busy: false,
+      status: "",
+      isError: false,
+    };
+  } else if (state.overlay?.type === "namePrompt") {
+    state.overlay = null;
+  }
+  await loadQuotes();
+  await loadHistory();
+  if (state.bootstrap) {
+    state.bootstrap.settings = saved;
   }
 }
 
@@ -2186,6 +2237,18 @@ function renderSettingsPage(): string {
           <section class="panel subpanel">
             <div class="section-title">Local Storage</div>
             <div class="settings-paths">
+              <label class="field">
+                <span>Config folder root</span>
+                <input
+                  class="text-input"
+                  data-bind="settings-root-dir"
+                  value="${escapeAttribute(state.settings.rootDir)}"
+                  placeholder="Leave blank to use the default XDG/AppData folders"
+                />
+              </label>
+              <div class="settings-hint muted">
+                When you save, iRecall switches to this root immediately. A new root gets <code>data</code>, <code>config</code>, and <code>state</code> subfolders.
+              </div>
               <div class="field">
                 <span>Data dir</span>
                 <div class="readonly-model path-value">${escapeHtml(storagePaths?.dataDir ?? "(unavailable)")}</div>
@@ -2529,6 +2592,7 @@ function settingsFormFromPayload(payload: SettingsPayload | BootstrapState["sett
     mockLLM: payload.Debug?.MockLLM ?? false,
     theme: payload.Theme || "violet",
     webPort: String(payload.Web?.Port ?? 9527),
+    rootDir: payload.RootDir ?? "",
     models,
   };
   syncSelectedModel(form);
@@ -2560,6 +2624,7 @@ function emptySettingsForm(): SettingsFormState {
     mockLLM: false,
     theme: "violet",
     webPort: "9527",
+    rootDir: "",
     models: [],
   };
 }
@@ -2608,7 +2673,12 @@ function settingsPayloadFromForm(form: SettingsFormState): SettingsPayload {
     Web: {
       Port: webPort,
     },
+    RootDir: form.rootDir.trim(),
   };
+}
+
+function normalizeRootDirForCompare(root: string): string {
+  return root.trim();
 }
 
 function getFilteredModels(form: SettingsFormState): string[] {

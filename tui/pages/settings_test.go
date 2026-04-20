@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/gigol/irecall/config"
 	"github.com/gigol/irecall/core"
 	"github.com/gigol/irecall/tui/styles"
 )
@@ -87,11 +86,9 @@ func TestSettingsPageThemeSelectionUpdatesCurrentSettingsAndPreview(t *testing.T
 }
 
 func TestSettingsPageShowsStoragePaths(t *testing.T) {
-	original := config.RootPath()
-	config.SetRootPath("/tmp/irecall-test")
-	t.Cleanup(func() { config.SetRootPath(original) })
-
-	page := NewSettingsPage(nil, 120, 40, core.DefaultSettings())
+	settings := core.DefaultSettings()
+	settings.RootDir = "/tmp/irecall-test"
+	page := NewSettingsPage(nil, 120, 40, settings)
 	view := page.View()
 
 	for _, want := range []string{
@@ -103,6 +100,19 @@ func TestSettingsPageShowsStoragePaths(t *testing.T) {
 		if !strings.Contains(view, want) {
 			t.Fatalf("settings view missing %q:\n%s", want, view)
 		}
+	}
+}
+
+func TestSettingsPageCurrentSettingsIncludesRootDir(t *testing.T) {
+	page := NewSettingsPage(nil, 120, 40, core.DefaultSettings())
+	page.inputs[fieldRootDir].SetValue("/tmp/irecall-alt")
+
+	current, err := page.CurrentSettings()
+	if err != nil {
+		t.Fatalf("CurrentSettings() error = %v", err)
+	}
+	if current.RootDir != "/tmp/irecall-alt" {
+		t.Fatalf("CurrentSettings().RootDir = %q, want /tmp/irecall-alt", current.RootDir)
 	}
 }
 

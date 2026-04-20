@@ -22,6 +22,7 @@ The project currently ships with:
 - Preserve author and source provenance on imported content
 - Configure provider settings, search settings, and UI theme
 - Run isolated local instances with a custom data root
+- Switch the active storage root from Settings across TUI, web, and desktop
 
 ## Getting Started
 
@@ -131,6 +132,8 @@ To run an isolated instance:
 ```
 
 That root will contain `data/`, `config/`, and `state/`.
+
+You can also set the storage root from `Settings`. When you save a new root, iRecall switches the active settings, config, and database to that location immediately. Leaving the setting blank returns to the default platform directories.
 
 ## Project Layout
 

@@ -56,3 +56,31 @@ func TestEnsureDirsCreatesOverrideTree(t *testing.T) {
 		}
 	}
 }
+
+func TestPreferredRootPathRoundTrip(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(t.TempDir(), "xdg-config"))
+
+	root := filepath.Join(t.TempDir(), "instance-c")
+	if err := SavePreferredRootPath(root); err != nil {
+		t.Fatalf("SavePreferredRootPath() error = %v", err)
+	}
+
+	got, err := LoadPreferredRootPath()
+	if err != nil {
+		t.Fatalf("LoadPreferredRootPath() error = %v", err)
+	}
+	if got != root {
+		t.Fatalf("LoadPreferredRootPath() = %q, want %q", got, root)
+	}
+
+	if err := SavePreferredRootPath(""); err != nil {
+		t.Fatalf("SavePreferredRootPath(clear) error = %v", err)
+	}
+	got, err = LoadPreferredRootPath()
+	if err != nil {
+		t.Fatalf("LoadPreferredRootPath() after clear error = %v", err)
+	}
+	if got != "" {
+		t.Fatalf("LoadPreferredRootPath() after clear = %q, want empty", got)
+	}
+}

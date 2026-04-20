@@ -6,6 +6,7 @@ import (
 	"log"
 
 	"github.com/gigol/irecall/app"
+	"github.com/gigol/irecall/config"
 	frontendassets "github.com/gigol/irecall/frontend"
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
@@ -14,6 +15,9 @@ import (
 )
 
 func main() {
+	if _, err := config.ApplyPreferredRootPath(); err != nil {
+		log.Fatal(err)
+	}
 	runtimeApp, err := app.NewApp("")
 	if err != nil {
 		log.Fatal(err)
