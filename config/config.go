@@ -107,8 +107,8 @@ func DefaultConfigDir() string {
 	if d := os.Getenv("XDG_CONFIG_HOME"); d != "" {
 		return filepath.Join(d, appName)
 	}
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".config", appName)
+	// Fall back to the data dir so config files live with other app data by default
+	return DefaultDataDir()
 }
 
 // DefaultStateDir returns the platform default state directory without
@@ -122,8 +122,8 @@ func DefaultStateDir() string {
 	if d := os.Getenv("XDG_STATE_HOME"); d != "" {
 		return filepath.Join(d, appName)
 	}
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".local", "state", appName)
+	// Fall back to the data dir so state files live with other app data by default
+	return DefaultDataDir()
 }
 
 func preferredRootPathFile() string {
