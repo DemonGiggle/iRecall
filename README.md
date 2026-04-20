@@ -22,6 +22,7 @@ The project currently ships with:
 - Preserve author and source provenance on imported content
 - Configure provider settings, search settings, and UI theme
 - Run isolated local instances with a custom data root
+- Switch the active storage root from Settings across TUI, web, and desktop
 
 ## Getting Started
 
@@ -114,24 +115,32 @@ Notable workflows:
 
 ## Data Storage
 
-iRecall follows XDG-style directory conventions.
-
-Default locations:
+On Linux iRecall now consolidates defaults under the data directory so everything lives together by default. The effective defaults (when XDG vars are not set) are:
 
 | Item | Default Path |
 | --- | --- |
+| All app files (data/config/state) | `~/.local/share/irecall/` |
 | SQLite database | `~/.local/share/irecall/irecall.db` |
-| Log file | `~/.local/state/irecall/irecall.log` |
-| Config directory | `~/.config/irecall/` |
+| Log file | `~/.local/share/irecall/irecall.log` |
+| Persisted preferred root file | `~/.local/share/irecall/root-path` (used only if you choose a custom root)
 
-To run an isolated instance:
+Notes:
+
+- Config and state now fall back to the data directory by default so the app uses a single per-user directory unless XDG_* environment variables override individual locations.
+- To run an isolated instance with its own storage root, pass a root path. The root will contain `data/`, `config/`, and `state/` subdirectories:
 
 ```bash
 ./bin/irecall -data-path /path/to/instance
 ```
 
-That root will contain `data/`, `config/`, and `state/`.
+- You can also set the storage root from `Settings` (TUI, web, desktop). When you save a new root, iRecall:
+  - closes the current runtime (to avoid DB locks),
+  - if the target root is empty, copies current `data/`, `config/`, and `state/` into `<root>/...` (copy, not move),
+  - if the target already contains iRecall data, attaches to it without overwriting,
+  - persists the chosen root so it is applied on future launches,
+  - attempts to reopen the previous runtime on failure (partially-copied files are not automatically removed).
 
+Leaving the setting blank returns to the platform default behavior (XDG paths or the consolidated data dir fallback described above).
 ## Project Layout
 
 ```text

@@ -3,6 +3,7 @@ package pages
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -17,8 +18,17 @@ import (
 
 // --- Messages ---
 
-// SettingsSavedMsg signals a successful settings save.
-type SettingsSavedMsg struct{}
+// SettingsSavedMsg reports the result of a settings save orchestrated by the app shell.
+type SettingsSavedMsg struct {
+	Settings     *core.Settings
+	Err          error
+	SwitchedRoot bool
+}
+
+// SaveSettingsRequestedMsg asks the app shell to persist and apply settings.
+type SaveSettingsRequestedMsg struct {
+	Settings *core.Settings
+}
 
 // ModelsFetchedMsg carries the list of fetched model IDs.
 type ModelsFetchedMsg struct {
@@ -39,6 +49,7 @@ const (
 	fieldModelFilter
 	fieldModel
 	fieldTheme
+	fieldRootDir
 	fieldMaxResults
 	fieldMinRelevance
 	fieldMockLLM
@@ -87,6 +98,7 @@ func NewSettingsPage(engine *core.Engine, width, height int, s *core.Settings) S
 	inputs[fieldPort] = makeInput("e.g. 11434", false)
 	inputs[fieldAPIKey] = makeInput("optional", true)
 	inputs[fieldModelFilter] = makeInput("type to filter", false)
+	inputs[fieldRootDir] = makeInput("leave blank for default XDG/AppData folders", false)
 	inputs[fieldMaxResults] = makeInput("1–20", false)
 	inputs[fieldMinRelevance] = makeInput("0.0-1.0", false)
 
@@ -94,6 +106,7 @@ func NewSettingsPage(engine *core.Engine, width, height int, s *core.Settings) S
 	inputs[fieldHost].SetValue(s.Provider.Host)
 	inputs[fieldPort].SetValue(strconv.Itoa(s.Provider.Port))
 	inputs[fieldAPIKey].SetValue(s.Provider.APIKey)
+	inputs[fieldRootDir].SetValue(s.RootDir)
 	inputs[fieldMaxResults].SetValue(strconv.Itoa(s.Search.MaxResults))
 	inputs[fieldMinRelevance].SetValue(fmt.Sprintf("%.1f", s.Search.MinRelevance))
 	inputs[fieldHost].Focus()
@@ -203,14 +216,29 @@ func (p SettingsPage) Update(msg tea.Msg) (SettingsPage, tea.Cmd) {
 			if p.busy {
 				break
 			}
-			if err := p.save(); err != nil {
+			s, err := p.CurrentSettings()
+			if err != nil {
 				p.statusMsg = "Error: " + err.Error()
 				p.isErr = true
 			} else {
-				p.statusMsg = "Saved."
-				p.isErr = false
+				return p, requestSaveSettingsCmd(s)
 			}
 		}
+
+	case SettingsSavedMsg:
+		if msg.Err != nil {
+			p.statusMsg = "Error: " + msg.Err.Error()
+			p.isErr = true
+			break
+		}
+		if msg.Settings != nil {
+			p.LoadFrom(msg.Settings)
+		}
+		p.statusMsg = "Saved."
+		if msg.SwitchedRoot {
+			p.statusMsg = "Saved. Switched storage root."
+		}
+		p.isErr = false
 
 	case ModelsFetchedMsg:
 		p.busy = false
@@ -316,9 +344,11 @@ func (p SettingsPage) View() string {
 
 	pathsSection := lipgloss.JoinVertical(lipgloss.Left,
 		styles.SectionHeader.Render("Local Storage"),
-		row("Data dir", styles.Muted.Render(config.DataDir())),
-		row("Config dir", styles.Muted.Render(config.ConfigDir())),
-		row("State dir", styles.Muted.Render(config.StateDir())),
+		row("Config root", p.inputView(fieldRootDir)),
+		styles.Muted.Render("Leave blank for the default XDG/AppData locations. Saving switches iRecall to that root immediately."),
+		row("Data dir", styles.Muted.Render(p.previewDataDir())),
+		row("Config dir", styles.Muted.Render(p.previewConfigDir())),
+		row("State dir", styles.Muted.Render(p.previewStateDir())),
 	)
 
 	var statusLine string
@@ -330,7 +360,7 @@ func (p SettingsPage) View() string {
 		}
 	}
 
-	helpLine := styles.HelpBar.Render("↑/↓: Move   type: Filter   ←/→: Cycle Model/Theme   space: Toggle   enter: Fetch   ctrl+s: Save   tab/shift+tab: Switch Page")
+	helpLine := styles.HelpBar.Render("↑/↓: Move   type: Edit/filter   ←/→: Cycle Model/Theme   space: Toggle   enter: Fetch   ctrl+s: Save   tab/shift+tab: Switch Page")
 
 	return styles.Panel.Width(p.width - 4).Render(
 		lipgloss.JoinVertical(lipgloss.Left,
@@ -411,6 +441,7 @@ func (p *SettingsPage) LoadFrom(s *core.Settings) {
 	p.inputs[fieldPort].SetValue(strconv.Itoa(s.Provider.Port))
 	p.inputs[fieldAPIKey].SetValue(s.Provider.APIKey)
 	p.inputs[fieldModelFilter].SetValue("")
+	p.inputs[fieldRootDir].SetValue(s.RootDir)
 	p.inputs[fieldMaxResults].SetValue(strconv.Itoa(s.Search.MaxResults))
 	p.inputs[fieldMinRelevance].SetValue(fmt.Sprintf("%.1f", s.Search.MinRelevance))
 	p.httpsOn = s.Provider.HTTPS
@@ -469,18 +500,11 @@ func (p *SettingsPage) CurrentSettings() (*core.Settings, error) {
 			MaxResults:   maxResults,
 			MinRelevance: minRel,
 		},
-		Debug: p.debug,
-		Theme: p.SelectedTheme(),
-		Web:   p.web,
+		Debug:   p.debug,
+		Theme:   p.SelectedTheme(),
+		Web:     p.web,
+		RootDir: strings.TrimSpace(p.inputs[fieldRootDir].Value()),
 	}, nil
-}
-
-func (p *SettingsPage) save() error {
-	s, err := p.CurrentSettings()
-	if err != nil {
-		return err
-	}
-	return p.engine.SaveSettings(context.Background(), s)
 }
 
 func (p *SettingsPage) doFetchModels() tea.Cmd {
@@ -504,7 +528,7 @@ func (p *SettingsPage) doFetchModels() tea.Cmd {
 
 func (p *SettingsPage) isInputField(f settingsField) bool {
 	return f == fieldHost || f == fieldPort || f == fieldAPIKey ||
-		f == fieldModelFilter || f == fieldMaxResults || f == fieldMinRelevance
+		f == fieldModelFilter || f == fieldRootDir || f == fieldMaxResults || f == fieldMinRelevance
 }
 
 func (p *SettingsPage) cycleFocus(dir int) {
@@ -581,4 +605,34 @@ func (p *SettingsPage) syncModelSelection(preferred string) {
 		return
 	}
 	p.modelIdx = p.indexForModel(filtered[0])
+}
+
+func requestSaveSettingsCmd(settings *core.Settings) tea.Cmd {
+	return func() tea.Msg {
+		return SaveSettingsRequestedMsg{Settings: settings}
+	}
+}
+
+func (p *SettingsPage) previewDataDir() string {
+	root := strings.TrimSpace(p.inputs[fieldRootDir].Value())
+	if root == "" {
+		return config.DefaultDataDir()
+	}
+	return filepath.Join(root, "data")
+}
+
+func (p *SettingsPage) previewConfigDir() string {
+	root := strings.TrimSpace(p.inputs[fieldRootDir].Value())
+	if root == "" {
+		return config.DefaultConfigDir()
+	}
+	return filepath.Join(root, "config")
+}
+
+func (p *SettingsPage) previewStateDir() string {
+	root := strings.TrimSpace(p.inputs[fieldRootDir].Value())
+	if root == "" {
+		return config.DefaultStateDir()
+	}
+	return filepath.Join(root, "state")
 }

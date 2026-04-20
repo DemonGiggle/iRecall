@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/gigol/irecall/config"
 	"github.com/gigol/irecall/core"
 )
 
@@ -230,5 +231,91 @@ func TestDesktopBackendImportQuotesPayload(t *testing.T) {
 	}
 	if result.Inserted != 1 {
 		t.Fatalf("ImportQuotesPayload() result = %+v, want inserted=1", result)
+	}
+}
+
+func TestNewAppUsesDefaultStorageWhenRootIsEmpty(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", filepath.Join(t.TempDir(), "xdg-data"))
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(t.TempDir(), "xdg-config"))
+	t.Setenv("XDG_STATE_HOME", filepath.Join(t.TempDir(), "xdg-state"))
+
+	app, err := NewApp("")
+	if err != nil {
+		t.Fatalf("NewApp(\"\") error = %v", err)
+	}
+	t.Cleanup(func() { app.Shutdown(context.Background()) })
+
+	if app.paths.RootDir != "" {
+		t.Fatalf("app.paths.RootDir = %q, want empty for default storage", app.paths.RootDir)
+	}
+	for _, path := range []string{app.paths.DataDir, app.paths.ConfigDir, app.paths.StateDir} {
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Fatalf("Stat(%q) error = %v", path, err)
+		}
+		if !info.IsDir() {
+			t.Fatalf("%q is not a directory", path)
+		}
+	}
+}
+
+func TestDesktopBackendSaveSettingsSwitchesStorageRoot(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(t.TempDir(), "xdg-config"))
+
+	sourceRoot := filepath.Join(t.TempDir(), "desktop-source")
+	targetRoot := filepath.Join(t.TempDir(), "desktop-target")
+	app, err := NewApp(sourceRoot)
+	if err != nil {
+		t.Fatalf("NewApp() error = %v", err)
+	}
+	t.Cleanup(func() { app.Shutdown(context.Background()) })
+
+	if _, err := app.SaveUserProfile("Alice"); err != nil {
+		t.Fatalf("SaveUserProfile() error = %v", err)
+	}
+	if _, err := app.AddQuote("switch storage root"); err != nil {
+		t.Fatalf("AddQuote() error = %v", err)
+	}
+
+	settings := *app.GetSettings()
+	settings.RootDir = targetRoot
+	settings.Theme = "forest"
+
+	saved, err := app.SaveSettings(settings)
+	if err != nil {
+		t.Fatalf("SaveSettings() error = %v", err)
+	}
+
+	absTarget, err := filepath.Abs(targetRoot)
+	if err != nil {
+		t.Fatalf("Abs(targetRoot) error = %v", err)
+	}
+	if saved.RootDir != absTarget {
+		t.Fatalf("saved root = %q, want %q", saved.RootDir, absTarget)
+	}
+	if app.paths.RootDir != absTarget {
+		t.Fatalf("app.paths.RootDir = %q, want %q", app.paths.RootDir, absTarget)
+	}
+	if state := app.BootstrapState(); state.Paths.RootDir != absTarget {
+		t.Fatalf("bootstrap root = %q, want %q", state.Paths.RootDir, absTarget)
+	}
+
+	quotes, err := app.ListQuotes()
+	if err != nil {
+		t.Fatalf("ListQuotes() error = %v", err)
+	}
+	if len(quotes) != 1 || quotes[0].Content != "switch storage root" {
+		t.Fatalf("quotes after switch = %+v, want migrated quote", quotes)
+	}
+
+	if _, err := os.Stat(filepath.Join(absTarget, "data", "irecall.db")); err != nil {
+		t.Fatalf("Stat(target db) error = %v", err)
+	}
+	preferredRoot, err := config.LoadPreferredRootPath()
+	if err != nil {
+		t.Fatalf("LoadPreferredRootPath() error = %v", err)
+	}
+	if preferredRoot != absTarget {
+		t.Fatalf("preferred root = %q, want %q", preferredRoot, absTarget)
 	}
 }

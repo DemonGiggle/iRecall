@@ -10,9 +10,8 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
+	appbackend "github.com/gigol/irecall/app"
 	"github.com/gigol/irecall/config"
-	"github.com/gigol/irecall/core"
-	"github.com/gigol/irecall/core/db"
 	"github.com/gigol/irecall/tui"
 )
 
@@ -35,6 +34,9 @@ func main() {
 
 	if *dataPathFlag != "" {
 		config.SetRootPath(*dataPathFlag)
+	} else if _, err := config.ApplyPreferredRootPath(); err != nil {
+		fmt.Fprintf(os.Stderr, "irecall: cannot load preferred data root: %v\n", err)
+		os.Exit(1)
 	}
 
 	if err := config.EnsureDirs(); err != nil {
@@ -55,45 +57,24 @@ func main() {
 	defer logFile.Close()
 	slog.SetDefault(slog.New(slog.NewJSONHandler(logFile, &slog.HandlerOptions{Level: logLevel})))
 
-	// Open database.
-	store, err := db.Open(config.DBPath())
+	runtimeState, err := appbackend.OpenRuntime(config.RootPath())
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "irecall: cannot open database: %v\n", err)
-		os.Exit(1)
-	}
-
-	// Bootstrap engine with default settings; load persisted settings from DB.
-	defaults := core.DefaultSettings()
-	engine := core.New(store, defaults)
-	settings, err := engine.LoadSettings(nil) //nolint: staticcheck
-	if err != nil || settings == nil {
-		settings = defaults
-	}
-	engine.UpdateSettings(settings)
-	profile, err := engine.LoadUserProfile(nil) //nolint: staticcheck
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "irecall: cannot load user profile: %v\n", err)
-		engine.Close()
-		os.Exit(1)
-	}
-	if err := engine.BootstrapQuoteIdentity(nil); err != nil { //nolint: staticcheck
-		fmt.Fprintf(os.Stderr, "irecall: cannot bootstrap quote identity: %v\n", err)
-		engine.Close()
+		fmt.Fprintf(os.Stderr, "irecall: cannot open runtime: %v\n", err)
 		os.Exit(1)
 	}
 
 	// Start TUI.
-	app := tui.NewApp(engine, settings, profile, 0, 0)
+	app := tui.NewApp(runtimeState.Engine, runtimeState.Settings, runtimeState.Profile, runtimeState.Paths, 0, 0)
 	p := tea.NewProgram(app,
 		tea.WithAltScreen(),
 		tea.WithMouseCellMotion(),
 	)
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "irecall: %v\n", err)
-		engine.Close()
+		runtimeState.Engine.Close()
 		os.Exit(1)
 	}
-	engine.Close()
+	runtimeState.Engine.Close()
 }
 
 func usageText(fs *flag.FlagSet, program string) string {

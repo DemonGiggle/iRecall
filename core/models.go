@@ -87,6 +87,7 @@ type Settings struct {
 	Debug    DebugConfig
 	Theme    string
 	Web      WebConfig
+	RootDir  string
 }
 
 type DebugConfig struct {

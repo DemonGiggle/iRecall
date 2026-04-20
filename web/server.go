@@ -284,6 +284,7 @@ func (s *Server) handleSaveSettings(w http.ResponseWriter, r *http.Request) {
 		Web   struct {
 			Port int `json:"Port"`
 		} `json:"Web"`
+		RootDir string `json:"RootDir"`
 	}
 	if err := json.Unmarshal(body, &settings); err != nil {
 		writeError(w, http.StatusBadRequest, err)
@@ -542,6 +543,7 @@ func backendToCoreSettings(v struct {
 	Web   struct {
 		Port int `json:"Port"`
 	} `json:"Web"`
+	RootDir string `json:"RootDir"`
 }) core.Settings {
 	return core.Settings{
 		Provider: core.ProviderConfig{
@@ -562,5 +564,6 @@ func backendToCoreSettings(v struct {
 		Web: core.WebConfig{
 			Port: v.Web.Port,
 		},
+		RootDir: v.RootDir,
 	}
 }

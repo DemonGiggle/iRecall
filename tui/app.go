@@ -5,6 +5,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	appbackend "github.com/gigol/irecall/app"
 	"github.com/gigol/irecall/core"
 	"github.com/gigol/irecall/tui/pages"
 	"github.com/gigol/irecall/tui/styles"
@@ -38,6 +39,7 @@ type App struct {
 	engine   *core.Engine
 	settings *core.Settings
 	profile  *core.UserProfile
+	paths    appbackend.AppPaths
 
 	page    activePage
 	overlay overlayKind
@@ -58,7 +60,14 @@ type App struct {
 	height int
 }
 
-func NewApp(engine *core.Engine, settings *core.Settings, profile *core.UserProfile, width, height int) App {
+type settingsAppliedMsg struct {
+	runtime      *appbackend.RuntimeState
+	settings     *core.Settings
+	err          error
+	switchedRoot bool
+}
+
+func NewApp(engine *core.Engine, settings *core.Settings, profile *core.UserProfile, paths appbackend.AppPaths, width, height int) App {
 	styles.ApplyTheme(settings.Theme)
 	overlay := overlayNone
 	if profile == nil || profile.DisplayName == "" {
@@ -68,6 +77,7 @@ func NewApp(engine *core.Engine, settings *core.Settings, profile *core.UserProf
 		engine:        engine,
 		settings:      settings,
 		profile:       profile,
+		paths:         paths,
 		page:          pageRecall,
 		overlay:       overlay,
 		userProfile:   pages.NewUserProfilePromptPage(engine, width, height, profile),
@@ -225,6 +235,34 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case pages.CloseNoticeMsg:
 		a.overlay = overlayNone
 		return a, nil
+
+	case pages.SaveSettingsRequestedMsg:
+		return a, saveSettingsCmd(&appbackend.RuntimeState{
+			Engine:   a.engine,
+			Settings: a.settings,
+			Profile:  a.profile,
+			Paths:    a.paths,
+		}, msg.Settings)
+
+	case settingsAppliedMsg:
+		if msg.err != nil {
+			a.applyRuntime(msg.runtime)
+			var cmd tea.Cmd
+			a.settings_, cmd = a.settings_.Update(pages.SettingsSavedMsg{Err: msg.err, SwitchedRoot: msg.switchedRoot})
+			cmds = append(cmds, cmd)
+			return a, tea.Batch(cmds...)
+		}
+		a.applyRuntime(msg.runtime)
+		var cmd tea.Cmd
+		a.settings_, cmd = a.settings_.Update(pages.SettingsSavedMsg{
+			Settings:     a.settings,
+			SwitchedRoot: msg.switchedRoot,
+		})
+		cmds = append(cmds, cmd)
+		if a.overlay == overlayUserProfilePrompt {
+			cmds = append(cmds, a.userProfile.Init())
+		}
+		return a, tea.Batch(cmds...)
 
 	case pages.QuotesLoadedMsg:
 		var cmd tea.Cmd
@@ -411,4 +449,55 @@ func (a App) headerView() string {
 		spacer.Render(""),
 		right,
 	)
+}
+
+func saveSettingsCmd(current *appbackend.RuntimeState, next *core.Settings) tea.Cmd {
+	sourceRoot := ""
+	if current != nil {
+		sourceRoot = strings.TrimSpace(current.Paths.RootDir)
+	}
+	targetRoot := ""
+	if next != nil {
+		targetRoot = strings.TrimSpace(next.RootDir)
+	}
+	return func() tea.Msg {
+		runtimeState, err := appbackend.SwitchRuntime(current, next)
+		switchedRoot := sourceRoot != targetRoot
+		if runtimeState != nil {
+			switchedRoot = sourceRoot != strings.TrimSpace(runtimeState.Paths.RootDir)
+		}
+		return settingsAppliedMsg{
+			runtime:      runtimeState,
+			settings:     next,
+			err:          err,
+			switchedRoot: switchedRoot,
+		}
+	}
+}
+
+func (a *App) applyRuntime(runtimeState *appbackend.RuntimeState) {
+	if runtimeState == nil {
+		return
+	}
+	a.engine = runtimeState.Engine
+	a.settings = runtimeState.Settings
+	a.profile = runtimeState.Profile
+	a.paths = runtimeState.Paths
+	styles.ApplyTheme(a.settings.Theme)
+	a.userProfile = pages.NewUserProfilePromptPage(a.engine, a.width, a.height, a.profile)
+	a.recall = pages.NewRecallPage(a.engine, a.width, a.height-3)
+	a.quotes = pages.NewQuotesPage(a.engine, a.width, a.height-3)
+	a.history = pages.NewHistoryPage(a.engine, a.width, a.height-3)
+	a.settings_ = pages.NewSettingsPage(a.engine, a.width, a.height-3, a.settings)
+	a.quoteEditor = pages.NewQuoteEditorPage(a.engine, a.width, a.height)
+	a.deleteQuotes = pages.NewDeleteQuotesPage(a.engine, a.width, a.height)
+	a.deleteHistory = pages.NewDeleteRecallHistoryPage(a.engine, a.width, a.height)
+	a.quoteShare = pages.NewQuoteSharePage(a.engine, a.width, a.height)
+	a.quoteImport = pages.NewQuoteImportPage(a.engine, a.width, a.height)
+	a.notice = pages.NewNoticePage(a.width, a.height)
+	if a.profile == nil || strings.TrimSpace(a.profile.DisplayName) == "" {
+		a.overlay = overlayUserProfilePrompt
+		return
+	}
+	a.overlay = overlayNone
 }

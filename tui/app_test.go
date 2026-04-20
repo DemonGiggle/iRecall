@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	appbackend "github.com/gigol/irecall/app"
 	"github.com/gigol/irecall/core"
 	"github.com/gigol/irecall/core/db"
 	"github.com/gigol/irecall/tui/pages"
@@ -62,7 +63,7 @@ func TestAppStartsWithProfilePromptWhenNameMissing(t *testing.T) {
 	t.Parallel()
 
 	settings := core.DefaultSettings()
-	app := NewApp(nil, settings, &core.UserProfile{UserID: "user-1", DisplayName: ""}, 120, 40)
+	app := NewApp(nil, settings, &core.UserProfile{UserID: "user-1", DisplayName: ""}, appbackend.AppPaths{}, 120, 40)
 
 	if app.overlay != overlayUserProfilePrompt {
 		t.Fatalf("overlay = %v, want %v", app.overlay, overlayUserProfilePrompt)
@@ -83,7 +84,7 @@ func TestAppHeaderShowsUserGreeting(t *testing.T) {
 func TestAppAppliesThemeFromSettings(t *testing.T) {
 	settings := core.DefaultSettings()
 	settings.Theme = "ocean"
-	app := NewApp(nil, settings, &core.UserProfile{UserID: "user-1", DisplayName: "Alice"}, 120, 40)
+	app := NewApp(nil, settings, &core.UserProfile{UserID: "user-1", DisplayName: "Alice"}, appbackend.AppPaths{}, 120, 40)
 
 	if app.settings.Theme != "ocean" {
 		t.Fatalf("settings theme = %q, want ocean", app.settings.Theme)
@@ -196,7 +197,7 @@ func newTestApp(t *testing.T) App {
 		t.Fatalf("insert quote: %v", err)
 	}
 
-	return NewApp(engine, settings, profile, 120, 40)
+	return NewApp(engine, settings, profile, appbackend.AppPaths{}, 120, 40)
 }
 
 func updateAppWithKey(t *testing.T, app App, key tea.KeyType) App {

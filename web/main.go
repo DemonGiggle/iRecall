@@ -27,6 +27,9 @@ func main() {
 
 	if *dataPathFlag != "" {
 		config.SetRootPath(*dataPathFlag)
+	} else if _, err := config.ApplyPreferredRootPath(); err != nil {
+		fmt.Fprintf(os.Stderr, "irecall-web: cannot load preferred data root: %v\n", err)
+		os.Exit(1)
 	}
 	if err := config.EnsureDirs(); err != nil {
 		fmt.Fprintf(os.Stderr, "irecall-web: cannot create data directories: %v\n", err)

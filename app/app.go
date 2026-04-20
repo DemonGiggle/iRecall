@@ -10,7 +10,6 @@ import (
 
 	"github.com/gigol/irecall/config"
 	"github.com/gigol/irecall/core"
-	"github.com/gigol/irecall/core/db"
 )
 
 type App struct {
@@ -55,43 +54,16 @@ type AuthStatus struct {
 }
 
 func NewApp(root string) (*App, error) {
-	paths, err := resolvePaths(root)
+	runtimeState, err := OpenRuntime(root)
 	if err != nil {
 		return nil, err
-	}
-	if err := ensurePaths(paths); err != nil {
-		return nil, err
-	}
-
-	store, err := db.Open(paths.DBPath)
-	if err != nil {
-		return nil, fmt.Errorf("open desktop database: %w", err)
-	}
-
-	defaults := core.DefaultSettings()
-	engine := core.New(store, defaults)
-
-	settings, err := engine.LoadSettings(context.Background())
-	if err != nil || settings == nil {
-		settings = defaults
-	}
-	engine.UpdateSettings(settings)
-
-	profile, err := engine.LoadUserProfile(context.Background())
-	if err != nil {
-		_ = engine.Close()
-		return nil, fmt.Errorf("load desktop user profile: %w", err)
-	}
-	if err := engine.BootstrapQuoteIdentity(context.Background()); err != nil {
-		_ = engine.Close()
-		return nil, fmt.Errorf("bootstrap desktop quote identity: %w", err)
 	}
 
 	return &App{
-		engine:   engine,
-		settings: settings,
-		profile:  profile,
-		paths:    paths,
+		engine:   runtimeState.Engine,
+		settings: runtimeState.Settings,
+		profile:  runtimeState.Profile,
+		paths:    runtimeState.Paths,
 	}, nil
 }
 
@@ -213,11 +185,25 @@ func (a *App) GetSettings() *core.Settings {
 }
 
 func (a *App) SaveSettings(settings core.Settings) (*core.Settings, error) {
-	if err := a.engine.SaveSettings(a.context(), &settings); err != nil {
+	nextRuntime, err := SwitchRuntime(&RuntimeState{
+		Engine:   a.engine,
+		Settings: a.settings,
+		Profile:  a.profile,
+		Paths:    a.paths,
+	}, &settings)
+	if err != nil {
+		if nextRuntime != nil {
+			a.engine = nextRuntime.Engine
+			a.settings = nextRuntime.Settings
+			a.profile = nextRuntime.Profile
+			a.paths = nextRuntime.Paths
+		}
 		return nil, err
 	}
-	a.engine.UpdateSettings(&settings)
-	a.settings = &settings
+	a.engine = nextRuntime.Engine
+	a.settings = nextRuntime.Settings
+	a.profile = nextRuntime.Profile
+	a.paths = nextRuntime.Paths
 	return a.settings, nil
 }
 
@@ -327,10 +313,14 @@ func (a *App) context() context.Context {
 }
 
 func resolvePaths(root string) (AppPaths, error) {
+	var err error
 	root = strings.TrimSpace(root)
 	if root == "" {
+		root = strings.TrimSpace(config.RootPath())
+	}
+	if root == "" {
 		return AppPaths{
-			RootDir:   filepath.Dir(config.DataDir()),
+			RootDir:   "",
 			DataDir:   config.DataDir(),
 			ConfigDir: config.ConfigDir(),
 			StateDir:  config.StateDir(),
@@ -338,9 +328,9 @@ func resolvePaths(root string) (AppPaths, error) {
 			LogPath:   config.LogPath(),
 		}, nil
 	}
-	root, err := filepath.Abs(root)
+	root, err = normalizeRootDir(root)
 	if err != nil {
-		return AppPaths{}, fmt.Errorf("resolve absolute data root: %w", err)
+		return AppPaths{}, err
 	}
 	return AppPaths{
 		RootDir:   root,
@@ -354,6 +344,9 @@ func resolvePaths(root string) (AppPaths, error) {
 
 func ensurePaths(paths AppPaths) error {
 	for _, dir := range []string{paths.RootDir, paths.DataDir, paths.ConfigDir, paths.StateDir} {
+		if strings.TrimSpace(dir) == "" {
+			continue
+		}
 		if err := os.MkdirAll(dir, 0o700); err != nil {
 			return fmt.Errorf("create desktop app directory %q: %w", dir, err)
 		}
