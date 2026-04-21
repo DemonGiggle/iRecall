@@ -48,9 +48,14 @@ interface WebConfig {
   Port: number;
 }
 
+interface DebugConfig {
+  MockLLM: boolean;
+}
+
 interface SettingsPayload {
   Provider: ProviderConfig;
   Search: SearchConfig;
+  Debug: DebugConfig;
   Theme: string;
   Web: WebConfig;
 }
@@ -62,6 +67,7 @@ interface BootstrapState {
   settings: {
     Provider: ProviderConfig;
     Search: SearchConfig;
+    Debug: DebugConfig;
     Theme: string;
     Web: WebConfig;
   };
@@ -196,6 +202,7 @@ interface SettingsFormState {
   host: string;
   port: string;
   https: boolean;
+  mockLLM: boolean;
   apiKey: string;
   modelFilter: string;
   model: string;
@@ -238,8 +245,6 @@ interface AppState {
   quotesCursor: number;
   quotesSelected: Set<number>;
   libraryQuery: string;
-  libraryOwnership: "all" | "owned" | "imported";
-  libraryTag: string | null;
   recallQuestion: string;
   recallLastQuestion: string;
   recallKeywords: string[];
@@ -290,8 +295,6 @@ const state: AppState = {
   quotesCursor: 0,
   quotesSelected: new Set<number>(),
   libraryQuery: "",
-  libraryOwnership: "all",
-  libraryTag: null,
   recallQuestion: "",
   recallLastQuestion: "",
   recallKeywords: [],
@@ -542,20 +545,8 @@ async function handleClick(event: MouseEvent): Promise<void> {
     case "quote-import":
       openImportOverlay();
       return;
-    case "library-filter-ownership":
-      state.libraryOwnership = (actionEl.dataset.value as "all" | "owned" | "imported") ?? "all";
-      state.quotesCursor = 0;
-      render();
-      return;
-    case "library-filter-tag":
-      state.libraryTag = actionEl.dataset.value && actionEl.dataset.value !== "all" ? actionEl.dataset.value : null;
-      state.quotesCursor = 0;
-      render();
-      return;
     case "library-clear-filters":
       state.libraryQuery = "";
-      state.libraryOwnership = "all";
-      state.libraryTag = null;
       state.quotesCursor = 0;
       render();
       return;
@@ -770,6 +761,11 @@ function handleChange(event: Event): void {
     case "settings-https":
       if (target instanceof HTMLInputElement) {
         state.settings.https = target.checked;
+      }
+      return;
+    case "settings-mock-llm":
+      if (target instanceof HTMLInputElement) {
+        state.settings.mockLLM = target.checked;
       }
       return;
     case "settings-model":
@@ -1402,7 +1398,7 @@ async function runRecall(): Promise<void> {
   }
   const question = state.recallQuestion.trim();
   if (!question) {
-    state.recallError = "Ask a question first.";
+    state.recallError = "Enter a recall question first.";
     render();
     return;
   }
@@ -1648,38 +1644,12 @@ function selectedOrCurrentQuotes(context: QuoteContext): Quote[] {
 function getFilteredLibraryQuotes(): Quote[] {
   const query = state.libraryQuery.trim().toLowerCase();
   return state.quotes.filter((quote) => {
-    if (state.libraryOwnership === "owned" && !quote.IsOwnedByMe) {
-      return false;
-    }
-    if (state.libraryOwnership === "imported" && quote.IsOwnedByMe) {
-      return false;
-    }
-    if (state.libraryTag && !quote.Tags.some((tag) => tag.toLowerCase() === state.libraryTag?.toLowerCase())) {
-      return false;
-    }
     if (!query) {
       return true;
     }
     const haystack = [quote.Content, quote.AuthorName, quote.SourceName, ...quote.Tags].join(" ").toLowerCase();
     return haystack.includes(query);
   });
-}
-
-function getLibraryTagOptions(limit = 12): string[] {
-  const counts = new Map<string, number>();
-  for (const quote of state.quotes) {
-    for (const tag of quote.Tags) {
-      const key = tag.trim();
-      if (!key) {
-        continue;
-      }
-      counts.set(key, (counts.get(key) ?? 0) + 1);
-    }
-  }
-  return [...counts.entries()]
-    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-    .slice(0, limit)
-    .map(([tag]) => tag);
 }
 
 function applyQuoteUpdate(updated: Quote): void {
@@ -1925,7 +1895,7 @@ function renderPage(): string {
 function navLabel(page: PageName): string {
   switch (page) {
     case "Recall":
-      return "Ask";
+      return "Recall";
     case "Quotes":
       return "Quotes";
     case "History":
@@ -1937,6 +1907,7 @@ function navLabel(page: PageName): string {
 
 function renderRecallPage(): string {
   const responseActionsDisabled = !state.recallResponse.trim();
+  const mockMode = state.settings.mockLLM;
   const response = state.recallResponse.trim()
     ? escapeHtml(state.recallResponse)
     : '<span class="muted">Grounded response will appear here.</span>';
@@ -1950,10 +1921,11 @@ function renderRecallPage(): string {
       <div class="panel page-panel">
         <div class="page-hero">
           <div>
-            <div class="eyebrow">Ask</div>
+            <div class="eyebrow">Recall</div>
             <div class="page-title">Question, references, then answer</div>
-            <div class="muted page-copy">Ask once, inspect the retrieved quotes, then read the grounded response.</div>
+            <div class="muted page-copy">Run recall once, inspect the retrieved quotes, then read the grounded response.</div>
           </div>
+          ${mockMode ? `<div class="meta-row"><span class="meta-pill meta-pill-accent">Mock LLM on</span></div>` : ""}
         </div>
 
         <div class="flow-stack flow-stack-ask">
@@ -1969,7 +1941,7 @@ function renderRecallPage(): string {
               >${escapeHtml(state.recallQuestion)}</textarea>
               <div class="composer-actions">
                 <button class="button button-primary" data-action="recall-run" type="submit" ${state.recallBusy ? "disabled" : ""}>
-                  ${state.recallBusy ? "Working…" : "Ask"}
+                  ${state.recallBusy ? "Working…" : "Recall"}
                 </button>
                 ${
                   state.recallLastQuestion.trim()
@@ -1984,7 +1956,7 @@ function renderRecallPage(): string {
             <div class="subpanel-header">
               <div>
                 <div class="section-title">2. Reference quotes</div>
-                <div class="muted">${state.recallBusy ? "Searching your quotes for relevant evidence…" : `${state.recallQuotes.length} retrieved quotes. Open one to inspect the full note.`}</div>
+                <div class="muted">${state.recallBusy ? "Searching your quotes for relevant evidence…" : mockMode ? `${state.recallQuotes.length} retrieved quotes. Mock LLM uses simple split keywords and deterministic recall behavior.` : `${state.recallQuotes.length} retrieved quotes. Open one to inspect the full note.`}</div>
               </div>
             </div>
             <div class="keyword-row">
@@ -1998,7 +1970,7 @@ function renderRecallPage(): string {
             <div class="subpanel-header">
               <div>
                 <div class="section-title">3. Response</div>
-                <div class="muted">${state.recallBusy ? "Writing a grounded response from the retrieved evidence…" : "The response is generated from the current question and reference set."}</div>
+                <div class="muted">${state.recallBusy ? "Writing a grounded response from the retrieved evidence…" : mockMode ? "Mock LLM combines the retrieved reference quotes into a deterministic placeholder answer." : "The response is generated from the current question and reference set."}</div>
               </div>
               <div class="toolbar toolbar-quiet">
                 <button class="button button-primary" data-action="recall-save-quote" type="button" ${responseActionsDisabled ? "disabled" : ""}>Save as Quote</button>
@@ -2034,7 +2006,6 @@ function renderQuotesPage(): string {
   const selected = selectedOrCurrentQuotes("quotes");
   const detailQuote = selected[0] ?? null;
   const selectedCount = filteredQuotes.filter((quote) => state.quotesSelected.has(quote.ID)).length;
-  const tagOptions = getLibraryTagOptions();
   const quickStats = [
     `${state.quotes.length} total`,
     `${state.quotes.filter((quote) => quote.IsOwnedByMe).length} authored here`,
@@ -2074,43 +2045,8 @@ function renderQuotesPage(): string {
                 placeholder="Search content, source, author, or tags"
               />
             </label>
-            <div class="field">
-              <span>Ownership</span>
-              <div class="chip-row">
-                ${(["all", "owned", "imported"] as const)
-                  .map(
-                    (value) => `
-                      <button
-                        class="filter-chip${state.libraryOwnership === value ? " is-active" : ""}"
-                        data-action="library-filter-ownership"
-                        data-value="${value}"
-                        type="button"
-                      >${value === "all" ? "All" : value === "owned" ? "Authored here" : "Imported"}</button>
-                    `,
-                  )
-                  .join("")}
-              </div>
-            </div>
-            <div class="field">
-              <span>Popular tags</span>
-              <div class="chip-row">
-                <button class="filter-chip${state.libraryTag === null ? " is-active" : ""}" data-action="library-filter-tag" data-value="all" type="button">All tags</button>
-                ${tagOptions
-                  .map(
-                    (tag) => `
-                      <button
-                        class="filter-chip${state.libraryTag === tag ? " is-active" : ""}"
-                        data-action="library-filter-tag"
-                        data-value="${escapeAttribute(tag)}"
-                        type="button"
-                      >${escapeHtml(tag)}</button>
-                    `,
-                  )
-                  .join("")}
-              </div>
-            </div>
             <div class="toolbar toolbar-stack">
-              <button class="button" data-action="library-clear-filters" type="button" ${!state.libraryQuery && state.libraryOwnership === "all" && state.libraryTag === null ? "disabled" : ""}>Clear filters</button>
+              <button class="button" data-action="library-clear-filters" type="button" ${!state.libraryQuery ? "disabled" : ""}>Clear filters</button>
               <button class="button" data-action="quote-select-all" data-context="quotes" type="button" ${filteredQuotes.length === 0 ? "disabled" : ""}>Select results</button>
               <button class="button" data-action="quote-deselect-all" data-context="quotes" type="button" ${selectedCount === 0 ? "disabled" : ""}>Clear selection</button>
             </div>
@@ -2166,7 +2102,7 @@ function renderHistoryPage(): string {
           </div>
           <div class="page-hero-actions">
             <button class="button" data-action="history-refresh" type="button">Refresh</button>
-            <button class="button" data-action="reuse-history-question" type="button" ${!canReuseHistoryQuestion ? "disabled" : ""}>Ask again</button>
+            <button class="button" data-action="reuse-history-question" type="button" ${!canReuseHistoryQuestion ? "disabled" : ""}>Recall again</button>
             <button class="button button-danger" data-action="history-delete-current" type="button" ${selectedEntries.length === 0 ? "disabled" : ""}>Delete</button>
           </div>
         </div>
@@ -2189,7 +2125,7 @@ function renderHistoryPage(): string {
                 : state.historyError
                   ? `<div class="status status-error">${escapeHtml(state.historyError)}</div>`
                   : state.historyEntries.length === 0
-                    ? '<div class="empty-state">No recall history yet. Ask a question from the Ask page to create your first grounded session.</div>'
+                    ? '<div class="empty-state">No recall history yet. Run a question from the Recall page to create your first grounded session.</div>'
                     : renderHistoryList()
             }
           </section>
@@ -2227,7 +2163,7 @@ function renderHistoryDetailModal(): string {
           <div class="toolbar toolbar-quiet">
             <button class="button" data-action="history-back" type="button">Close</button>
             <button class="button button-primary" data-action="history-save-quote" type="button" ${!detailSummary ? "disabled" : ""}>Save as Quote</button>
-            <button class="button" data-action="reuse-history-question" type="button" ${!detailSummary ? "disabled" : ""}>Ask again</button>
+            <button class="button" data-action="reuse-history-question" type="button" ${!detailSummary ? "disabled" : ""}>Recall again</button>
           </div>
         </div>
 
@@ -2386,6 +2322,17 @@ function renderSettingsPage(): string {
             </label>
             <div class="settings-hint muted">
               Lower values keep broader matches. Higher values reduce noise but risk excluding useful evidence. Most real-world sessions land in the 0.3 to 0.7 range.
+            </div>
+          </section>
+
+          <section class="panel subpanel settings-secondary">
+            <div class="section-title">Debug</div>
+            <label class="field checkbox-field settings-toggle">
+              <input type="checkbox" data-bind="settings-mock-llm"${state.settings.mockLLM ? " checked" : ""} />
+              <span>Mock LLM</span>
+            </label>
+            <div class="settings-hint muted">
+              Refine returns the original text, keywords split on spaces, and answers combine reference quotes.
             </div>
           </section>
 
@@ -2662,7 +2609,9 @@ function renderOverlay(overlay: OverlayState): string {
               ${
                 overlay.previewRefined
                   ? "Compare the current draft with the suggested rewrite before applying it."
-                  : "Tags are regenerated automatically by the shared core logic."
+                  : state.settings.mockLLM
+                    ? "Mock LLM is enabled, so Refine returns the original text and skips provider-dependent rewriting."
+                    : "Tags are regenerated automatically by the shared core logic."
               }
             </div>
             ${overlay.status ? `<div class="status ${overlay.isError ? "status-error" : "status-ok"}">${escapeHtml(overlay.status)}</div>` : ""}
@@ -2888,6 +2837,7 @@ function settingsFormFromPayload(payload: SettingsPayload | BootstrapState["sett
     host: payload.Provider.Host,
     port: String(payload.Provider.Port),
     https: payload.Provider.HTTPS,
+    mockLLM: payload.Debug?.MockLLM ?? false,
     apiKey: payload.Provider.APIKey,
     modelFilter: "",
     model: payload.Provider.Model,
@@ -2906,6 +2856,7 @@ function emptySettingsForm(): SettingsFormState {
     host: "",
     port: "11434",
     https: false,
+    mockLLM: false,
     apiKey: "",
     modelFilter: "",
     model: "",
@@ -2953,6 +2904,9 @@ function settingsPayloadFromForm(form: SettingsFormState): SettingsPayload {
     Search: {
       MaxResults: maxResults,
       MinRelevance: minRelevance,
+    },
+    Debug: {
+      MockLLM: form.mockLLM,
     },
     Theme: form.theme,
     Web: {
