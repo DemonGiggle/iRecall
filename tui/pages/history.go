@@ -481,7 +481,7 @@ func (p *HistoryPage) refreshDetail() {
 
 func (p *HistoryPage) refreshReferenceQuotes() {
 	p.quoteFns.clamp(p.currentQuotes())
-	p.refViewport.SetContent(renderQuoteFunctionList(p.currentQuotes(), p.quoteFns, p.refViewport.Width, true))
+	p.refViewport.SetContent(renderQuoteFunctionList(p.currentQuotes(), p.quoteFns, p.refViewport.Width))
 }
 
 func (p HistoryPage) detailView() string {

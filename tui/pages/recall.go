@@ -42,18 +42,16 @@ type RecallPage struct {
 
 	input     textinput.Model
 	response  viewport.Model
-	refPanel  viewport.Model
+	refQuotes quoteListWidget
 	spinner   spinner.Model
 	busy      bool
 	statusMsg string
 	statusErr bool
 	focus     recallFocus
 
-	quotes   []core.Quote
 	keywords []string
 	question string
 	respBuf  string
-	quoteFns quoteSelection
 
 	width  int
 	height int
@@ -77,13 +75,13 @@ func NewRecallPage(engine *core.Engine, width, height int) RecallPage {
 	sp.Style = lipgloss.NewStyle().Foreground(styles.ColorAccent)
 
 	p := RecallPage{
-		engine:   engine,
-		input:    ti,
-		spinner:  sp,
-		width:    width,
-		height:   height,
-		focus:    focusInput,
-		quoteFns: newQuoteSelection(),
+		engine:    engine,
+		input:     ti,
+		spinner:   sp,
+		width:     width,
+		height:    height,
+		focus:     focusInput,
+		refQuotes: newQuoteListWidget("Reference Quotes", width-4, max(3, height/3)),
 	}
 	p.recalcLayout()
 	return p
@@ -127,63 +125,12 @@ func (p RecallPage) Update(msg tea.Msg) (RecallPage, tea.Cmd) {
 			p.question = question
 			p.respBuf = ""
 			p.updateResponsePanel()
-			p.refPanel.SetContent("")
-			p.quotes = nil
+			p.refQuotes.ClearQuotes()
 			p.keywords = nil
-			p.quoteFns.clear()
 			p.busy = true
 			p.statusMsg = ""
 			p.statusErr = false
 			return p, tea.Batch(p.spinner.Tick, p.runRecall(question))
-		case "up":
-			if p.focus != focusReferenceQuotes {
-				break
-			}
-			p.quoteFns.move(-1, p.quotes)
-			p.refreshReferencePanel()
-			return p, nil
-		case "down":
-			if p.focus != focusReferenceQuotes {
-				break
-			}
-			p.quoteFns.move(1, p.quotes)
-			p.refreshReferencePanel()
-			return p, nil
-		case "x":
-			if p.focus != focusReferenceQuotes {
-				break
-			}
-			p.quoteFns.toggleCurrent(p.quotes)
-			p.refreshReferencePanel()
-			return p, nil
-		case "e":
-			if p.focus != focusReferenceQuotes {
-				break
-			}
-			if q := p.quoteFns.current(p.quotes); q != nil {
-				quote := *q
-				return p, func() tea.Msg {
-					return OpenQuoteEditorMsg{Mode: QuoteEditorModeEdit, Quote: &quote}
-				}
-			}
-		case "d":
-			if p.focus != focusReferenceQuotes {
-				break
-			}
-			selected := p.quoteFns.selectedQuotes(p.quotes)
-			if len(selected) > 0 {
-				return p, func() tea.Msg { return OpenDeleteQuotesMsg{Quotes: selected} }
-			}
-			return p, nil
-		case "s":
-			if p.focus != focusReferenceQuotes {
-				break
-			}
-			selected := p.quoteFns.selectedQuotes(p.quotes)
-			if len(selected) > 0 {
-				return p, func() tea.Msg { return OpenQuoteShareMsg{Quotes: selected} }
-			}
-			return p, nil
 		}
 
 	case TokenMsg:
@@ -195,9 +142,7 @@ func (p RecallPage) Update(msg tea.Msg) (RecallPage, tea.Cmd) {
 		p.keywords = msg.Keywords
 
 	case QuotesReadyMsg:
-		p.quotes = msg.Quotes
-		p.quoteFns.clamp(p.quotes)
-		p.refreshReferencePanel()
+		p.refQuotes.SetQuotes(msg.Quotes)
 
 	case RecallDoneMsg:
 		p.busy = false
@@ -258,8 +203,23 @@ func (p RecallPage) Update(msg tea.Msg) (RecallPage, tea.Cmd) {
 	p.response, cmd = p.response.Update(msg)
 	cmds = append(cmds, cmd)
 	if p.focus == focusReferenceQuotes {
-		p.refPanel, cmd = p.refPanel.Update(msg)
+		var action quoteListAction
+		action, cmd = p.refQuotes.Update(msg)
 		cmds = append(cmds, cmd)
+		switch action.kind {
+		case quoteListActionEdit:
+			return p, tea.Batch(append(cmds, func() tea.Msg {
+				return OpenQuoteEditorMsg{Mode: QuoteEditorModeEdit, Quote: action.quote}
+			})...)
+		case quoteListActionDelete:
+			return p, tea.Batch(append(cmds, func() tea.Msg {
+				return OpenDeleteQuotesMsg{Quotes: action.quotes}
+			})...)
+		case quoteListActionShare:
+			return p, tea.Batch(append(cmds, func() tea.Msg {
+				return OpenQuoteShareMsg{Quotes: action.quotes}
+			})...)
+		}
 	}
 
 	return p, tea.Batch(cmds...)
@@ -291,19 +251,11 @@ func (p RecallPage) View() string {
 		Height(p.response.Height + 3).
 		Render(responseLabel + "\n" + p.response.View())
 
-	refLabel := styles.Accent.Render("Reference Quotes")
-	refHelp := "ctrl+j: Focus input"
-	if p.focus == focusReferenceQuotes {
-		refLabel = styles.Bold.Foreground(styles.ColorAccent).Render("Reference Quotes")
-		refHelp = "ctrl+j: Focus input   ↑/↓: Move   x: Select   e: Edit   d: Delete   s: Share"
-	}
-	refStyle := styles.Panel
-	if p.focus == focusReferenceQuotes {
-		refStyle = styles.PanelActive
-	}
-	refBox := refStyle.Width(p.width - 4).
-		Height(p.refPanel.Height + 5).
-		Render(refLabel + "\n" + p.refPanel.View() + "\n\n" + styles.HelpBar.Render(refHelp))
+	refBox := p.refQuotes.View(
+		p.focus == focusReferenceQuotes,
+		"ctrl+j: Focus input",
+		"ctrl+j: Focus input",
+	)
 
 	var status string
 	if p.statusMsg != "" {
@@ -346,12 +298,7 @@ func (p *RecallPage) recalcLayout() {
 		refH = 3
 	}
 	p.response = viewport.New(innerW, responseH)
-	p.refPanel = viewport.New(innerW, refH)
-}
-
-func (p *RecallPage) refreshReferencePanel() {
-	p.quoteFns.clamp(p.quotes)
-	p.refPanel.SetContent(renderQuoteFunctionList(p.quotes, p.quoteFns, p.refPanel.Width, false))
+	p.refQuotes.SetSize(p.width-4, refH)
 }
 
 func (p *RecallPage) updateResponsePanel() {
@@ -410,10 +357,8 @@ type quotesAndStreamMsg struct {
 
 // We handle this internal message in Update by dispatching two effects.
 func (p RecallPage) handleQuotesAndStream(msg quotesAndStreamMsg) (RecallPage, tea.Cmd) {
-	p.quotes = msg.quotes
 	p.keywords = msg.keywords
-	p.quoteFns.clamp(msg.quotes)
-	p.refreshReferencePanel()
+	p.refQuotes.SetQuotes(msg.quotes)
 
 	engine := p.engine
 	return p, func() tea.Msg {
@@ -446,36 +391,18 @@ type tokenWithChannel struct {
 }
 
 func (p *RecallPage) ApplyQuoteUpdate(updated core.Quote) {
-	for i := range p.quotes {
-		if p.quotes[i].ID == updated.ID {
-			p.quotes[i] = updated
-			p.refreshReferencePanel()
-			return
-		}
-	}
+	p.refQuotes.ApplyQuoteUpdate(updated)
 }
 
 func (p *RecallPage) RemoveQuotes(ids []int64) {
-	if len(ids) == 0 || len(p.quotes) == 0 {
-		return
-	}
-	remove := idsSet(ids)
-	filtered := p.quotes[:0]
-	for _, q := range p.quotes {
-		if !remove[q.ID] {
-			filtered = append(filtered, q)
-		}
-	}
-	p.quotes = filtered
-	p.quoteFns.clamp(p.quotes)
-	p.refreshReferencePanel()
+	p.refQuotes.RemoveQuotes(ids)
 }
 
 func (p *RecallPage) saveHistory() tea.Cmd {
 	engine := p.engine
 	question := p.question
 	response := p.respBuf
-	quotes := append([]core.Quote(nil), p.quotes...)
+	quotes := append([]core.Quote(nil), p.refQuotes.quotes...)
 	return func() tea.Msg {
 		_, err := engine.SaveRecallHistory(context.Background(), question, response, quotes)
 		return RecallHistorySavedMsg{Err: err}
