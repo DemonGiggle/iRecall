@@ -31,6 +31,12 @@ const webBridgeJS = `
     ChangePassword(current, next, confirm) {
       return request("POST", "/api/auth/change-password", { current, next, confirm });
     },
+    GetAPITokenStatus() {
+      return request("GET", "/api/app/get-api-token-status");
+    },
+    CreateAPIToken() {
+      return request("POST", "/api/app/create-api-token");
+    },
     BootstrapState() {
       return request("GET", "/api/app/bootstrap-state");
     },

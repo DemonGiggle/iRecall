@@ -13,17 +13,22 @@ Use the web server address you started, for example:
 
 ## Current authentication model
 
-Today, the shipped web server uses browser-session authentication:
+Today, the shipped web server uses two auth paths:
 
-1. `POST /api/auth/login` with the web password
-2. receive an `HttpOnly` session cookie
-3. send that cookie on later authenticated requests
+1. browser login with `POST /api/auth/login`, which returns an `HttpOnly` session cookie for the web UI
+2. bearer-token auth for `/api/app/*` routes with `Authorization: Bearer <token>`
 
-Most `/api/app/*` routes require an authenticated session cookie.
+Token management is still session-protected:
 
-## Planned authentication model
+1. sign into the web UI
+2. call `GET /api/app/get-api-token-status`
+3. call `POST /api/app/create-api-token` to create or renew the token
 
-The current code does **not** yet accept `Authorization: Bearer <token>` for REST calls. That design is captured separately in [WEB_API_TOKEN_AUTH.md](./WEB_API_TOKEN_AUTH.md).
+Notes:
+
+- `/api/auth/*` routes remain browser-session oriented
+- `/api/app/get-api-token-status` and `/api/app/create-api-token` require a browser session, not a bearer token
+- the rest of `/api/app/*` accepts either a valid session cookie or a valid bearer token
 
 ## Conventions
 
@@ -194,11 +199,54 @@ Response:
 }
 ```
 
+### `GET /api/app/get-api-token-status`
+
+Returns whether an API token exists and the short prefix shown in Settings.
+
+Authentication: session required.
+
+Parameters: none.
+
+Response:
+
+```json
+{
+  "hasToken": true,
+  "tokenPrefix": "irc_4f18f3f9"
+}
+```
+
+If no token exists yet:
+
+```json
+{
+  "hasToken": false,
+  "tokenPrefix": ""
+}
+```
+
+### `POST /api/app/create-api-token`
+
+Creates a new API token and returns the plaintext token exactly once. If a token already exists, this renews it and invalidates the old token immediately.
+
+Authentication: session required.
+
+Parameters: none.
+
+Response:
+
+```json
+{
+  "token": "irc_4f18f3f9d8f7...",
+  "tokenPrefix": "irc_4f18f3f9"
+}
+```
+
 ### `GET /api/app/bootstrap-state`
 
 Returns the initial application state used to render the frontend shell.
 
-Authentication: required.
+Authentication: session or bearer token required.
 
 Parameters: none.
 
@@ -255,7 +303,7 @@ Response:
 
 Lists all stored quotes.
 
-Authentication: required.
+Authentication: session or bearer token required.
 
 Parameters: none.
 
@@ -267,7 +315,7 @@ Response:
 
 Creates a new quote from free-form content.
 
-Authentication: required.
+Authentication: session or bearer token required.
 
 Request body:
 
@@ -285,7 +333,7 @@ Response:
 
 Saves a recall question/response pair as a normal quote.
 
-Authentication: required.
+Authentication: session or bearer token required.
 
 Request body:
 
@@ -305,7 +353,7 @@ Response:
 
 Runs quote-draft refinement and returns the refined text.
 
-Authentication: required.
+Authentication: session or bearer token required.
 
 Request body:
 
@@ -327,7 +375,7 @@ This endpoint returns a JSON string, not an object:
 
 Updates an existing quote.
 
-Authentication: required.
+Authentication: session or bearer token required.
 
 Request body:
 
@@ -346,7 +394,7 @@ Response:
 
 Deletes multiple quotes by ID.
 
-Authentication: required.
+Authentication: session or bearer token required.
 
 Request body:
 
@@ -368,7 +416,7 @@ Response:
 
 Builds a quote export payload and returns it as a JSON string.
 
-Authentication: required.
+Authentication: session or bearer token required.
 
 Request body:
 
@@ -390,7 +438,7 @@ This endpoint returns a JSON string containing the share-envelope payload:
 
 Imports quotes from a raw JSON share payload string.
 
-Authentication: required.
+Authentication: session or bearer token required.
 
 Request body:
 
@@ -415,7 +463,7 @@ Response:
 
 Saves the local display name.
 
-Authentication: required.
+Authentication: session or bearer token required.
 
 Request body:
 
@@ -433,7 +481,7 @@ Response:
 
 Saves application settings and returns the persisted settings.
 
-Authentication: required.
+Authentication: session or bearer token required.
 
 Request body:
 
@@ -469,7 +517,7 @@ Response:
 
 Fetches available models from the configured OpenAI-compatible provider.
 
-Authentication: required.
+Authentication: session or bearer token required.
 
 Request body:
 
@@ -496,7 +544,7 @@ Response:
 
 Runs the full recall flow: keyword extraction, quote search, answer generation, and history save.
 
-Authentication: required.
+Authentication: session or bearer token required.
 
 Request body:
 
@@ -542,7 +590,7 @@ Response:
 
 Lists saved recall-history summaries.
 
-Authentication: required.
+Authentication: session or bearer token required.
 
 Parameters: none.
 
@@ -563,7 +611,7 @@ Response:
 
 Returns one saved recall-history entry.
 
-Authentication: required.
+Authentication: session or bearer token required.
 
 Query parameters:
 
@@ -606,7 +654,7 @@ Response:
 
 Deletes multiple recall-history entries by ID.
 
-Authentication: required.
+Authentication: session or bearer token required.
 
 Request body:
 

@@ -53,6 +53,16 @@ type AuthStatus struct {
 	CurrentPort        int    `json:"currentPort"`
 }
 
+type APITokenStatus struct {
+	HasToken    bool   `json:"hasToken"`
+	TokenPrefix string `json:"tokenPrefix"`
+}
+
+type APITokenCreateResult struct {
+	Token       string `json:"token"`
+	TokenPrefix string `json:"tokenPrefix"`
+}
+
 func NewApp(root string) (*App, error) {
 	runtimeState, err := OpenRuntime(root)
 	if err != nil {
@@ -237,6 +247,32 @@ func (a *App) Login(password string) error {
 
 func (a *App) ChangePassword(current, next, confirm string) error {
 	return a.engine.ChangeWebPassword(a.context(), current, next, confirm)
+}
+
+func (a *App) GetAPITokenStatus() (APITokenStatus, error) {
+	status, err := a.engine.GetWebAPITokenStatus(a.context())
+	if err != nil {
+		return APITokenStatus{}, err
+	}
+	return APITokenStatus{
+		HasToken:    status.HasToken,
+		TokenPrefix: status.TokenPrefix,
+	}, nil
+}
+
+func (a *App) CreateAPIToken() (APITokenCreateResult, error) {
+	token, status, err := a.engine.GenerateWebAPIToken(a.context())
+	if err != nil {
+		return APITokenCreateResult{}, err
+	}
+	return APITokenCreateResult{
+		Token:       token,
+		TokenPrefix: status.TokenPrefix,
+	}, nil
+}
+
+func (a *App) VerifyAPIToken(token string) (bool, error) {
+	return a.engine.VerifyWebAPIToken(a.context(), token)
 }
 
 func (a *App) FetchModels(settings core.ProviderConfig) ([]string, error) {

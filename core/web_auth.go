@@ -2,6 +2,10 @@ package core
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/sha256"
+	"crypto/subtle"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"slices"
@@ -12,8 +16,16 @@ import (
 )
 
 const webPasswordHashSettingKey = "web.password_hash"
+const webAPITokenHashSettingKey = "web.api_token_hash"
+const webAPITokenPrefixSettingKey = "web.api_token_prefix"
 
 const minWebPasswordLength = 12
+const webAPITokenPrefixLength = 12
+
+type WebAPITokenStatus struct {
+	HasToken    bool
+	TokenPrefix string
+}
 
 var commonWebPasswords = []string{
 	"12345678",
@@ -92,6 +104,68 @@ func (e *Engine) ChangeWebPassword(ctx context.Context, current, next, confirm s
 	return e.store.SetSetting(webPasswordHashSettingKey, string(hash))
 }
 
+func (e *Engine) GetWebAPITokenStatus(ctx context.Context) (WebAPITokenStatus, error) {
+	_ = ctx
+	hash, err := e.store.GetSetting(webAPITokenHashSettingKey)
+	if err != nil {
+		return WebAPITokenStatus{}, err
+	}
+	hash = strings.TrimSpace(hash)
+	if hash == "" {
+		return WebAPITokenStatus{}, nil
+	}
+	prefix, err := e.store.GetSetting(webAPITokenPrefixSettingKey)
+	if err != nil {
+		return WebAPITokenStatus{}, err
+	}
+	return WebAPITokenStatus{
+		HasToken:    true,
+		TokenPrefix: strings.TrimSpace(prefix),
+	}, nil
+}
+
+func (e *Engine) GenerateWebAPIToken(ctx context.Context) (string, WebAPITokenStatus, error) {
+	_ = ctx
+	tokenBytes := make([]byte, 32)
+	if _, err := rand.Read(tokenBytes); err != nil {
+		return "", WebAPITokenStatus{}, fmt.Errorf("generate api token: %w", err)
+	}
+	token := "irc_" + hex.EncodeToString(tokenBytes)
+	hash := hashWebAPIToken(token)
+	prefix := tokenPrefix(token)
+	if err := e.store.SetSetting(webAPITokenHashSettingKey, hash); err != nil {
+		return "", WebAPITokenStatus{}, err
+	}
+	if err := e.store.SetSetting(webAPITokenPrefixSettingKey, prefix); err != nil {
+		return "", WebAPITokenStatus{}, err
+	}
+	return token, WebAPITokenStatus{
+		HasToken:    true,
+		TokenPrefix: prefix,
+	}, nil
+}
+
+func (e *Engine) VerifyWebAPIToken(ctx context.Context, token string) (bool, error) {
+	_ = ctx
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return false, nil
+	}
+	storedHash, err := e.store.GetSetting(webAPITokenHashSettingKey)
+	if err != nil {
+		return false, err
+	}
+	storedHash = strings.TrimSpace(storedHash)
+	if storedHash == "" {
+		return false, nil
+	}
+	computed := hashWebAPIToken(token)
+	if subtle.ConstantTimeCompare([]byte(computed), []byte(storedHash)) != 1 {
+		return false, nil
+	}
+	return true, nil
+}
+
 func validatePasswordChange(current, next, confirm string, requireCurrent bool) error {
 	if requireCurrent && strings.TrimSpace(current) == "" {
 		return errors.New("current password is required")
@@ -141,4 +215,16 @@ func isWeakWebPassword(password string) bool {
 		}
 	}
 	return classes < 3
+}
+
+func hashWebAPIToken(token string) string {
+	sum := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(sum[:])
+}
+
+func tokenPrefix(token string) string {
+	if len(token) <= webAPITokenPrefixLength {
+		return token
+	}
+	return token[:webAPITokenPrefixLength]
 }

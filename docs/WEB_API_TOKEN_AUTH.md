@@ -17,6 +17,14 @@ Provide a simple bearer-token mechanism for all REST API requests so clients can
 7. The server hashes the presented token and compares it with the stored hash.
 8. A `Renew` action creates a new token, stores the new hash, and immediately invalidates the old token.
 
+## Current implementation notes
+
+- The browser Settings page manages the token through session-protected endpoints.
+- The current management endpoints are:
+  - `GET /api/app/get-api-token-status`
+  - `POST /api/app/create-api-token`
+- `/api/app/*` routes accept either a valid browser session or a valid bearer token, while token creation itself still requires a browser session.
+
 ## UX notes
 
 - Show the plaintext token only in the one-time popup.
