@@ -57,7 +57,7 @@ iRecall/
 - loading or bootstrapping the local user profile and quote identity
 - starting the Bubble Tea app in the alternate screen
 
-### Desktop app
+### Shared frontend service
 
 `app/app.go` wraps the same core engine for both the Wails frontend and the web UI runtime.
 
@@ -69,12 +69,25 @@ It provides:
 - recall-history CRUD
 - user-profile save/load
 - settings save/load
+- web-password management helpers
 - recall execution
 - save-recall-as-quote actions
 
+### Web server
+
+`web/main.go`, `web/server.go`, and `web/bridge.go` provide the browser runtime.
+
+Current responsibilities:
+
+- parse `--debug`, `--data-path`, `--host`, and `--port`
+- initialize the shared app runtime
+- require first-run password setup from an interactive terminal before listening
+- serve the embedded frontend bundle plus `/bridge.js`
+- expose authenticated JSON API routes for auth, quotes, recall, history, settings, and model fetch
+
 ## Data Model
 
-The current application-level schema is defined in `core/models.go`. Field-level semantics live in [schema.md](/home/gigo/workspace/iRecall/docs/schema.md).
+The current application-level schema is defined in `core/models.go`. Field-level semantics live in [schema.md](schema.md).
 
 ### Quote
 
@@ -166,7 +179,18 @@ Current compatibility behavior:
 type Settings struct {
     Provider ProviderConfig
     Search   SearchConfig
+    Debug    DebugConfig
     Theme    string
+    Web      WebConfig
+    RootDir  string
+}
+
+type DebugConfig struct {
+    MockLLM bool
+}
+
+type WebConfig struct {
+    Port int
 }
 
 type SearchConfig struct {
@@ -190,7 +214,17 @@ SearchConfig{
     MinRelevance: 0.0,
 }
 
+DebugConfig{
+    MockLLM: false,
+}
+
 Theme: "violet"
+
+WebConfig{
+    Port: 9527,
+}
+
+RootDir: ""
 ```
 
 `MinRelevance` is a normalized `0.0..1.0` threshold:
@@ -209,14 +243,27 @@ Theme: "violet"
 - config dir
 - state dir
 
-By default those resolve to XDG-style locations under `~/.local/share`, `~/.config`, and `~/.local/state`.
+By default those resolve as follows:
+
+- data uses the normal platform data directory (`~/.local/share/irecall` on Linux when XDG vars are unset)
+- config falls back to the data dir unless `XDG_CONFIG_HOME` or the Windows AppData root is available
+- state falls back to the data dir unless `XDG_STATE_HOME` or the Windows AppData root is available
 
 Concrete files currently used:
 
 - SQLite database: `data/irecall.db`
-- log file: `state/irecall.log`
+- log file: `state/irecall.log` when a custom root is active, otherwise the platform state/data fallback path
+- preferred root override file: `config/root-path`
 
-When `--data-path` is provided, iRecall uses that directory as the root for `data/`, `config/`, and `state/`.
+When `--data-path` or a persisted preferred root is provided, iRecall uses that directory as the root for `data/`, `config/`, and `state/`.
+
+Current runtime-switch behavior:
+
+- the TUI settings page can change `RootDir`
+- switching roots closes the current runtime first to avoid DB locks
+- if the target root is empty, current `data/`, `config/`, and `state/` are copied there
+- if the target root already has iRecall data, iRecall attaches to it without overwriting
+- desktop and web currently display the resolved paths, but do not yet expose a `RootDir` editor in the shipped frontend
 
 ### SQLite configuration
 
@@ -245,7 +292,7 @@ Current migration set:
    - provenance backfill for existing rows
    - provenance indexes
 
-The schema guide in [schema.md](/home/gigo/workspace/iRecall/docs/schema.md) is the canonical field reference.
+The schema guide in [schema.md](schema.md) is the canonical field reference.
 
 ## Core Engine
 
@@ -290,6 +337,11 @@ func (e *Engine) SaveSettings(ctx context.Context, s *Settings) error
 func (e *Engine) LoadUserProfile(ctx context.Context) (*UserProfile, error)
 func (e *Engine) SaveUserProfile(ctx context.Context, profile *UserProfile) error
 func (e *Engine) BootstrapQuoteIdentity(ctx context.Context) error
+
+func (e *Engine) HasWebPassword(ctx context.Context) (bool, error)
+func (e *Engine) SetupWebPassword(ctx context.Context, password, confirm string) error
+func (e *Engine) VerifyWebPassword(ctx context.Context, password string) (bool, error)
+func (e *Engine) ChangeWebPassword(ctx context.Context, current, next, confirm string) error
 ```
 
 ### Add / update quote flow
@@ -320,7 +372,7 @@ Retrieval behavior:
 - `MaxResults` controls final returned quote count
 - when `MinRelevance > 0`, the engine widens the candidate fetch, filters by normalized keyword coverage, then trims back to `MaxResults`
 
-For the detailed implementation behavior, see [KEYWORD_MATCHING.md](/home/gigo/workspace/iRecall/docs/KEYWORD_MATCHING.md).
+For the detailed implementation behavior, see [KEYWORD_MATCHING.md](KEYWORD_MATCHING.md).
 
 After a recall completes, the engine can also persist the question/response pair as a normal quote:
 
@@ -387,7 +439,7 @@ Important behaviors:
 - share/export and import are file-based
 - Recall and History both support saving a question/response pair as a quote
 
-See [UI_DESIGN.md](/home/gigo/workspace/iRecall/docs/UI_DESIGN.md) for the higher-level UI contract.
+See [UI_DESIGN.md](UI_DESIGN.md) for the higher-level UI contract.
 
 ## Desktop Contract
 
@@ -397,13 +449,33 @@ Current desktop responsibilities:
 
 - bootstrap frontend state
 - run recall and quote CRUD through backend methods
+- support recall-history list/detail/delete flows
 - support import/export through backend file helpers
-- expose settings, model fetch, and user-profile operations
+- expose settings, model fetch, auth status, password change, and user-profile operations
 
 See:
 
-- [WAILS_DESKTOP.md](/home/gigo/workspace/iRecall/docs/WAILS_DESKTOP.md)
-- [desktop/README.md](/home/gigo/workspace/iRecall/desktop/README.md)
+- [WAILS_DESKTOP.md](WAILS_DESKTOP.md)
+- [desktop/README.md](../desktop/README.md)
+
+## Web Contract
+
+The HTTP web runtime uses the same shared frontend shell as desktop, but wraps it in browser auth and browser-style import/export flows.
+
+Current web responsibilities:
+
+- require a configured password before the server starts listening
+- require login before any `/api/app/*` route is available
+- keep auth state in an in-memory session map keyed by an `HttpOnly` cookie with `SameSite=Strict`
+- expose quote export as a browser download generated from the backend payload preview
+- expose quote import from a local JSON file read in the browser and posted as raw payload
+- expose the same four frontend pages as desktop: `Recall`, `History`, `Quotes`, and `Settings`
+
+Current auth behavior:
+
+- first-run password setup happens in the terminal, not in the browser
+- password policy is at least 12 characters and at least 3 of: uppercase, lowercase, digit, symbol
+- successful web logins create a 24-hour session that is extended on activity
 
 ## External Tools
 
@@ -418,4 +490,4 @@ Current characteristics:
 - maps Redmine authors into iRecall author/source fields
 - populates source provenance as `redmine` records
 
-See [tools/redmine_export/README.md](/home/gigo/workspace/iRecall/tools/redmine_export/README.md).
+See [tools/redmine_export/README.md](../tools/redmine_export/README.md).

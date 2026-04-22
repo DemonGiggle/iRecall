@@ -6,7 +6,7 @@ This document describes the current quote-sharing model in iRecall and the main 
 
 It is no longer a speculative proposal. The base sharing workflow, quote identity model, user profile gating, and source provenance model are implemented.
 
-For field definitions, use [schema.md](/home/gigo/workspace/iRecall/docs/schema.md).
+For field definitions, use [schema.md](schema.md).
 
 ## Current Product Model
 
@@ -167,4 +167,4 @@ Likely next layers, if the product grows beyond manual file exchange:
 - authenticated share payloads
 - clearer edit semantics for quotes not authored by the local user
 
-The implementation work for external systems is tracked separately in [docs/plans/redmine-import-and-source-provenance.md](/home/gigo/workspace/iRecall/docs/plans/redmine-import-and-source-provenance.md).
+The implementation work for external systems is tracked separately in [docs/plans/redmine-import-and-source-provenance.md](plans/redmine-import-and-source-provenance.md).

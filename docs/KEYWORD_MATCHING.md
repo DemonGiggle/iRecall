@@ -8,8 +8,8 @@ It is intentionally implementation-oriented. The goal is to describe the behavio
 
 This applies to the current recall flow driven by:
 
-- [core/engine.go](/home/gigo/workspace/iRecall/core/engine.go:350)
-- [core/db/store.go](/home/gigo/workspace/iRecall/core/db/store.go:264)
+- [core/engine.go:350](../core/engine.go)
+- [core/db/store.go:264](../core/db/store.go)
 
 It does not describe future semantic retrieval or embedding-based search. The current system is still keyword and FTS based.
 
@@ -26,10 +26,10 @@ When the user asks a recall question, iRecall currently does this:
 
 In code:
 
-- keyword extraction: [core/engine.go](/home/gigo/workspace/iRecall/core/engine.go:350)
-- candidate search: [core/engine.go](/home/gigo/workspace/iRecall/core/engine.go:383)
-- DB query: [core/db/store.go](/home/gigo/workspace/iRecall/core/db/store.go:264)
-- coverage score: [core/engine.go](/home/gigo/workspace/iRecall/core/engine.go:417)
+- keyword extraction: [core/engine.go:350](../core/engine.go)
+- candidate search: [core/engine.go:383](../core/engine.go)
+- DB query: [core/db/store.go:264](../core/db/store.go)
+- coverage score: [core/engine.go:417](../core/engine.go)
 
 ## 1. Keyword extraction
 
@@ -41,7 +41,7 @@ Current prompt contract:
 - output should be `3` to `6` short lowercase strings
 - the keywords should be useful for searching a knowledge base
 
-That behavior is defined in [core/engine.go](/home/gigo/workspace/iRecall/core/engine.go:353).
+That behavior is defined in [core/engine.go:353](../core/engine.go).
 
 Important consequences:
 
@@ -56,7 +56,7 @@ The FTS table stores:
 - the quote content
 - the quote tags as a single space-separated string
 
-That update path is implemented in [core/db/store.go](/home/gigo/workspace/iRecall/core/db/store.go:125).
+That update path is implemented in [core/db/store.go:125](../core/db/store.go).
 
 Practical meaning:
 
@@ -66,7 +66,7 @@ Practical meaning:
 
 ## 3. FTS query construction
 
-The SQLite search path is in [core/db/store.go](/home/gigo/workspace/iRecall/core/db/store.go:266).
+The SQLite search path is in [core/db/store.go:266](../core/db/store.go).
 
 Current behavior:
 
@@ -92,7 +92,7 @@ Practical meaning:
 
 The SQL query orders results by `fts.rank` in SQLite FTS5:
 
-- see [core/db/store.go](/home/gigo/workspace/iRecall/core/db/store.go:289)
+- see [core/db/store.go:289](../core/db/store.go)
 
 So the raw DB candidate list is ranked by FTS before any engine-side filtering happens.
 
@@ -100,7 +100,7 @@ This is the first-stage ranking only. If `MinRelevance` is enabled, low-coverage
 
 ## 5. How `MinRelevance` works
 
-The engine-side filtering logic is in [core/engine.go](/home/gigo/workspace/iRecall/core/engine.go:383) and [core/engine.go](/home/gigo/workspace/iRecall/core/engine.go:417).
+The engine-side filtering logic is in [core/engine.go:383](../core/engine.go) and [core/engine.go:417](../core/engine.go).
 
 When `MinRelevance == 0`:
 
@@ -187,7 +187,7 @@ Current guidance:
 - `0.3` to `0.7` is a practical range for cleaner matches
 - `1.0` effectively requires full keyword coverage
 
-The settings model is defined in [core/models.go](/home/gigo/workspace/iRecall/core/models.go:95).
+The settings model is defined in [core/models.go:95](../core/models.go).
 
 ## 8. Current limitations
 

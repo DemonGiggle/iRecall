@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This document defines how the desktop implementation should map to the shared product contract in [UI_DESIGN.md](/home/gigo/workspace/iRecall/docs/UI_DESIGN.md) and the richer-client redesign in [DESKTOP_WEB_UX.md](/home/gigo/workspace/iRecall/docs/DESKTOP_WEB_UX.md).
+This document defines how the desktop implementation should map to the shared product contract in [UI_DESIGN.md](UI_DESIGN.md) and the richer-client redesign in [DESKTOP_WEB_UX.md](DESKTOP_WEB_UX.md).
 
 `UI_DESIGN.md` remains the shared behavioral contract.
 
@@ -125,6 +125,19 @@ But it must preserve:
 1. current-row fallback when nothing is multi-selected
 2. source attribution for foreign quotes
 
+### History
+
+Desktop mapping:
+
+1. history summary list
+2. modal detail view for one saved recall session
+3. save-as-quote and rerun actions from the detail view
+4. multi-select delete support in the summary list
+
+Current implementation note:
+
+1. the shared desktop/web frontend still opens history detail in a blocking modal rather than a persistent split pane
+
 ### Settings
 
 Desktop mapping:
@@ -203,18 +216,28 @@ The implemented surface includes:
 1. `BootstrapState()`
 2. `ListQuotes()`
 3. `AddQuote(content)`
-4. `RefineQuoteDraft(content)`
-5. `UpdateQuote(id, content)`
-6. `DeleteQuotes(ids)`
-7. `PreviewQuoteExport(ids)`
-8. `ExportQuotesToFile(ids, path)`
-9. `ImportQuotesFromFile(path)`
-10. `GetSettings()`
-11. `SaveSettings(settings)`
-12. `FetchModels(settings)`
-13. `GetUserProfile()`
-14. `SaveUserProfile(name)`
-15. `RunRecall(question)`
+4. `SaveRecallAsQuote(question, response, keywords)`
+5. `RefineQuoteDraft(content)`
+6. `UpdateQuote(id, content)`
+7. `DeleteQuotes(ids)`
+8. `PreviewQuoteExport(ids)`
+9. `SelectQuoteExportFile()`
+10. `ExportQuotesToFile(ids, path)`
+11. `SelectQuoteImportFile()`
+12. `ImportQuotesFromFile(path)`
+13. `GetSettings()`
+14. `SaveSettings(settings)`
+15. `FetchModels(settings)`
+16. `GetUserProfile()`
+17. `SaveUserProfile(name)`
+18. `RunRecall(question)`
+19. `ListRecallHistory()`
+20. `GetRecallHistory(id)`
+21. `DeleteRecallHistory(ids)`
+22. `AuthStatus()`
+23. `SetupPassword(password, confirm)`
+24. `Login(password)`
+25. `ChangePassword(current, next, confirm)`
 
 When extending it, prefer task-level methods over low-level transport methods.
 

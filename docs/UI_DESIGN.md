@@ -4,7 +4,7 @@
 
 This document defines the cross-client iRecall UI contract.
 
-For desktop and web, the target interaction model is now further refined in [DESKTOP_WEB_UX.md](/home/gigo/workspace/iRecall/docs/DESKTOP_WEB_UX.md).
+For desktop and web, the target interaction model is now further refined in [DESKTOP_WEB_UX.md](DESKTOP_WEB_UX.md).
 
 That document should guide layout, action hierarchy, and workflow design for rich clients.
 
@@ -98,11 +98,11 @@ Future clients should keep this density and clarity balance.
 
 ## Visual Language
 
-The current visual system is defined in [tui/styles/theme.go](/home/gigo/workspace/iRecall/tui/styles/theme.go).
+The current visual system is defined in [tui/styles/theme.go](../tui/styles/theme.go).
 
 ### Themes and palette
 
-The current UI supports multiple named themes in [tui/styles/theme.go](/home/gigo/workspace/iRecall/tui/styles/theme.go):
+The current UI supports multiple named themes in [tui/styles/theme.go](../tui/styles/theme.go):
 
 1. `violet`
 2. `forest`
@@ -165,7 +165,7 @@ Cross-platform rule:
 
 ### App shell
 
-The shell is defined in [tui/app.go](/home/gigo/workspace/iRecall/tui/app.go).
+The shell is defined in [tui/app.go](../tui/app.go).
 
 The shell has:
 
@@ -205,7 +205,7 @@ Future clients do not need to preserve `Tab` and `Shift+Tab` specifically, but s
 
 ## Recall Page
 
-Reference implementation: [tui/pages/recall.go](/home/gigo/workspace/iRecall/tui/pages/recall.go)
+Reference implementation: [tui/pages/recall.go](../tui/pages/recall.go)
 
 ### Purpose
 
@@ -334,7 +334,7 @@ When generation fails:
 
 ## History Page
 
-Reference implementation: [tui/pages/history.go](/home/gigo/workspace/iRecall/tui/pages/history.go)
+Reference implementation: [tui/pages/history.go](../tui/pages/history.go)
 
 ### Purpose
 
@@ -398,7 +398,7 @@ Completion rule:
 
 ## Quotes Page
 
-Reference implementation: [tui/pages/quotes.go](/home/gigo/workspace/iRecall/tui/pages/quotes.go)
+Reference implementation: [tui/pages/quotes.go](../tui/pages/quotes.go)
 
 ### Purpose
 
@@ -424,7 +424,7 @@ The page is a single large panel with:
 
 ### Quote row design
 
-Reference implementation: [tui/pages/quotefunctions.go](/home/gigo/workspace/iRecall/tui/pages/quotefunctions.go)
+Reference implementation: [tui/pages/quotefunctions.go](../tui/pages/quotefunctions.go)
 
 Each quote item includes:
 
@@ -481,7 +481,7 @@ The empty state should feel actionable, not dead.
 
 ## Settings Page
 
-Reference implementation: [tui/pages/settings.go](/home/gigo/workspace/iRecall/tui/pages/settings.go)
+Reference implementation: [tui/pages/settings.go](../tui/pages/settings.go)
 
 ### Purpose
 
@@ -558,7 +558,7 @@ All overlays are blocking and centered. The base page remains visually present b
 
 ### Set Your Name
 
-Reference implementation: [tui/pages/userprofile.go](/home/gigo/workspace/iRecall/tui/pages/userprofile.go)
+Reference implementation: [tui/pages/userprofile.go](../tui/pages/userprofile.go)
 
 Purpose:
 
@@ -577,7 +577,7 @@ Meaning of the field must be explained:
 
 ### Add / Edit Quote
 
-Reference implementation: [tui/pages/addquote.go](/home/gigo/workspace/iRecall/tui/pages/addquote.go)
+Reference implementation: [tui/pages/addquote.go](../tui/pages/addquote.go)
 
 Purpose:
 
@@ -612,7 +612,7 @@ This explicit preview-and-confirm behavior should be preserved in all clients.
 
 ### Delete confirmation
 
-Reference implementation: [tui/pages/confirmdelete.go](/home/gigo/workspace/iRecall/tui/pages/confirmdelete.go)
+Reference implementation: [tui/pages/confirmdelete.go](../tui/pages/confirmdelete.go)
 
 Purpose:
 
@@ -626,7 +626,7 @@ Rules:
 
 ### Share / Export Quotes
 
-Reference implementation: [tui/pages/sharequote.go](/home/gigo/workspace/iRecall/tui/pages/sharequote.go)
+Reference implementation: [tui/pages/sharequote.go](../tui/pages/sharequote.go)
 
 Purpose:
 
@@ -642,7 +642,7 @@ Rules:
 
 ### Import Quotes
 
-Reference implementation: [tui/pages/importquote.go](/home/gigo/workspace/iRecall/tui/pages/importquote.go)
+Reference implementation: [tui/pages/importquote.go](../tui/pages/importquote.go)
 
 Purpose:
 

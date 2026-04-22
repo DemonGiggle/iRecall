@@ -20,9 +20,10 @@ The project currently ships with:
 - Review Recall history and promote past sessions into quotes
 - Export and import quotes through a versioned JSON share format
 - Preserve author and source provenance on imported content
-- Configure provider settings, search settings, and UI theme
+- Protect the web UI with a locally managed password and browser session
+- Configure provider settings, retrieval settings, theme, web port, and mock-LLM debug mode
 - Run isolated local instances with a custom data root
-- Switch the active storage root from Settings across TUI, web, and desktop
+- Switch the active storage root from the TUI Settings page or with `-data-path`
 
 ## Getting Started
 
@@ -91,7 +92,7 @@ Typical setups:
 
 ## Usage
 
-The terminal client currently exposes four primary surfaces:
+The shipped clients currently expose four primary surfaces:
 
 - `Recall`: ask questions and review the retrieved quotes used to answer them
 - `History`: review saved recall sessions and reopen their reference quotes
@@ -133,7 +134,7 @@ Notes:
 ./bin/irecall -data-path /path/to/instance
 ```
 
-- You can also set the storage root from `Settings` (TUI, web, desktop). When you save a new root, iRecall:
+- You can also set the storage root from the TUI `Settings` page. When you save a new root, iRecall:
   - closes the current runtime (to avoid DB locks),
   - if the target root is empty, copies current `data/`, `config/`, and `state/` into `<root>/...` (copy, not move),
   - if the target already contains iRecall data, attaches to it without overwriting,
@@ -141,6 +142,8 @@ Notes:
   - attempts to reopen the previous runtime on failure (partially-copied files are not automatically removed).
 
 Leaving the setting blank returns to the platform default behavior (XDG paths or the consolidated data dir fallback described above).
+
+Desktop and web currently show the active storage paths in `Settings`, but they do not yet expose a root-path editor.
 ## Project Layout
 
 ```text
@@ -196,11 +199,11 @@ make frontend-build
 
 ## Documentation
 
-- [docs/PLAN.md](/home/gigo/workspace/iRecall/docs/PLAN.md): roadmap and planning index
-- [docs/SPEC.md](/home/gigo/workspace/iRecall/docs/SPEC.md): technical specification
-- [docs/KEYWORD_MATCHING.md](/home/gigo/workspace/iRecall/docs/KEYWORD_MATCHING.md): how keyword extraction and quote matching work
-- [docs/schema.md](/home/gigo/workspace/iRecall/docs/schema.md): quote, share, and provenance schema guide
-- [docs/UI_DESIGN.md](/home/gigo/workspace/iRecall/docs/UI_DESIGN.md): shared UI contract
-- [docs/WAILS_DESKTOP.md](/home/gigo/workspace/iRecall/docs/WAILS_DESKTOP.md): desktop mapping
-- [docs/QUOTES_SHARING_DESIGN.md](/home/gigo/workspace/iRecall/docs/QUOTES_SHARING_DESIGN.md): sharing model
-- [tools/redmine_export/README.md](/home/gigo/workspace/iRecall/tools/redmine_export/README.md): Redmine export tool usage
+- [docs/PLAN.md](docs/PLAN.md): roadmap and planning index
+- [docs/SPEC.md](docs/SPEC.md): technical specification
+- [docs/KEYWORD_MATCHING.md](docs/KEYWORD_MATCHING.md): how keyword extraction and quote matching work
+- [docs/schema.md](docs/schema.md): quote, share, and provenance schema guide
+- [docs/UI_DESIGN.md](docs/UI_DESIGN.md): shared UI contract
+- [docs/WAILS_DESKTOP.md](docs/WAILS_DESKTOP.md): desktop mapping
+- [docs/QUOTES_SHARING_DESIGN.md](docs/QUOTES_SHARING_DESIGN.md): sharing model
+- [tools/redmine_export/README.md](tools/redmine_export/README.md): Redmine export tool usage
