@@ -28,6 +28,7 @@ Related design references:
 - [docs/WAILS_DESKTOP.md](./WAILS_DESKTOP.md)
 - [docs/SPEC.md](./SPEC.md)
 - [docs/schema.md](./schema.md)
+- [docs/WEB_API_TOKEN_AUTH.md](./WEB_API_TOKEN_AUTH.md)
 
 ## Roadmap Summary
 
@@ -71,6 +72,5 @@ The quote model now has first-class source identity fields and a Redmine export 
 ## Non-Goals For Now
 
 - embeddings or vector search
-- a REST API
 - remote-first storage
 - full multi-user collaboration semantics

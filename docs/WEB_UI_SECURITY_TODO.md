@@ -10,30 +10,36 @@ This note tracks the remaining security work for the networked web UI after the 
 
 ## Remaining work
 
-### 1. Restrict the default bind address
+### 1. Add REST API bearer-token auth
+
+- Generate a token from the Settings page and show it once in a popup.
+- Store only a hash in the database and compare against `Authorization: Bearer <token>`.
+- Add a `Renew` action that replaces the stored hash and invalidates the old token immediately.
+
+### 2. Restrict the default bind address
 
 - Change the default host from `0.0.0.0` to `127.0.0.1`.
 - Keep explicit LAN exposure as an opt-in choice via `--host`.
 
-### 2. Harden transport for LAN use
+### 3. Harden transport for LAN use
 
 - Document the supported deployment model for non-localhost use.
 - Prefer TLS directly in the app or require a trusted reverse proxy.
 - Mark session cookies as `Secure` when served over HTTPS.
 
-### 3. Add browser-origin protections
+### 4. Add browser-origin protections
 
 - Reject unexpected `Host` headers.
 - Validate `Origin` on state-changing routes.
 - Review DNS rebinding protections for browser access over IP/hostnames.
 
-### 4. Add rate limiting and abuse controls
+### 5. Add rate limiting and abuse controls
 
 - Throttle login attempts per IP and per session.
 - Add backoff or temporary lockout after repeated failed logins.
 - Add limits for expensive authenticated routes such as recall/model fetch.
 
-### 5. Replace the default HTTP server
+### 6. Replace the default HTTP server
 
 - Stop using bare `http.ListenAndServe`.
 - Create an explicit `http.Server` with:
@@ -43,13 +49,13 @@ This note tracks the remaining security work for the networked web UI after the 
   - `IdleTimeout`
   - `MaxHeaderBytes`
 
-### 6. Review outbound request controls
+### 7. Review outbound request controls
 
 - `fetch-models` currently accepts caller-supplied provider host/port.
 - Revisit whether arbitrary destinations should be allowed in web mode.
 - If retained, consider allowlists or stronger validation to reduce SSRF risk.
 
-### 7. Review security headers
+### 8. Review security headers
 
 - Add or verify:
   - `Content-Security-Policy`
@@ -59,9 +65,10 @@ This note tracks the remaining security work for the networked web UI after the 
 
 ## Suggested implementation order
 
-1. Default bind to loopback.
-2. Add explicit `http.Server` timeouts.
-3. Add login rate limiting.
-4. Add `Host` and `Origin` enforcement.
-5. Rework TLS / proxy expectations.
-6. Revisit outbound destination controls.
+1. Add REST API bearer-token auth.
+2. Default bind to loopback.
+3. Add explicit `http.Server` timeouts.
+4. Add login rate limiting.
+5. Add `Host` and `Origin` enforcement.
+6. Rework TLS / proxy expectations.
+7. Revisit outbound destination controls.

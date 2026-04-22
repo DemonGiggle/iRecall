@@ -471,6 +471,8 @@ Current web responsibilities:
 - expose quote import from a local JSON file read in the browser and posted as raw payload
 - expose the same four frontend pages as desktop: `Recall`, `History`, `Quotes`, and `Settings`
 
+Planned bearer-token auth for external REST clients is documented in [WEB_API_TOKEN_AUTH.md](WEB_API_TOKEN_AUTH.md).
+
 Current auth behavior:
 
 - first-run password setup happens in the terminal, not in the browser
