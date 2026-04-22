@@ -132,6 +132,9 @@ pre {
   background: rgba(17, 24, 39, 0.78);
   color: var(--fg);
   padding: 10px 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   cursor: pointer;
   transition: background-color 120ms ease, border-color 120ms ease, transform 120ms ease;
 }
@@ -787,6 +790,7 @@ pre {
 .modal-actions {
   display: flex;
   justify-content: flex-end;
+  align-items: center;
   gap: 10px;
   flex-wrap: wrap;
 }

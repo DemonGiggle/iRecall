@@ -566,6 +566,9 @@ async function handleClick(event: MouseEvent): Promise<void> {
       await openShareOverlay(actionEl.dataset.context as QuoteContext);
       return;
     case "quote-inspect":
+      if (target.closest("input, button, label")) {
+        return;
+      }
       openQuoteInspectOverlay(actionEl.dataset.context as QuoteContext, Number(actionEl.dataset.index ?? "0"));
       return;
     case "set-cursor":
@@ -1608,6 +1611,7 @@ function toggleSelection(context: QuoteContext, id: number, checked: boolean): v
   } else {
     selected.delete(id);
   }
+  render();
 }
 
 function selectAllQuotes(context: QuoteContext): void {
@@ -1708,6 +1712,7 @@ function toggleHistorySelection(id: number, checked: boolean): void {
   } else {
     state.historySelected.delete(id);
   }
+  render();
 }
 
 function selectAllHistory(): void {
@@ -2018,7 +2023,6 @@ function renderRecallPage(): string {
 function renderQuotesPage(): string {
   const filteredQuotes = getFilteredLibraryQuotes();
   const libraryCursor = clampCursor(state.quotesCursor, filteredQuotes);
-  const selected = selectedOrCurrentQuotes("quotes");
   const selectedCount = filteredQuotes.filter((quote) => state.quotesSelected.has(quote.ID)).length;
 
   return `
@@ -2045,8 +2049,9 @@ function renderQuotesPage(): string {
                 <div class="muted">${filteredQuotes.length} ${filteredQuotes.length === 1 ? "quote" : "quotes"}</div>
               </div>
               <div class="toolbar toolbar-quiet">
-                <button class="button" data-action="quote-select-all" data-context="quotes" type="button" ${filteredQuotes.length === 0 ? "disabled" : ""}>Select results</button>
-                <button class="button" data-action="quote-deselect-all" data-context="quotes" type="button" ${selectedCount === 0 ? "disabled" : ""}>Clear selection</button>
+                <button class="button" data-action="quote-select-all" data-context="quotes" type="button" ${filteredQuotes.length === 0 ? "disabled" : ""}>Select all</button>
+                <button class="button" data-action="quote-deselect-all" data-context="quotes" type="button" ${selectedCount === 0 ? "disabled" : ""}>Clear</button>
+                <button class="button" data-action="quote-share-current" data-context="quotes" type="button" ${selectedCount === 0 ? "disabled" : ""}>Share</button>
               </div>
             </div>
             ${
@@ -2064,8 +2069,6 @@ function renderQuotesPage(): string {
 }
 
 function renderHistoryPage(): string {
-  const selectedEntries = selectedOrCurrentHistory();
-  const canReuseHistoryQuestion = Boolean(state.historyDetail ?? selectedEntries[0]);
   return `
     <section class="page page-history">
       <div class="panel page-panel">
@@ -2077,8 +2080,6 @@ function renderHistoryPage(): string {
           </div>
           <div class="page-hero-actions">
             <button class="button" data-action="history-refresh" type="button">Refresh</button>
-            <button class="button" data-action="reuse-history-question" type="button" ${!canReuseHistoryQuestion ? "disabled" : ""}>Recall again</button>
-            <button class="button button-danger" data-action="history-delete-current" type="button" ${selectedEntries.length === 0 ? "disabled" : ""}>Delete</button>
           </div>
         </div>
 
