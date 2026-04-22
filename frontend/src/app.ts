@@ -963,7 +963,7 @@ function openQuoteEditor(mode: "add" | "edit", quote?: Quote): void {
 }
 
 function openCurrentQuoteEditor(context: QuoteContext): void {
-  const quote = selectedOrCurrentQuotes(context)[0];
+  const quote = activeQuoteForContext(context);
   if (!quote) {
     return;
   }
@@ -971,7 +971,10 @@ function openCurrentQuoteEditor(context: QuoteContext): void {
 }
 
 function openDeleteOverlay(context: QuoteContext): void {
-  const ids = selectedOrCurrentQuotes(context).map((quote) => quote.ID);
+  const ids =
+    state.overlay?.type === "quoteInspect" && state.overlay.context === context
+      ? [state.overlay.quote.ID]
+      : selectedOrCurrentQuotes(context).map((quote) => quote.ID);
   if (ids.length === 0) {
     return;
   }
@@ -1002,7 +1005,10 @@ function openDeleteHistoryOverlay(): void {
 }
 
 async function openShareOverlay(context: QuoteContext): Promise<void> {
-  const selected = selectedOrCurrentQuotes(context);
+  const selected =
+    state.overlay?.type === "quoteInspect" && state.overlay.context === context
+      ? [state.overlay.quote]
+      : selectedOrCurrentQuotes(context);
   if (selected.length === 0) {
     return;
   }
@@ -1641,6 +1647,13 @@ function selectedOrCurrentQuotes(context: QuoteContext): Quote[] {
   return quotes[cursor] ? [quotes[cursor]] : [];
 }
 
+function activeQuoteForContext(context: QuoteContext): Quote | null {
+  if (state.overlay?.type === "quoteInspect" && state.overlay.context === context) {
+    return state.overlay.quote;
+  }
+  return selectedOrCurrentQuotes(context)[0] ?? null;
+}
+
 function getFilteredLibraryQuotes(): Quote[] {
   const query = state.libraryQuery.trim().toLowerCase();
   return state.quotes.filter((quote) => {
@@ -2004,7 +2017,6 @@ function renderQuotesPage(): string {
   const filteredQuotes = getFilteredLibraryQuotes();
   const libraryCursor = clampCursor(state.quotesCursor, filteredQuotes);
   const selected = selectedOrCurrentQuotes("quotes");
-  const detailQuote = selected[0] ?? null;
   const selectedCount = filteredQuotes.filter((quote) => state.quotesSelected.has(quote.ID)).length;
   const quickStats = [
     `${state.quotes.length} total`,
@@ -2030,7 +2042,7 @@ function renderQuotesPage(): string {
 
         <div class="meta-row meta-row-rich">
           ${quickStats.map((item) => `<span class="meta-pill">${escapeHtml(item)}</span>`).join("")}
-          <span class="meta-pill meta-pill-accent">${selected.length > 0 ? `${selected.length} selected` : detailQuote ? "1 in focus" : "Nothing selected"}</span>
+          <span class="meta-pill meta-pill-accent">${selected.length > 0 ? `${selected.length} selected` : "Open a quote to inspect it"}</span>
         </div>
 
         <div class="workspace workspace-library">
@@ -2052,21 +2064,6 @@ function renderQuotesPage(): string {
                   ? `<div class="status status-error">${escapeHtml(state.quotesError)}</div>`
                   : renderQuoteList("quotes", filteredQuotes, libraryCursor, state.quotesSelected, true)
             }
-          </section>
-
-          <section class="panel subpanel detail-panel">
-            <div class="subpanel-header">
-              <div>
-                <div class="section-title">Quote details</div>
-                <div class="muted">${detailQuote ? "Read the full note and manage it from here." : "Select a quote to inspect its full text and metadata."}</div>
-              </div>
-              <div class="toolbar toolbar-quiet">
-                <button class="button" data-action="quote-edit-current" data-context="quotes" type="button" ${!detailQuote ? "disabled" : ""}>Edit</button>
-                <button class="button" data-action="quote-share-current" data-context="quotes" type="button" ${!detailQuote ? "disabled" : ""}>Share</button>
-                <button class="button button-danger" data-action="quote-delete-current" data-context="quotes" type="button" ${!detailQuote ? "disabled" : ""}>Delete</button>
-              </div>
-            </div>
-            ${renderQuoteDetail(detailQuote, "quotes")}
           </section>
         </div>
       </div>
@@ -2426,7 +2423,7 @@ function renderQuoteList(
               </div>
             `
             : "";
-          const articleAction = isReferenceList ? "quote-inspect" : "set-cursor";
+          const articleAction = "quote-inspect";
           return `
             <article class="quote-card${isCurrent ? " is-current" : ""}${isReferenceList ? " quote-card-minimal" : ""}" data-action="${articleAction}" data-context="${context}" data-index="${index}">
               <div class="quote-topline">
@@ -2506,6 +2503,7 @@ function renderQuoteDetail(quote: Quote | null, context: QuoteContext): string {
       <div class="toolbar toolbar-inline">
         <button class="button" data-action="quote-edit-current" data-context="${context}" type="button">Edit</button>
         <button class="button" data-action="quote-share-current" data-context="${context}" type="button">Share</button>
+        <button class="button button-danger" data-action="quote-delete-current" data-context="${context}" type="button">Delete</button>
       </div>
     </div>
   `;
