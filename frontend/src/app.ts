@@ -2034,29 +2034,15 @@ function renderQuotesPage(): string {
         </div>
 
         <div class="workspace workspace-library">
-          <section class="panel subpanel filter-panel">
-            <div class="section-title">Browse</div>
-            <label class="field">
-              <span>Search quotes</span>
-              <input
-                class="text-input"
-                data-bind="library-query"
-                value="${escapeAttribute(state.libraryQuery)}"
-                placeholder="Search content, source, author, or tags"
-              />
-            </label>
-            <div class="toolbar toolbar-stack">
-              <button class="button" data-action="library-clear-filters" type="button" ${!state.libraryQuery ? "disabled" : ""}>Clear filters</button>
-              <button class="button" data-action="quote-select-all" data-context="quotes" type="button" ${filteredQuotes.length === 0 ? "disabled" : ""}>Select results</button>
-              <button class="button" data-action="quote-deselect-all" data-context="quotes" type="button" ${selectedCount === 0 ? "disabled" : ""}>Clear selection</button>
-            </div>
-          </section>
-
           <section class="panel subpanel">
             <div class="subpanel-header">
               <div>
                 <div class="section-title">Quote list</div>
                 <div class="muted">${filteredQuotes.length} matching quotes. Choose one to inspect the full note, provenance, and actions.</div>
+              </div>
+              <div class="toolbar toolbar-quiet">
+                <button class="button" data-action="quote-select-all" data-context="quotes" type="button" ${filteredQuotes.length === 0 ? "disabled" : ""}>Select results</button>
+                <button class="button" data-action="quote-deselect-all" data-context="quotes" type="button" ${selectedCount === 0 ? "disabled" : ""}>Clear selection</button>
               </div>
             </div>
             ${

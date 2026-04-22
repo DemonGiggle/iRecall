@@ -165,29 +165,15 @@
         </div>
 
         <div class="workspace workspace-library">
-          <section class="panel subpanel filter-panel">
-            <div class="section-title">Browse</div>
-            <label class="field">
-              <span>Search quotes</span>
-              <input
-                class="text-input"
-                data-bind="library-query"
-                value="${p(e.libraryQuery)}"
-                placeholder="Search content, source, author, or tags"
-              />
-            </label>
-            <div class="toolbar toolbar-stack">
-              <button class="button" data-action="library-clear-filters" type="button" ${e.libraryQuery?"":"disabled"}>Clear filters</button>
-              <button class="button" data-action="quote-select-all" data-context="quotes" type="button" ${t.length===0?"disabled":""}>Select results</button>
-              <button class="button" data-action="quote-deselect-all" data-context="quotes" type="button" ${o===0?"disabled":""}>Clear selection</button>
-            </div>
-          </section>
-
           <section class="panel subpanel">
             <div class="subpanel-header">
               <div>
                 <div class="section-title">Quote list</div>
                 <div class="muted">${t.length} matching quotes. Choose one to inspect the full note, provenance, and actions.</div>
+              </div>
+              <div class="toolbar toolbar-quiet">
+                <button class="button" data-action="quote-select-all" data-context="quotes" type="button" ${t.length===0?"disabled":""}>Select results</button>
+                <button class="button" data-action="quote-deselect-all" data-context="quotes" type="button" ${o===0?"disabled":""}>Clear selection</button>
               </div>
             </div>
             ${e.quotesLoading?'<div class="empty-state">Loading quotes…</div>':e.quotesError?`<div class="status status-error">${n(e.quotesError)}</div>`:x("quotes",t,s,e.quotesSelected,!0)}

@@ -408,7 +408,7 @@ pre {
 }
 
 .workspace-library {
-  grid-template-columns: minmax(200px, 0.34fr) minmax(320px, 0.8fr) minmax(320px, 0.86fr);
+  grid-template-columns: minmax(320px, 0.9fr) minmax(320px, 1.1fr);
 }
 
 .workspace-activity {
