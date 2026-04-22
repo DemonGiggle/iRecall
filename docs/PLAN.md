@@ -28,6 +28,7 @@ Related design references:
 - [docs/WAILS_DESKTOP.md](./WAILS_DESKTOP.md)
 - [docs/SPEC.md](./SPEC.md)
 - [docs/schema.md](./schema.md)
+- [docs/WEB_REST_API.md](./WEB_REST_API.md)
 - [docs/WEB_API_TOKEN_AUTH.md](./WEB_API_TOKEN_AUTH.md)
 
 ## Roadmap Summary

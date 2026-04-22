@@ -462,6 +462,8 @@ See:
 
 The HTTP web runtime uses the same shared frontend shell as desktop, but wraps it in browser auth and browser-style import/export flows.
 
+The current route-by-route endpoint reference is documented in [WEB_REST_API.md](WEB_REST_API.md).
+
 Current web responsibilities:
 
 - require a configured password before the server starts listening
