@@ -23,7 +23,10 @@
     <div class="shell">
       <header class="titlebar">
         <div class="brand-lockup">
-          <div class="brand">${l(((o=e.bootstrap)==null?void 0:o.productName)??"iRecall")}</div>
+          <div class="brand-row">
+            <div class="brand">${l(((o=e.bootstrap)==null?void 0:o.productName)??"iRecall")}</div>
+            ${e.settings.mockLLM?'<span class="meta-pill meta-pill-accent">Mock LLM on</span>':""}
+          </div>
           <div class="muted subtle">${y()?"Local-first knowledge workspace for the web":"Local-first knowledge workspace for desktop"}</div>
         </div>
         <div class="titlebar-right">
@@ -79,7 +82,6 @@
             <div class="page-title">Question, references, then answer</div>
             <div class="muted page-copy">Run recall once, inspect the retrieved quotes, then read the grounded response.</div>
           </div>
-          ${s?'<div class="meta-row"><span class="meta-pill meta-pill-accent">Mock LLM on</span></div>':""}
         </div>
 
         <div class="flow-stack flow-stack-ask">
@@ -143,7 +145,7 @@
         ${e.recallStatus?`<div class="status ${e.recallStatusIsError?"status-error":"status-ok"}">${l(e.recallStatus)}</div>`:""}
       </div>
     </section>
-  `}function tt(){const t=G(),s=v(e.quotesCursor,t),a=E("quotes"),r=t.filter(n=>e.quotesSelected.has(n.ID)).length;return`
+  `}function tt(){const t=G(),s=v(e.quotesCursor,t);E("quotes");const a=t.filter(r=>e.quotesSelected.has(r.ID)).length;return`
     <section class="page page-quotes">
       <div class="panel page-panel">
         <div class="page-hero">
@@ -159,21 +161,16 @@
           </div>
         </div>
 
-        <div class="meta-row meta-row-rich">
-          ${[`${e.quotes.length} total`,`${e.quotes.filter(n=>n.IsOwnedByMe).length} authored here`,`${e.quotes.filter(n=>!n.IsOwnedByMe).length} imported`].map(n=>`<span class="meta-pill">${l(n)}</span>`).join("")}
-          <span class="meta-pill meta-pill-accent">${a.length>0?`${a.length} selected`:"Open a quote to inspect it"}</span>
-        </div>
-
         <div class="workspace workspace-library">
           <section class="panel subpanel">
             <div class="subpanel-header">
               <div>
                 <div class="section-title">Quote list</div>
-                <div class="muted">${t.length} matching quotes. Choose one to inspect the full note, provenance, and actions.</div>
+                <div class="muted">${t.length} ${t.length===1?"quote":"quotes"}</div>
               </div>
               <div class="toolbar toolbar-quiet">
                 <button class="button" data-action="quote-select-all" data-context="quotes" type="button" ${t.length===0?"disabled":""}>Select results</button>
-                <button class="button" data-action="quote-deselect-all" data-context="quotes" type="button" ${r===0?"disabled":""}>Clear selection</button>
+                <button class="button" data-action="quote-deselect-all" data-context="quotes" type="button" ${a===0?"disabled":""}>Clear selection</button>
               </div>
             </div>
             ${e.quotesLoading?'<div class="empty-state">Loading quotes…</div>':e.quotesError?`<div class="status status-error">${l(e.quotesError)}</div>`:x("quotes",t,s,e.quotesSelected,!0)}

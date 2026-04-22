@@ -85,6 +85,13 @@ pre {
   gap: 4px;
 }
 
+.brand-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 .brand {
   font-size: 1.7rem;
   font-weight: 700;

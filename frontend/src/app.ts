@@ -1823,7 +1823,10 @@ function renderShell(): string {
     <div class="shell">
       <header class="titlebar">
         <div class="brand-lockup">
-          <div class="brand">${escapeHtml(state.bootstrap?.productName ?? "iRecall")}</div>
+          <div class="brand-row">
+            <div class="brand">${escapeHtml(state.bootstrap?.productName ?? "iRecall")}</div>
+            ${state.settings.mockLLM ? `<span class="meta-pill meta-pill-accent">Mock LLM on</span>` : ""}
+          </div>
           <div class="muted subtle">${isWebRuntime() ? "Local-first knowledge workspace for the web" : "Local-first knowledge workspace for desktop"}</div>
         </div>
         <div class="titlebar-right">
@@ -1938,7 +1941,6 @@ function renderRecallPage(): string {
             <div class="page-title">Question, references, then answer</div>
             <div class="muted page-copy">Run recall once, inspect the retrieved quotes, then read the grounded response.</div>
           </div>
-          ${mockMode ? `<div class="meta-row"><span class="meta-pill meta-pill-accent">Mock LLM on</span></div>` : ""}
         </div>
 
         <div class="flow-stack flow-stack-ask">
@@ -2018,11 +2020,6 @@ function renderQuotesPage(): string {
   const libraryCursor = clampCursor(state.quotesCursor, filteredQuotes);
   const selected = selectedOrCurrentQuotes("quotes");
   const selectedCount = filteredQuotes.filter((quote) => state.quotesSelected.has(quote.ID)).length;
-  const quickStats = [
-    `${state.quotes.length} total`,
-    `${state.quotes.filter((quote) => quote.IsOwnedByMe).length} authored here`,
-    `${state.quotes.filter((quote) => !quote.IsOwnedByMe).length} imported`,
-  ];
 
   return `
     <section class="page page-quotes">
@@ -2040,17 +2037,12 @@ function renderQuotesPage(): string {
           </div>
         </div>
 
-        <div class="meta-row meta-row-rich">
-          ${quickStats.map((item) => `<span class="meta-pill">${escapeHtml(item)}</span>`).join("")}
-          <span class="meta-pill meta-pill-accent">${selected.length > 0 ? `${selected.length} selected` : "Open a quote to inspect it"}</span>
-        </div>
-
         <div class="workspace workspace-library">
           <section class="panel subpanel">
             <div class="subpanel-header">
               <div>
                 <div class="section-title">Quote list</div>
-                <div class="muted">${filteredQuotes.length} matching quotes. Choose one to inspect the full note, provenance, and actions.</div>
+                <div class="muted">${filteredQuotes.length} ${filteredQuotes.length === 1 ? "quote" : "quotes"}</div>
               </div>
               <div class="toolbar toolbar-quiet">
                 <button class="button" data-action="quote-select-all" data-context="quotes" type="button" ${filteredQuotes.length === 0 ? "disabled" : ""}>Select results</button>
