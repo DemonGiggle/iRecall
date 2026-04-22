@@ -2,9 +2,11 @@
 
 ## Purpose
 
-This document defines how the current desktop implementation maps to the shared product contract in [UI_DESIGN.md](/home/gigo/workspace/iRecall/docs/UI_DESIGN.md).
+This document defines how the desktop implementation should map to the shared product contract in [UI_DESIGN.md](/home/gigo/workspace/iRecall/docs/UI_DESIGN.md) and the richer-client redesign in [DESKTOP_WEB_UX.md](/home/gigo/workspace/iRecall/docs/DESKTOP_WEB_UX.md).
 
-`UI_DESIGN.md` is the source of truth for product behavior.
+`UI_DESIGN.md` remains the shared behavioral contract.
+
+`DESKTOP_WEB_UX.md` is the source of truth for desktop/web interaction hierarchy, page flow, and modal reduction.
 
 This file focuses on:
 
@@ -83,7 +85,7 @@ It should not:
 3. dialog rendering
 4. command invocation against the shared application service
 
-It should follow `UI_DESIGN.md` rather than the terminal layout literally.
+It should follow `UI_DESIGN.md` and `DESKTOP_WEB_UX.md` rather than the terminal layout literally.
 
 ## Page Mapping
 
@@ -98,9 +100,10 @@ Desktop mapping:
 
 Recommended desktop adaptation:
 
-1. use a splitter for response and reference panes
-2. keep focus distinction visible
-3. support both keyboard and pointer interactions
+1. treat this page as the primary workspace
+2. use a splitter for response and evidence panes
+3. move quote-management actions out of the main Recall toolbar and into evidence context
+4. support both keyboard and pointer interactions
 
 ### Quotes
 
@@ -110,10 +113,12 @@ Desktop mapping:
 2. quote actions in toolbar, context menu, or shortcut layer
 3. import/export via native file dialogs
 
-The desktop UI may improve ergonomics with:
+The desktop UI should improve ergonomics with:
 
-1. native multi-select list interactions
-2. toolbar buttons for add, import, export, edit, delete
+1. search + list-detail structure
+2. contextual actions in the detail pane
+3. explicit select mode for bulk actions
+4. native multi-select interactions only when the user enters that mode
 
 But it must preserve:
 
@@ -124,10 +129,11 @@ But it must preserve:
 
 Desktop mapping:
 
-1. provider form section
-2. search configuration section
-3. explicit save affordance
-4. fetch-models action
+1. connection section
+2. retrieval section
+3. personalization section
+4. collapsed security and advanced sections
+5. explicit test-connection and fetch-models actions
 
 Use native controls where appropriate:
 
@@ -149,7 +155,7 @@ Keep:
 
 ### Add / Edit quote
 
-Use a dialog or drawer.
+Use a drawer or large side sheet by default.
 
 Keep:
 
@@ -170,7 +176,7 @@ Keep:
 
 ### Share / Export
 
-Use a native save-file picker rather than a raw text path field.
+Use a native save-file picker with a compact export summary rather than a raw text path field.
 
 Keep:
 
@@ -180,7 +186,7 @@ Keep:
 
 ### Import
 
-Use a native open-file picker rather than a raw text path field.
+Use a native open-file picker with a validation/result summary rather than a raw text path field.
 
 Keep:
 
@@ -225,10 +231,10 @@ Avoid leaking storage implementation details into the frontend.
 Recommended desktop behavior:
 
 1. use native open/save dialogs for import/export
-2. use copy buttons where JSON payload visibility is useful
+2. keep JSON payload visibility behind an advanced disclosure
 3. allow window resizing freely
-4. keep the title bar greeting visible
-5. preserve the three top-level pages
+4. keep the title bar greeting visible but secondary
+5. use persistent split-view layouts where possible
 
 Avoid:
 

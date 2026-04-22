@@ -44,12 +44,12 @@ interface SearchConfig {
   MinRelevance: number;
 }
 
-interface DebugConfig {
-  MockLLM: boolean;
-}
-
 interface WebConfig {
   Port: number;
+}
+
+interface DebugConfig {
+  MockLLM: boolean;
 }
 
 interface SettingsPayload {
@@ -58,7 +58,6 @@ interface SettingsPayload {
   Debug: DebugConfig;
   Theme: string;
   Web: WebConfig;
-  RootDir: string;
 }
 
 interface BootstrapState {
@@ -71,7 +70,6 @@ interface BootstrapState {
     Debug: DebugConfig;
     Theme: string;
     Web: WebConfig;
-    RootDir: string;
   };
   paths: {
     rootDir: string;
@@ -181,6 +179,7 @@ type OverlayState =
       ids: number[];
       path: string;
       payload: string;
+      showPayload: boolean;
       busy: boolean;
       status: string;
       isError: boolean;
@@ -190,26 +189,27 @@ type OverlayState =
       path: string;
       payload: string;
       filename: string;
+      showPayload: boolean;
       busy: boolean;
       status: string;
       isError: boolean;
       result: ImportResult | null;
     }
+  | { type: "quoteInspect"; context: QuoteContext; quote: Quote }
   | { type: "notice"; title: string; message: string };
 
 interface SettingsFormState {
   host: string;
   port: string;
   https: boolean;
+  mockLLM: boolean;
   apiKey: string;
   modelFilter: string;
   model: string;
   maxResults: string;
   minRelevance: string;
-  mockLLM: boolean;
   theme: string;
   webPort: string;
-  rootDir: string;
   models: string[];
 }
 
@@ -244,6 +244,7 @@ interface AppState {
   quotesError: string;
   quotesCursor: number;
   quotesSelected: Set<number>;
+  libraryQuery: string;
   recallQuestion: string;
   recallLastQuestion: string;
   recallKeywords: string[];
@@ -268,7 +269,6 @@ interface AppState {
   historyQuoteCursor: number;
   historyQuoteSelected: Set<number>;
   settings: SettingsFormState;
-  settingsShowStats: boolean;
   settingsBusy: boolean;
   settingsStatus: string;
   settingsIsError: boolean;
@@ -294,6 +294,7 @@ const state: AppState = {
   quotesError: "",
   quotesCursor: 0,
   quotesSelected: new Set<number>(),
+  libraryQuery: "",
   recallQuestion: "",
   recallLastQuestion: "",
   recallKeywords: [],
@@ -318,7 +319,6 @@ const state: AppState = {
   historyQuoteCursor: 0,
   historyQuoteSelected: new Set<number>(),
   settings: emptySettingsForm(),
-  settingsShowStats: false,
   settingsBusy: false,
   settingsStatus: "",
   settingsIsError: false,
@@ -545,6 +545,11 @@ async function handleClick(event: MouseEvent): Promise<void> {
     case "quote-import":
       openImportOverlay();
       return;
+    case "library-clear-filters":
+      state.libraryQuery = "";
+      state.quotesCursor = 0;
+      render();
+      return;
     case "quote-select-all":
       selectAllQuotes(actionEl.dataset.context as QuoteContext);
       return;
@@ -560,6 +565,12 @@ async function handleClick(event: MouseEvent): Promise<void> {
     case "quote-share-current":
       await openShareOverlay(actionEl.dataset.context as QuoteContext);
       return;
+    case "quote-inspect":
+      if (target.closest("input, button, label")) {
+        return;
+      }
+      openQuoteInspectOverlay(actionEl.dataset.context as QuoteContext, Number(actionEl.dataset.index ?? "0"));
+      return;
     case "set-cursor":
       if (target.closest("input, button, label")) {
         return;
@@ -574,6 +585,18 @@ async function handleClick(event: MouseEvent): Promise<void> {
       return;
     case "history-open":
       await openHistoryDetail(Number(actionEl.dataset.id ?? "0"));
+      return;
+    case "share-toggle-payload":
+      if (state.overlay?.type === "shareQuotes") {
+        state.overlay.showPayload = !state.overlay.showPayload;
+        render();
+      }
+      return;
+    case "import-toggle-payload":
+      if (state.overlay?.type === "importQuotes") {
+        state.overlay.showPayload = !state.overlay.showPayload;
+        render();
+      }
       return;
     case "profile-save":
       await saveProfileName();
@@ -614,15 +637,27 @@ async function handleClick(event: MouseEvent): Promise<void> {
     case "settings-save":
       await saveSettings();
       return;
-    case "settings-toggle-stats":
-      state.settingsShowStats = !state.settingsShowStats;
-      render();
-      return;
     case "settings-change-password":
       await submitPasswordChange();
       return;
     case "recall-run":
       await runRecall();
+      return;
+    case "use-last-question":
+      state.recallQuestion = state.recallLastQuestion;
+      render();
+      return;
+    case "reuse-history-question":
+      if (state.historyDetail) {
+        state.recallQuestion = state.historyDetail.Question;
+      } else {
+        const current = selectedOrCurrentHistory()[0];
+        if (current) {
+          state.recallQuestion = current.Question;
+        }
+      }
+      state.page = "Recall";
+      render();
       return;
     default:
       return;
@@ -645,6 +680,11 @@ function handleInput(event: Event): void {
       return;
     case "recall-question":
       state.recallQuestion = target.value;
+      return;
+    case "library-query":
+      state.libraryQuery = target.value;
+      state.quotesCursor = 0;
+      render();
       return;
     case "profile-name":
       if (state.overlay?.type === "namePrompt") {
@@ -693,9 +733,6 @@ function handleInput(event: Event): void {
     case "settings-web-port":
       state.settings.webPort = target.value;
       return;
-    case "settings-root-dir":
-      state.settings.rootDir = target.value;
-      return;
     case "settings-password-current":
       state.passwordForm.current = target.value;
       return;
@@ -729,13 +766,13 @@ function handleChange(event: Event): void {
         state.settings.https = target.checked;
       }
       return;
-    case "settings-model":
-      state.settings.model = target.value;
-      return;
     case "settings-mock-llm":
       if (target instanceof HTMLInputElement) {
         state.settings.mockLLM = target.checked;
       }
+      return;
+    case "settings-model":
+      state.settings.model = target.value;
       return;
     case "import-file":
       if (target instanceof HTMLInputElement) {
@@ -847,9 +884,17 @@ async function loadHistory(): Promise<void> {
   render();
   try {
     const entries = await backend().ListRecallHistory();
+    const activeDetailId = state.historyDetail?.ID ?? null;
     state.historyEntries = entries;
     state.historyCursor = clampHistoryCursor(state.historyCursor, entries);
     state.historySelected = clampHistorySelection(state.historySelected, entries);
+    if (activeDetailId === null) {
+      closeHistoryDetail();
+    } else if (!entries.some((entry) => entry.ID === activeDetailId)) {
+      closeHistoryDetail();
+    } else {
+      void openHistoryDetail(activeDetailId, true);
+    }
   } catch (error) {
     state.historyError = getErrorMessage(error);
   } finally {
@@ -866,14 +911,22 @@ async function openCurrentHistory(): Promise<void> {
   await openHistoryDetail(entry.ID);
 }
 
-async function openHistoryDetail(id: number): Promise<void> {
+async function openHistoryDetail(id: number, preserveStatus = false): Promise<void> {
   if (!Number.isFinite(id) || id <= 0) {
+    return;
+  }
+  if (state.historyDetailLoading && state.historyDetail?.ID === id) {
+    return;
+  }
+  if (state.historyDetail && state.historyDetail.ID === id && !state.historyDetailError) {
     return;
   }
   state.historyDetailLoading = true;
   state.historyDetailError = "";
-  state.historyStatus = "";
-  state.historyStatusIsError = false;
+  if (!preserveStatus) {
+    state.historyStatus = "";
+    state.historyStatusIsError = false;
+  }
   render();
   try {
     const detail = await backend().GetRecallHistory(id);
@@ -913,7 +966,7 @@ function openQuoteEditor(mode: "add" | "edit", quote?: Quote): void {
 }
 
 function openCurrentQuoteEditor(context: QuoteContext): void {
-  const quote = selectedOrCurrentQuotes(context)[0];
+  const quote = activeQuoteForContext(context);
   if (!quote) {
     return;
   }
@@ -921,7 +974,10 @@ function openCurrentQuoteEditor(context: QuoteContext): void {
 }
 
 function openDeleteOverlay(context: QuoteContext): void {
-  const ids = selectedOrCurrentQuotes(context).map((quote) => quote.ID);
+  const ids =
+    state.overlay?.type === "quoteInspect" && state.overlay.context === context
+      ? [state.overlay.quote.ID]
+      : selectedOrCurrentQuotes(context).map((quote) => quote.ID);
   if (ids.length === 0) {
     return;
   }
@@ -952,7 +1008,10 @@ function openDeleteHistoryOverlay(): void {
 }
 
 async function openShareOverlay(context: QuoteContext): Promise<void> {
-  const selected = selectedOrCurrentQuotes(context);
+  const selected =
+    state.overlay?.type === "quoteInspect" && state.overlay.context === context
+      ? [state.overlay.quote]
+      : selectedOrCurrentQuotes(context);
   if (selected.length === 0) {
     return;
   }
@@ -962,6 +1021,7 @@ async function openShareOverlay(context: QuoteContext): Promise<void> {
     ids: selected.map((quote) => quote.ID),
     path: "",
     payload: "",
+    showPayload: false,
     busy: true,
     status: "",
     isError: false,
@@ -993,11 +1053,30 @@ function openImportOverlay(): void {
     path: "",
     payload: "",
     filename: "",
+    showPayload: false,
     busy: false,
     status: "",
     isError: false,
     result: null,
   };
+  render();
+}
+
+function openQuoteInspectOverlay(context: QuoteContext, index: number): void {
+  const quotes = quotesForContext(context);
+  const cursor = clampCursor(index, quotes);
+  const quote = quotes[cursor];
+  if (!quote) {
+    return;
+  }
+  if (context === "quotes") {
+    state.quotesCursor = cursor;
+  } else if (context === "recall") {
+    state.recallCursor = cursor;
+  } else {
+    state.historyQuoteCursor = cursor;
+  }
+  state.overlay = { type: "quoteInspect", context, quote };
   render();
 }
 
@@ -1328,7 +1407,7 @@ async function runRecall(): Promise<void> {
   }
   const question = state.recallQuestion.trim();
   if (!question) {
-    state.recallError = "Ask a question first.";
+    state.recallError = "Enter a recall question first.";
     render();
     return;
   }
@@ -1377,11 +1456,7 @@ async function saveRecallAsQuote(): Promise<void> {
     await loadQuotes();
     state.recallStatus = "Saved recall as quote.";
     state.recallStatusIsError = false;
-    state.overlay = {
-      type: "notice",
-      title: "Recall Saved as Quote",
-      message: "The current question and grounded response were saved as a quote with generated tags.",
-    };
+    showToast("Saved the current grounded answer as a quote.");
   } catch (error) {
     state.recallStatus = getErrorMessage(error);
     state.recallStatusIsError = true;
@@ -1400,11 +1475,7 @@ async function saveHistoryAsQuote(): Promise<void> {
     await loadQuotes();
     state.historyStatus = "Saved history entry as quote.";
     state.historyStatusIsError = false;
-    state.overlay = {
-      type: "notice",
-      title: "History Entry Saved as Quote",
-      message: "The selected history question and response were saved as a quote with generated tags.",
-    };
+    showToast("Saved the selected activity session as a quote.");
   } catch (error) {
     state.historyStatus = getErrorMessage(error);
     state.historyStatusIsError = true;
@@ -1464,68 +1535,22 @@ async function saveSettings(): Promise<void> {
   render();
 
   try {
-    const previousRoot = normalizeRootDirForCompare(state.settings.rootDir);
-    const previousPort = state.auth?.currentPort ?? 0;
     const saved = await backend().SaveSettings(payload);
-    await refreshRuntimeStateAfterSettingsSave(saved);
-    const rootChanged = previousRoot !== normalizeRootDirForCompare(saved.RootDir);
-    const needsRestart = state.auth?.runtime === "web" && previousPort > 0 && previousPort !== saved.Web.Port;
-    if (rootChanged && needsRestart) {
-      state.settingsStatus = "Saved. Switched storage root. Restart the web server to apply the new port.";
-    } else if (rootChanged) {
-      state.settingsStatus = "Saved. Switched storage root.";
-    } else if (needsRestart) {
-      state.settingsStatus = "Saved. Restart the web server to apply the new port.";
-    } else {
-      state.settingsStatus = "Saved.";
+    state.settings = settingsFormFromPayload(saved, state.settings.models);
+    applyTheme(state.settings.theme);
+    if (state.bootstrap) {
+      state.bootstrap.settings = saved;
     }
+    const needsRestart =
+      state.auth?.runtime === "web" && state.auth.currentPort > 0 && state.auth.currentPort !== saved.Web.Port;
+    state.settingsStatus = needsRestart ? "Saved. Restart the web server to apply the new port." : "Saved.";
     state.settingsIsError = false;
-    showToast(state.settingsStatus);
   } catch (error) {
     state.settingsStatus = getErrorMessage(error);
     state.settingsIsError = true;
   } finally {
     state.settingsBusy = false;
     render();
-  }
-}
-
-async function refreshRuntimeStateAfterSettingsSave(saved: SettingsPayload): Promise<void> {
-  const models = [...state.settings.models];
-  const bootstrap = await backend().BootstrapState();
-  state.bootstrap = bootstrap;
-  state.settings = settingsFormFromBootstrap(bootstrap);
-  state.settings.models = models;
-  syncSelectedModel(state.settings);
-  applyTheme(state.settings.theme);
-  state.recallKeywords = [];
-  state.recallQuotes = [];
-  state.recallResponse = "";
-  state.recallLastQuestion = "";
-  state.recallSelected = new Set<number>();
-  state.recallCursor = 0;
-  state.historyEntries = [];
-  state.historySelected = new Set<number>();
-  state.historyCursor = 0;
-  state.historyDetail = null;
-  state.historyDetailError = "";
-  state.historyQuoteSelected = new Set<number>();
-  state.historyQuoteCursor = 0;
-  if (!bootstrap.profile?.DisplayName) {
-    state.overlay = {
-      type: "namePrompt",
-      name: "",
-      busy: false,
-      status: "",
-      isError: false,
-    };
-  } else if (state.overlay?.type === "namePrompt") {
-    state.overlay = null;
-  }
-  await loadQuotes();
-  await loadHistory();
-  if (state.bootstrap) {
-    state.bootstrap.settings = saved;
   }
 }
 
@@ -1543,9 +1568,32 @@ function closeOverlay(): void {
   render();
 }
 
-function setCursor(context: QuoteContext, index: number): void {
+function showToast(message: string, isError = false): void {
+  state.toast = { message, isError };
+  if (toastTimer !== null) {
+    window.clearTimeout(toastTimer);
+  }
+  toastTimer = window.setTimeout(() => {
+    state.toast = null;
+    toastTimer = null;
+    render();
+  }, 2600);
+}
+
+function quotesForContext(context: QuoteContext): Quote[] {
   if (context === "quotes") {
-    state.quotesCursor = clampCursor(index, state.quotes);
+    return getFilteredLibraryQuotes();
+  }
+  if (context === "recall") {
+    return state.recallQuotes;
+  }
+  return state.historyDetail?.Quotes ?? [];
+}
+
+function setCursor(context: QuoteContext, index: number): void {
+  const quotes = quotesForContext(context);
+  if (context === "quotes") {
+    state.quotesCursor = clampCursor(index, quotes);
   } else if (context === "recall") {
     state.recallCursor = clampCursor(index, state.recallQuotes);
   } else {
@@ -1563,10 +1611,11 @@ function toggleSelection(context: QuoteContext, id: number, checked: boolean): v
   } else {
     selected.delete(id);
   }
+  render();
 }
 
 function selectAllQuotes(context: QuoteContext): void {
-  const quotes = context === "quotes" ? state.quotes : context === "recall" ? state.recallQuotes : (state.historyDetail?.Quotes ?? []);
+  const quotes = quotesForContext(context);
   const selected = new Set(quotes.map((quote) => quote.ID));
   if (context === "quotes") {
     state.quotesSelected = selected;
@@ -1590,8 +1639,9 @@ function clearQuoteSelection(context: QuoteContext): void {
 }
 
 function selectedOrCurrentQuotes(context: QuoteContext): Quote[] {
-  const quotes = context === "quotes" ? state.quotes : context === "recall" ? state.recallQuotes : (state.historyDetail?.Quotes ?? []);
-  const cursor = context === "quotes" ? state.quotesCursor : context === "recall" ? state.recallCursor : state.historyQuoteCursor;
+  const quotes = quotesForContext(context);
+  const rawCursor = context === "quotes" ? state.quotesCursor : context === "recall" ? state.recallCursor : state.historyQuoteCursor;
+  const cursor = clampCursor(rawCursor, quotes);
   const selected =
     context === "quotes" ? state.quotesSelected : context === "recall" ? state.recallSelected : state.historyQuoteSelected;
   const chosen = quotes.filter((quote) => selected.has(quote.ID));
@@ -1599,6 +1649,24 @@ function selectedOrCurrentQuotes(context: QuoteContext): Quote[] {
     return chosen;
   }
   return quotes[cursor] ? [quotes[cursor]] : [];
+}
+
+function activeQuoteForContext(context: QuoteContext): Quote | null {
+  if (state.overlay?.type === "quoteInspect" && state.overlay.context === context) {
+    return state.overlay.quote;
+  }
+  return selectedOrCurrentQuotes(context)[0] ?? null;
+}
+
+function getFilteredLibraryQuotes(): Quote[] {
+  const query = state.libraryQuery.trim().toLowerCase();
+  return state.quotes.filter((quote) => {
+    if (!query) {
+      return true;
+    }
+    const haystack = [quote.Content, quote.AuthorName, quote.SourceName, ...quote.Tags].join(" ").toLowerCase();
+    return haystack.includes(query);
+  });
 }
 
 function applyQuoteUpdate(updated: Quote): void {
@@ -1631,6 +1699,10 @@ function removeQuotes(ids: number[]): void {
 
 function setHistoryCursor(index: number): void {
   state.historyCursor = clampHistoryCursor(index, state.historyEntries);
+  const current = state.historyEntries[state.historyCursor];
+  if (current) {
+    void openHistoryDetail(current.ID, true);
+  }
   render();
 }
 
@@ -1640,6 +1712,7 @@ function toggleHistorySelection(id: number, checked: boolean): void {
   } else {
     state.historySelected.delete(id);
   }
+  render();
 }
 
 function selectAllHistory(): void {
@@ -1755,11 +1828,14 @@ function renderShell(): string {
     <div class="shell">
       <header class="titlebar">
         <div class="brand-lockup">
-          <div class="brand">${escapeHtml(state.bootstrap?.productName ?? "iRecall")}</div>
-          <div class="muted subtle">Ask questions. Read the answer. Keep the notes that help.</div>
+          <div class="brand-row">
+            <div class="brand">${escapeHtml(state.bootstrap?.productName ?? "iRecall")}</div>
+            ${state.settings.mockLLM ? `<span class="meta-pill meta-pill-accent">Mock LLM on</span>` : ""}
+          </div>
+          <div class="muted subtle">${isWebRuntime() ? "Local-first knowledge workspace for the web" : "Local-first knowledge workspace for desktop"}</div>
         </div>
         <div class="titlebar-right">
-          ${greeting ? `<div class="greeting">${escapeHtml(greeting)}</div>` : ""}
+          <div class="greeting">${escapeHtml(greeting)}</div>
           ${
             state.auth?.runtime === "web"
               ? '<button class="button" data-action="auth-logout" type="button">Logout</button>'
@@ -1774,7 +1850,7 @@ function renderShell(): string {
                     data-action="nav"
                     data-page="${item}"
                     type="button"
-                  >${item}</button>
+                  >${navLabel(item)}</button>
                 `,
               )
               .join("")}
@@ -1786,6 +1862,7 @@ function renderShell(): string {
         ${renderPage()}
       </main>
 
+      ${renderHistoryDetailModal()}
       ${state.overlay ? renderOverlay(state.overlay) : ""}
       ${state.toast ? renderToast(state.toast) : ""}
     </div>
@@ -1795,10 +1872,10 @@ function renderShell(): string {
 function renderAuthShell(): string {
   const requiresSetup = !state.auth?.passwordConfigured;
   const action = "auth-login";
-  const title = requiresSetup ? "Finish Setup In Terminal" : "Unlock iRecall";
+  const title = requiresSetup ? "Password Required In Terminal" : "Unlock Web UI";
   const copy = requiresSetup
     ? "The web password must be created in the terminal before the server starts listening. Restart the server from a terminal session to finish setup."
-    : "Enter the password to open your notes and questions.";
+    : "Enter the web password to unlock the shared iRecall database.";
 
   return `
     <div class="shell shell-loading">
@@ -1836,63 +1913,103 @@ function renderPage(): string {
   }
 }
 
+function navLabel(page: PageName): string {
+  switch (page) {
+    case "Recall":
+      return "Recall";
+    case "Quotes":
+      return "Quotes";
+    case "History":
+      return "History";
+    case "Settings":
+      return "Settings";
+  }
+}
+
 function renderRecallPage(): string {
-  const selected = selectedOrCurrentQuotes("recall");
+  const responseActionsDisabled = !state.recallResponse.trim();
+  const mockMode = state.settings.mockLLM;
   const response = state.recallResponse.trim()
     ? escapeHtml(state.recallResponse)
-    : '<span class="muted">Your answer will show up here after you ask a question.</span>';
+    : '<span class="muted">Grounded response will appear here.</span>';
   const keywords =
     state.recallKeywords.length > 0
       ? state.recallKeywords.map((keyword) => `<span class="keyword-chip">${escapeHtml(keyword)}</span>`).join("")
-      : '<span class="muted">We will pull out helpful search words for you.</span>';
-  const noteCountText =
-    selected.length > 0 ? `${selected.length} quotes selected` : state.recallQuotes.length > 0 ? `${state.recallQuotes.length} quotes found` : "No quotes yet";
+      : '<span class="muted">Keywords: —</span>';
 
   return `
     <section class="page page-recall">
       <div class="panel page-panel">
-        <form class="question-bar" data-form="recall">
-          <input
-            class="text-input text-input-lg question-input"
-            data-bind="recall-question"
-            placeholder='Try: "What did I learn about SQLite?"'
-            value="${escapeAttribute(state.recallQuestion)}"
-          />
-          <button class="button button-primary" data-action="recall-run" type="submit" ${state.recallBusy ? "disabled" : ""}>
-            ${state.recallBusy ? "Thinking..." : "Ask"}
-          </button>
-        </form>
-
-        <div class="toolbar">
-          <button class="button" data-action="recall-save-quote" type="button" ${!state.recallResponse.trim() ? "disabled" : ""}>Save as Quote</button>
+        <div class="page-hero">
+          <div>
+            <div class="eyebrow">Recall</div>
+            <div class="page-title">Question, references, then answer</div>
+            <div class="muted page-copy">Run recall once, inspect the retrieved quotes, then read the grounded response.</div>
+          </div>
         </div>
 
-        <div class="recall-grid">
-          <section class="panel subpanel">
-            <div class="subpanel-header">
-              <div class="section-title">Answer</div>
-            </div>
-            <pre class="response-box">${response}</pre>
-            <div class="keyword-row">
-              <span class="muted">Search words:</span>
-              <div class="keyword-list">${keywords}</div>
-            </div>
+        <div class="flow-stack flow-stack-ask">
+          <section class="panel subpanel hero-panel">
+            <form class="composer-card" data-form="recall">
+              <div class="section-title">1. Question</div>
+              <div class="muted">Write naturally. iRecall will extract keywords and search your quotes for supporting evidence.</div>
+              <textarea
+                class="text-area question-input"
+                data-bind="recall-question"
+                rows="4"
+                placeholder="What do I already know about launching the desktop app, debugging the bridge issue, and improving the UX?"
+              >${escapeHtml(state.recallQuestion)}</textarea>
+              <div class="composer-actions">
+                <button class="button button-primary" data-action="recall-run" type="submit" ${state.recallBusy ? "disabled" : ""}>
+                  ${state.recallBusy ? "Working…" : "Recall"}
+                </button>
+                ${
+                  state.recallLastQuestion.trim()
+                    ? `<button class="button" data-action="use-last-question" type="button">Use previous question</button>`
+                    : ""
+                }
+              </div>
+            </form>
           </section>
 
           <section class="panel subpanel">
             <div class="subpanel-header">
               <div>
-                <div class="section-title">Reference Quotes</div>
-                <div class="muted">These are the quotes iRecall used to make the answer.</div>
+                <div class="section-title">2. Reference quotes</div>
+                <div class="muted">${state.recallBusy ? "Searching your quotes for relevant evidence…" : mockMode ? `${state.recallQuotes.length} retrieved quotes. Mock LLM uses simple split keywords and deterministic recall behavior.` : `${state.recallQuotes.length} retrieved quotes. Open one to inspect the full note.`}</div>
               </div>
-              <div class="muted">${noteCountText}</div>
             </div>
-            <div class="toolbar toolbar-soft">
-              <button class="button" data-action="quote-edit-current" data-context="recall" type="button" ${selected.length === 0 ? "disabled" : ""}>Edit Quote</button>
-              <button class="button button-danger" data-action="quote-delete-current" data-context="recall" type="button" ${selected.length === 0 ? "disabled" : ""}>Delete Quote</button>
-              <button class="button" data-action="quote-share-current" data-context="recall" type="button" ${selected.length === 0 ? "disabled" : ""}>Share Quote</button>
+            <div class="keyword-row">
+              <span class="muted">Keywords</span>
+              <div class="keyword-list">${keywords}</div>
             </div>
             ${renderQuoteList("recall", state.recallQuotes, state.recallCursor, state.recallSelected, false)}
+          </section>
+
+          <section class="panel subpanel">
+            <div class="subpanel-header">
+              <div>
+                <div class="section-title">3. Response</div>
+                <div class="muted">${state.recallBusy ? "Writing a grounded response from the retrieved evidence…" : mockMode ? "Mock LLM combines the retrieved reference quotes into a deterministic placeholder answer." : "The response is generated from the current question and reference set."}</div>
+              </div>
+              <div class="toolbar toolbar-quiet">
+                <button class="button button-primary" data-action="recall-save-quote" type="button" ${responseActionsDisabled ? "disabled" : ""}>Save as Quote</button>
+                <button class="button" data-action="nav" data-page="History" type="button" ${responseActionsDisabled ? "disabled" : ""}>Open history</button>
+              </div>
+            </div>
+            <div class="answer-card">
+              ${
+                state.recallLastQuestion.trim()
+                  ? `
+                    <div class="answer-anchor">
+                      <div class="muted">Current question</div>
+                      <div class="answer-question">${escapeHtml(state.recallLastQuestion)}</div>
+                    </div>
+                  `
+                  : ""
+              }
+              <pre class="response-box">${response}</pre>
+            </div>
           </section>
         </div>
 
@@ -1904,181 +2021,196 @@ function renderRecallPage(): string {
 }
 
 function renderQuotesPage(): string {
-  const selected = selectedOrCurrentQuotes("quotes");
-  let content = "";
-  if (state.quotesLoading) {
-    content = '<div class="empty-state">Loading your notes...</div>';
-  } else if (state.quotesError) {
-    content = `<div class="status status-error">${escapeHtml(state.quotesError)}</div>`;
-  } else {
-    content = renderQuoteList("quotes", state.quotes, state.quotesCursor, state.quotesSelected, true);
-  }
+  const filteredQuotes = getFilteredLibraryQuotes();
+  const libraryCursor = clampCursor(state.quotesCursor, filteredQuotes);
+  const selectedCount = filteredQuotes.filter((quote) => state.quotesSelected.has(quote.ID)).length;
 
   return `
     <section class="page page-quotes">
       <div class="panel page-panel">
-        <div class="section-heading">
+        <div class="page-hero">
           <div>
-            <div class="section-title">Quotes</div>
-            <div class="muted">Keep short notes here, fix them later, and share them when you want.</div>
+            <div class="eyebrow">Quotes</div>
+            <div class="page-title">Read, curate, and reuse your stored quotes</div>
+            <div class="muted page-copy">This is the persistent source material behind grounded recall. Browse first, then edit, share, or clean up what matters.</div>
           </div>
-          <div class="toolbar">
-            <button class="button button-primary" data-action="quote-add" type="button">Add Quote</button>
-            <button class="button" data-action="quote-import" type="button">Import Quotes</button>
-            <button class="button" data-action="quote-share-current" data-context="quotes" type="button" ${selected.length === 0 ? "disabled" : ""}>Share Quote</button>
-          </div>
-        </div>
-        <div class="helper-strip">
-          <div>
-            <div class="helper-title">Simple way to use this page</div>
-            <div class="muted">Add a quote, click a quote to focus it, then edit, delete, or share it.</div>
-          </div>
-          <div class="helper-actions">
+          <div class="page-hero-actions">
+            <button class="button button-primary" data-action="quote-add" type="button">New Quote</button>
+            <button class="button" data-action="quote-import" type="button">Import</button>
             <button class="button" data-action="quotes-refresh" type="button">Refresh</button>
-            <button class="button" data-action="quote-select-all" data-context="quotes" type="button" ${state.quotes.length === 0 ? "disabled" : ""}>Select All</button>
-            <button class="button" data-action="quote-deselect-all" data-context="quotes" type="button" ${state.quotesSelected.size === 0 ? "disabled" : ""}>Clear Picks</button>
-            <button class="button" data-action="quote-edit-current" data-context="quotes" type="button" ${selected.length === 0 ? "disabled" : ""}>Edit Quote</button>
-            <button class="button button-danger" data-action="quote-delete-current" data-context="quotes" type="button" ${selected.length === 0 ? "disabled" : ""}>Delete Quote</button>
           </div>
         </div>
-        ${content}
+
+        <div class="workspace workspace-library">
+          <section class="panel subpanel">
+            <div class="subpanel-header">
+              <div>
+                <div class="section-title">Quote list</div>
+                <div class="muted">${filteredQuotes.length} ${filteredQuotes.length === 1 ? "quote" : "quotes"}</div>
+              </div>
+              <div class="toolbar toolbar-quiet">
+                <button class="button" data-action="quote-select-all" data-context="quotes" type="button" ${filteredQuotes.length === 0 ? "disabled" : ""}>Select all</button>
+                <button class="button" data-action="quote-deselect-all" data-context="quotes" type="button" ${selectedCount === 0 ? "disabled" : ""}>Clear</button>
+                <button class="button" data-action="quote-share-current" data-context="quotes" type="button" ${selectedCount === 0 ? "disabled" : ""}>Share</button>
+              </div>
+            </div>
+            ${
+              state.quotesLoading
+                ? '<div class="empty-state">Loading quotes…</div>'
+                : state.quotesError
+                  ? `<div class="status status-error">${escapeHtml(state.quotesError)}</div>`
+                  : renderQuoteList("quotes", filteredQuotes, libraryCursor, state.quotesSelected, true)
+            }
+          </section>
+        </div>
       </div>
     </section>
   `;
 }
 
 function renderHistoryPage(): string {
-  const selectedEntries = selectedOrCurrentHistory();
-  const selectedQuotes = selectedOrCurrentQuotes("history");
-
-  if (state.historyDetailLoading) {
-    return `
-      <section class="page page-history">
-        <div class="panel page-panel">
-          <div class="empty-state">Loading this past question...</div>
-        </div>
-      </section>
-    `;
-  }
-
-  if (state.historyDetail) {
-    return `
-      <section class="page page-history">
-        <div class="panel page-panel">
-          <div class="section-heading">
-            <div>
-              <div class="section-title">History</div>
-              <div class="muted">Open an older answer and see which notes were used.</div>
-            </div>
-            <div class="toolbar">
-              <button class="button" data-action="history-back" type="button">Back</button>
-              <button class="button" data-action="history-save-quote" type="button">Save as Quote</button>
-              <button class="button" data-action="quote-edit-current" data-context="history" type="button" ${selectedQuotes.length === 0 ? "disabled" : ""}>Edit Quote</button>
-              <button class="button button-danger" data-action="quote-delete-current" data-context="history" type="button" ${selectedQuotes.length === 0 ? "disabled" : ""}>Delete Quote</button>
-              <button class="button" data-action="quote-share-current" data-context="history" type="button" ${selectedQuotes.length === 0 ? "disabled" : ""}>Share Quote</button>
-            </div>
-          </div>
-
-          ${state.historyDetailError ? `<div class="status status-error">${escapeHtml(state.historyDetailError)}</div>` : ""}
-
-          <div class="recall-grid">
-            <section class="panel subpanel">
-              <div class="subpanel-header">
-            <div class="section-title">Question and Response</div>
-                <div class="muted">${escapeHtml(formatHistoryCreatedAt(state.historyDetail.CreatedAt))}</div>
-              </div>
-              <div class="detail-stack">
-                <div class="detail-block">
-                  <div class="muted">Question</div>
-                  <pre class="response-box">${escapeHtml(state.historyDetail.Question)}</pre>
-                </div>
-                <div class="detail-block">
-                  <div class="muted">Response</div>
-                  <pre class="response-box">${escapeHtml(state.historyDetail.Response)}</pre>
-                </div>
-              </div>
-            </section>
-
-            <section class="panel subpanel">
-              <div class="subpanel-header">
-                <div class="section-title">Reference Quotes</div>
-                <div class="muted">${selectedQuotes.length > 0 ? `${selectedQuotes.length} notes selected` : `${state.historyDetail.Quotes.length} notes loaded`}</div>
-              </div>
-              ${renderQuoteList("history", state.historyDetail.Quotes, state.historyQuoteCursor, state.historyQuoteSelected, false)}
-            </section>
-          </div>
-          ${state.historyStatus ? `<div class="status ${state.historyStatusIsError ? "status-error" : "status-ok"}">${escapeHtml(state.historyStatus)}</div>` : ""}
-        </div>
-      </section>
-    `;
-  }
-
-  let content = "";
-  if (state.historyLoading) {
-    content = '<div class="empty-state">Loading past questions...</div>';
-  } else if (state.historyError) {
-    content = `<div class="status status-error">${escapeHtml(state.historyError)}</div>`;
-  } else if (state.historyEntries.length === 0) {
-    content = '<div class="empty-state">No past questions yet. Ask something on the Ask page and it will show up here.</div>';
-  } else {
-    content = `
-      <div class="history-list">
-        ${state.historyEntries
-          .map((entry, index) => {
-            const isCurrent = index === state.historyCursor;
-            const preview = truncateQuotePreview(entry.Response, 140);
-            return `
-              <article class="quote-card${isCurrent ? " is-current" : ""}" data-action="history-set-cursor" data-index="${index}">
-                <div class="quote-topline">
-                  <label class="selection-toggle">
-                    <input
-                      type="checkbox"
-                      data-bind="history-selected"
-                      data-id="${entry.ID}"
-                      ${state.historySelected.has(entry.ID) ? "checked" : ""}
-                    />
-                  </label>
-                  <div class="quote-topline-meta">
-                    <span class="quote-index${isCurrent ? " is-current" : ""}">${isCurrent ? "&gt; " : ""}Question ${index + 1}</span>
-                    <span class="quote-version">${escapeHtml(formatHistoryCreatedAt(entry.CreatedAt))}</span>
-                  </div>
-                </div>
-                <div class="quote-content">${escapeHtml(truncateQuotePreview(entry.Question, 120))}</div>
-                <div class="quote-meta"><span class="muted">Answer preview:</span> <span>${escapeHtml(preview || "(empty response)")}</span></div>
-                <div class="toolbar toolbar-inline">
-                  <button class="button" data-action="history-open" data-id="${entry.ID}" type="button">Open</button>
-                </div>
-              </article>
-            `;
-          })
-          .join("")}
-      </div>
-    `;
-  }
-
   return `
     <section class="page page-history">
       <div class="panel page-panel">
-        <div class="section-heading">
+        <div class="page-hero">
           <div>
-            <div class="section-title">History</div>
-            <div class="muted">Look back at what you asked before and reopen the answers any time.</div>
+            <div class="eyebrow">History</div>
+            <div class="page-title">Review what you asked and what the system grounded</div>
+            <div class="muted page-copy">History is your recall timeline. Use it to revisit answers, reload earlier prompts, and inspect the exact evidence that supported each response.</div>
           </div>
-          <div class="toolbar">
+          <div class="page-hero-actions">
             <button class="button" data-action="history-refresh" type="button">Refresh</button>
-            <button class="button" data-action="history-select-all" type="button" ${state.historyEntries.length === 0 ? "disabled" : ""}>Select All</button>
-            <button class="button" data-action="history-deselect-all" type="button" ${state.historySelected.size === 0 ? "disabled" : ""}>Clear Picks</button>
-            <button class="button" data-action="history-view-current" type="button" ${selectedEntries.length === 0 ? "disabled" : ""}>Open</button>
-            <button class="button button-danger" data-action="history-delete-current" type="button" ${selectedEntries.length === 0 ? "disabled" : ""}>Delete</button>
           </div>
         </div>
-        <div class="stat-grid stat-grid-wide">
-          ${renderMiniStat("History entries", String(state.historyEntries.length))}
-          ${renderMiniStat("Picked now", String(selectedEntries.length > 0 ? selectedEntries.length : state.historyEntries.length > 0 ? 1 : 0))}
+
+        <div class="flow-stack">
+          <section class="panel subpanel">
+            <div class="subpanel-header">
+              <div>
+                <div class="section-title">History list</div>
+                <div class="muted">${state.historyEntries.length} saved recall sessions</div>
+              </div>
+              <div class="toolbar toolbar-quiet">
+                <button class="button" data-action="history-select-all" type="button" ${state.historyEntries.length === 0 ? "disabled" : ""}>Select all</button>
+                <button class="button" data-action="history-deselect-all" type="button" ${state.historySelected.size === 0 ? "disabled" : ""}>Clear</button>
+              </div>
+            </div>
+            ${
+              state.historyLoading
+                ? '<div class="empty-state">Loading history…</div>'
+                : state.historyError
+                  ? `<div class="status status-error">${escapeHtml(state.historyError)}</div>`
+                  : state.historyEntries.length === 0
+                    ? '<div class="empty-state">No recall history yet. Run a question from the Recall page to create your first grounded session.</div>'
+                    : renderHistoryList()
+            }
+          </section>
         </div>
-        ${content}
       </div>
     </section>
+  `;
+}
+
+function renderHistoryDetailModal(): string {
+  if (!state.historyDetailLoading && !state.historyDetail && !state.historyDetailError) {
+    return "";
+  }
+
+  const detailSummary = state.historyDetail
+    ? state.historyEntries.find((entry) => entry.ID === state.historyDetail?.ID) ?? state.historyDetail
+    : state.historyEntries[state.historyCursor] ?? null;
+  const detail = state.historyDetail && detailSummary && state.historyDetail.ID === detailSummary.ID ? state.historyDetail : null;
+  const detailQuotes = detail?.Quotes ?? [];
+
+  return `
+    <div class="overlay-backdrop">
+      <div class="modal modal-history-detail">
+        <div class="subpanel-header">
+          <div>
+            <div class="modal-title">Session details</div>
+            <div class="muted">${
+              detailSummary
+                ? detail
+                  ? `${detailQuotes.length} reference quotes loaded`
+                  : "Opening the selected session…"
+                : "Loading the selected session…"
+            }</div>
+          </div>
+          <div class="toolbar toolbar-quiet">
+            <button class="button" data-action="history-back" type="button">Close</button>
+            <button class="button button-primary" data-action="history-save-quote" type="button" ${!detailSummary ? "disabled" : ""}>Save as Quote</button>
+            <button class="button" data-action="reuse-history-question" type="button" ${!detailSummary ? "disabled" : ""}>Recall again</button>
+          </div>
+        </div>
+
+        ${
+          detailSummary
+            ? `
+              <div class="detail-stack">
+                <div class="detail-block">
+                  <div class="muted">Question</div>
+                  <pre class="response-box compact-box">${escapeHtml(detailSummary.Question)}</pre>
+                </div>
+                <div class="detail-block">
+                  <div class="muted">Response</div>
+                  <pre class="response-box compact-box">${escapeHtml(detail?.Response ?? detailSummary.Response)}</pre>
+                </div>
+              </div>
+              ${
+                state.historyDetailLoading
+                  ? '<div class="empty-state">Loading reference quotes…</div>'
+                  : detail
+                    ? `
+                      <div class="subpanel-header nested-header">
+                        <div>
+                          <div class="section-title">Reference quotes</div>
+                          <div class="muted">${detailQuotes.length} retrieved quotes. Open one to inspect the full note.</div>
+                        </div>
+                      </div>
+                      ${renderQuoteList("history", detailQuotes, state.historyQuoteCursor, state.historyQuoteSelected, false)}
+                    `
+                    : ""
+              }
+            `
+            : ""
+        }
+
+        ${state.historyDetailError ? `<div class="status status-error">${escapeHtml(state.historyDetailError)}</div>` : ""}
+        ${state.historyStatus ? `<div class="status ${state.historyStatusIsError ? "status-error" : "status-ok"}">${escapeHtml(state.historyStatus)}</div>` : ""}
+      </div>
+    </div>
+  `;
+}
+
+function renderHistoryList(): string {
+  return `
+    <div class="history-list">
+      ${state.historyEntries
+        .map((entry, index) => {
+          const isCurrent = index === state.historyCursor;
+          const preview = truncateQuotePreview(entry.Response, 156);
+          return `
+            <article class="quote-card history-card${isCurrent ? " is-current" : ""}" data-action="history-set-cursor" data-index="${index}">
+              <div class="quote-topline">
+                <label class="selection-toggle">
+                  <input
+                    type="checkbox"
+                    data-bind="history-selected"
+                    data-id="${entry.ID}"
+                    ${state.historySelected.has(entry.ID) ? "checked" : ""}
+                  />
+                </label>
+                <div class="quote-topline-meta">
+                  <span class="quote-version">${escapeHtml(formatHistoryCreatedAt(entry.CreatedAt))}</span>
+                </div>
+              </div>
+              <div class="quote-content">${escapeHtml(truncateQuotePreview(entry.Question, 132))}</div>
+                <div class="quote-meta"><span class="muted">Response preview</span><span>${escapeHtml(preview || "(empty response)")}</span></div>
+            </article>
+          `;
+        })
+        .join("")}
+    </div>
   `;
 }
 
@@ -2109,87 +2241,79 @@ function renderSettingsPage(): string {
   return `
     <section class="page page-settings">
       <div class="panel page-panel">
-        <div class="section-heading">
+        <div class="page-hero">
           <div>
-            <div class="section-title">Settings</div>
-            <div class="muted">Keep your name, look and feel, and advanced AI settings in one place.</div>
+            <div class="eyebrow">Settings</div>
+            <div class="page-title">Configure connection, retrieval, and local preferences</div>
+            <div class="muted page-copy">Keep the primary setup visible and move lower-level runtime controls into advanced sections.</div>
           </div>
-          <div class="toolbar">
-            <button class="button" data-action="settings-toggle-stats" type="button">${state.settingsShowStats ? "Hide Stats" : "Show Stats"}</button>
-            <button class="button button-primary" data-action="settings-save" type="button" ${state.settingsBusy ? "disabled" : ""}>Save</button>
+          <div class="page-hero-actions">
+            <button class="button" data-action="settings-fetch-models" type="button" ${state.settingsBusy ? "disabled" : ""}>
+              ${state.settingsBusy ? "Fetching…" : "Fetch Models"}
+            </button>
+            <button class="button button-primary" data-action="settings-save" type="button" ${state.settingsBusy ? "disabled" : ""}>Save Changes</button>
           </div>
         </div>
 
-        ${
-          state.settingsShowStats
-            ? `
-              <div class="stat-grid stat-grid-wide">
-                ${renderMiniStat("Stored quotes", String(state.quotes.length))}
-                ${renderMiniStat("Stored history", String(state.historyEntries.length))}
-                ${renderMiniStat("Reference quotes now", String(state.recallQuotes.length))}
-              </div>
-            `
-            : ""
-        }
-
-        <div class="settings-grid">
-          <section class="panel subpanel">
-            <div class="section-title">Advanced AI Setup</div>
+        <div class="settings-layout">
+          <section class="panel subpanel settings-primary">
+            <div class="section-title">Connection</div>
             <label class="field">
-              <span>Host or IP</span>
+              <span>Host / IP</span>
               <input class="text-input" data-bind="settings-host" value="${escapeAttribute(state.settings.host)}" />
             </label>
-            <label class="field">
-              <span>Port</span>
-              <input class="text-input" data-bind="settings-port" value="${escapeAttribute(state.settings.port)}" />
-            </label>
-            <label class="field checkbox-field">
-              <input type="checkbox" data-bind="settings-https"${state.settings.https ? " checked" : ""} />
-              <span>Use HTTPS</span>
-            </label>
+            <div class="settings-row">
+              <label class="field">
+                <span>Port</span>
+                <input class="text-input" data-bind="settings-port" value="${escapeAttribute(state.settings.port)}" />
+              </label>
+              <label class="field checkbox-field settings-toggle">
+                <input type="checkbox" data-bind="settings-https"${state.settings.https ? " checked" : ""} />
+                <span>Use HTTPS</span>
+              </label>
+            </div>
             <label class="field">
               <span>API Key</span>
               <input class="text-input" data-bind="settings-api-key" type="password" value="${escapeAttribute(state.settings.apiKey)}" />
             </label>
             <label class="field">
-              <span>Find model</span>
-              <input class="text-input" data-bind="settings-model-filter" value="${escapeAttribute(state.settings.modelFilter)}" placeholder="Type to filter models" />
+              <span>Filter models</span>
+              <input class="text-input" data-bind="settings-model-filter" value="${escapeAttribute(state.settings.modelFilter)}" placeholder="Type to narrow the model list" />
             </label>
             <label class="field">
               <span>Model</span>
-              <div class="field-inline">
-                <div class="field-inline-grow">${modelSelect}</div>
-                <button class="button" data-action="settings-fetch-models" type="button" ${state.settingsBusy ? "disabled" : ""}>
-                  ${state.settingsBusy ? "Fetching…" : "Fetch Models"}
-                </button>
-              </div>
+              ${modelSelect}
             </label>
           </section>
 
-          <section class="panel subpanel">
-            <div class="section-title">How Answers Search</div>
+          <section class="panel subpanel settings-primary">
+            <div class="section-title">Retrieval</div>
             <label class="field">
-              <span>How many notes to use</span>
+              <span>Max reference quotes</span>
               <input class="text-input" data-bind="settings-max-results" value="${escapeAttribute(state.settings.maxResults)}" />
             </label>
             <label class="field">
-              <span>How close the match should be</span>
+              <span>Minimum relevance</span>
               <input class="text-input" data-bind="settings-min-relevance" value="${escapeAttribute(state.settings.minRelevance)}" placeholder="0.0-1.0" />
             </label>
             <div class="settings-hint muted">
-              0.0 keeps broad matches. Try 0.3 to 0.7 for cleaner results. 1.0 is very strict and may hide useful notes.
-            </div>
-            <label class="field checkbox-field">
-              <input type="checkbox" data-bind="settings-mock-llm"${state.settings.mockLLM ? " checked" : ""} />
-              <span>Use Mock LLM</span>
-            </label>
-            <div class="settings-hint muted">
-              Same as TUI mock mode: refine keeps the original quote, keywords split on spaces, and answers are built from matching quotes.
+              Lower values keep broader matches. Higher values reduce noise but risk excluding useful evidence. Most real-world sessions land in the 0.3 to 0.7 range.
             </div>
           </section>
 
-          <section class="panel subpanel">
-            <div class="section-title">Everyday Setup</div>
+          <section class="panel subpanel settings-secondary">
+            <div class="section-title">Debug</div>
+            <label class="field checkbox-field settings-toggle">
+              <input type="checkbox" data-bind="settings-mock-llm"${state.settings.mockLLM ? " checked" : ""} />
+              <span>Mock LLM</span>
+            </label>
+            <div class="settings-hint muted">
+              Refine returns the original text, keywords split on spaces, and answers combine reference quotes.
+            </div>
+          </section>
+
+          <section class="panel subpanel settings-secondary">
+            <div class="section-title">Personalization</div>
             <label class="field">
               <span>Theme</span>
               <select class="select-input" data-bind="settings-theme">
@@ -2202,17 +2326,10 @@ function renderSettingsPage(): string {
                   .join("")}
               </select>
             </label>
-            <label class="field">
-              <span>Web Port</span>
-              <input class="text-input" data-bind="settings-web-port" value="${escapeAttribute(state.settings.webPort)}" />
-            </label>
-            <div class="settings-hint muted">
-              The web server listens on this port after restart. Current listener: ${escapeHtml(currentPort ? String(currentPort) : "(not running)")}.
-            </div>
           </section>
 
-          <section class="panel subpanel">
-            <div class="section-title">Change Password</div>
+          <section class="panel subpanel settings-secondary">
+            <div class="section-title">Security</div>
             <label class="field">
               <span>Current Password</span>
               <input class="text-input" data-bind="settings-password-current" type="password" value="${escapeAttribute(state.passwordForm.current)}" />
@@ -2234,21 +2351,16 @@ function renderSettingsPage(): string {
             ${state.passwordForm.status ? `<div class="status ${state.passwordForm.isError ? "status-error" : "status-ok"}">${escapeHtml(state.passwordForm.status)}</div>` : ""}
           </section>
 
-          <section class="panel subpanel">
-            <div class="section-title">Local Storage</div>
+          <section class="panel subpanel settings-secondary">
+            <div class="section-title">Advanced</div>
+            <label class="field">
+              <span>Web Port</span>
+              <input class="text-input" data-bind="settings-web-port" value="${escapeAttribute(state.settings.webPort)}" />
+            </label>
+            <div class="settings-hint muted">
+              The web server listens on this port after restart. Current listener: ${escapeHtml(currentPort ? String(currentPort) : "(not running)")}.
+            </div>
             <div class="settings-paths">
-              <label class="field">
-                <span>Config folder root</span>
-                <input
-                  class="text-input"
-                  data-bind="settings-root-dir"
-                  value="${escapeAttribute(state.settings.rootDir)}"
-                  placeholder="Leave blank to use the default XDG/AppData folders"
-                />
-              </label>
-              <div class="settings-hint muted">
-                When you save, iRecall switches to this root immediately. A new root gets <code>data</code>, <code>config</code>, and <code>state</code> subfolders.
-              </div>
               <div class="field">
                 <span>Data dir</span>
                 <div class="readonly-model path-value">${escapeHtml(storagePaths?.dataDir ?? "(unavailable)")}</div>
@@ -2269,7 +2381,7 @@ function renderSettingsPage(): string {
           </section>
         </div>
 
-        ${state.settingsStatus && state.settingsIsError ? `<div class="status status-error">${escapeHtml(state.settingsStatus)}</div>` : ""}
+        ${state.settingsStatus ? `<div class="status ${state.settingsIsError ? "status-error" : "status-ok"}">${escapeHtml(state.settingsStatus)}</div>` : ""}
       </div>
     </section>
   `;
@@ -2283,7 +2395,7 @@ function renderQuoteList(
   showTags: boolean,
 ): string {
   if (quotes.length === 0) {
-    return `<div class="empty-state">${context === "quotes" ? "No quotes yet. Add one or import a shared payload." : "No matching quotes yet for this question."}</div>`;
+    return `<div class="empty-state">${context === "quotes" ? "No quotes yet. Add one or import a shared payload." : "No reference quotes for this question yet."}</div>`;
   }
 
   return `
@@ -2291,44 +2403,130 @@ function renderQuoteList(
       ${quotes
         .map((quote, index) => {
           const isCurrent = index === cursor;
-          const ownedBadge = quote.IsOwnedByMe ? '<span class="pill-badge">Your quote</span>' : '<span class="pill-badge pill-badge-soft">Shared quote</span>';
+          const isReferenceList = context !== "quotes";
           const sourceLine =
             !quote.IsOwnedByMe && quote.SourceName
-              ? `<div class="quote-meta"><span class="muted">From:</span> <span class="meta-accent">${escapeHtml(quote.SourceName)}</span></div>`
-              : "";
+              ? `<span class="meta-accent">${escapeHtml(quote.SourceName)}</span>`
+              : `<span>${escapeHtml(quote.AuthorName || "You")}</span>`;
           const tagsLine = showTags
             ? `
               <div class="quote-meta">
-                <span class="muted">Tags:</span>
-                <span>${quote.Tags.length > 0 ? escapeHtml(previewTags(quote.Tags, 3)) : "(none)"}</span>
+                <span class="muted">Tags</span>
+                <span>${quote.Tags.length > 0 ? escapeHtml(previewTags(quote.Tags, 4)) : "(none)"}</span>
               </div>
             `
             : "";
+          const articleAction = "quote-inspect";
           return `
-            <article class="quote-card${isCurrent ? " is-current" : ""}" data-action="set-cursor" data-context="${context}" data-index="${index}">
+            <article class="quote-card${isCurrent ? " is-current" : ""}${isReferenceList ? " quote-card-minimal" : ""}" data-action="${articleAction}" data-context="${context}" data-index="${index}">
               <div class="quote-topline">
-                <label class="selection-toggle">
-                  <input
-                    type="checkbox"
-                    data-bind="quote-selected"
-                    data-context="${context}"
-                    data-id="${quote.ID}"
-                    ${selected.has(quote.ID) ? "checked" : ""}
-                  />
-                </label>
+                ${
+                  isReferenceList
+                    ? `<div class="quote-topline-meta">
+                        <span class="quote-badge">${quote.IsOwnedByMe ? "Owned" : "Imported"}</span>
+                        <span class="quote-version">${escapeHtml(formatQuoteDate(quote.UpdatedAt))}</span>
+                      </div>`
+                    : `
+                      <label class="selection-toggle">
+                        <input
+                          type="checkbox"
+                          data-bind="quote-selected"
+                          data-context="${context}"
+                          data-id="${quote.ID}"
+                          ${selected.has(quote.ID) ? "checked" : ""}
+                        />
+                  </label>
+                    `
+                }
                 <div class="quote-topline-meta">
-                  <span class="quote-index${isCurrent ? " is-current" : ""}">${isCurrent ? "&gt; " : ""}Quote ${index + 1}</span>
-                  <span class="quote-version">v${quote.Version}</span>
-                  ${ownedBadge}
+                  ${isReferenceList ? `<span class="quote-source-inline">${sourceLine}</span>` : `<span class="quote-version">${escapeHtml(formatQuoteDate(quote.UpdatedAt))}</span>
+                  <span class="quote-badge">${quote.IsOwnedByMe ? "Owned" : "Imported"}</span>`}
                 </div>
               </div>
-              <div class="quote-content">${escapeHtml(truncateQuotePreview(quote.Content, context === "quotes" ? 96 : 120))}</div>
-              ${sourceLine}
+              <div class="quote-content">${escapeHtml(truncateQuotePreview(quote.Content, context === "quotes" ? 160 : 136))}</div>
+              ${isReferenceList ? `<div class="quote-actions-inline"><button class="button button-subtle" data-action="quote-inspect" data-context="${context}" data-index="${index}" type="button">Details</button></div>` : `<div class="quote-meta"><span class="muted">${!quote.IsOwnedByMe && quote.SourceName ? "Imported from" : "Author"}</span> ${sourceLine}</div>`}
               ${tagsLine}
             </article>
           `;
         })
         .join("")}
+    </div>
+  `;
+}
+
+function renderQuoteDetail(quote: Quote | null, context: QuoteContext): string {
+  if (!quote) {
+    return '<div class="empty-state">Select a quote to inspect the full note, provenance, and available actions.</div>';
+  }
+
+  return `
+    <div class="detail-stack">
+      <div class="detail-block">
+        <div class="muted">Full quote</div>
+        <pre class="response-box compact-box">${escapeHtml(quote.Content)}</pre>
+      </div>
+      <div class="detail-grid">
+        <div class="detail-metric">
+          <span class="muted">Author</span>
+          <span>${escapeHtml(quote.AuthorName || "You")}</span>
+        </div>
+        <div class="detail-metric">
+          <span class="muted">Version</span>
+          <span>v${quote.Version}</span>
+        </div>
+        <div class="detail-metric">
+          <span class="muted">Source</span>
+          <span>${escapeHtml(quote.SourceName || "Local library")}</span>
+        </div>
+        <div class="detail-metric">
+          <span class="muted">Updated</span>
+          <span>${escapeHtml(formatQuoteDate(quote.UpdatedAt))}</span>
+        </div>
+      </div>
+      <div class="detail-block">
+        <div class="muted">Tags</div>
+        <div class="keyword-list">
+          ${
+            quote.Tags.length > 0
+              ? quote.Tags.map((tag) => `<span class="keyword-chip">${escapeHtml(tag)}</span>`).join("")
+              : '<span class="muted">No tags assigned yet.</span>'
+          }
+        </div>
+      </div>
+      <div class="toolbar toolbar-inline">
+        <button class="button" data-action="quote-edit-current" data-context="${context}" type="button">Edit</button>
+        <button class="button" data-action="quote-share-current" data-context="${context}" type="button">Share</button>
+        <button class="button button-danger" data-action="quote-delete-current" data-context="${context}" type="button">Delete</button>
+      </div>
+    </div>
+  `;
+}
+
+function formatQuoteDate(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+  return date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+}
+
+function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) {
+    return "0 B";
+  }
+  if (bytes < 1024) {
+    return `${Math.round(bytes)} B`;
+  }
+  if (bytes < 1024 * 1024) {
+    return `${(bytes / 1024).toFixed(1)} KB`;
+  }
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function renderToast(toast: ToastState): string {
+  return `
+    <div class="toast-stack" role="status" aria-live="polite">
+      <div class="toast${toast.isError ? " is-error" : ""}">${escapeHtml(toast.message)}</div>
     </div>
   `;
 }
@@ -2339,9 +2537,9 @@ function renderOverlay(overlay: OverlayState): string {
       return `
         <div class="overlay-backdrop">
           <div class="modal">
-            <div class="modal-title">Tell iRecall Your Name</div>
+            <div class="modal-title">Set Your Name</div>
             <p class="modal-copy">
-              Your name is added to quotes you share so other people know where they came from.
+              Your name is attached to quotes you share and shown when other users receive your quotes.
             </p>
             <form class="modal-form" data-form="profile">
               <label class="field">
@@ -2360,8 +2558,8 @@ function renderOverlay(overlay: OverlayState): string {
       `;
     case "quoteEditor":
       return `
-        <div class="overlay-backdrop">
-          <div class="modal modal-wide">
+        <div class="overlay-backdrop overlay-backdrop-side">
+          <div class="modal modal-side">
             <div class="modal-title">${overlay.mode === "add" ? "Add Quote" : "Edit Quote"}</div>
             ${
               overlay.previewRefined
@@ -2380,15 +2578,17 @@ function renderOverlay(overlay: OverlayState): string {
                 : `
                   <label class="field">
                     <span>Quote Content</span>
-                    <textarea class="text-area" data-bind="quote-editor-content" rows="10" placeholder="Type or paste your quote here.">${escapeHtml(overlay.content)}</textarea>
+                    <textarea class="text-area" data-bind="quote-editor-content" rows="10" placeholder="Type or paste your note here.">${escapeHtml(overlay.content)}</textarea>
                   </label>
                 `
             }
             <div class="muted modal-copy">
               ${
                 overlay.previewRefined
-                  ? "Compare your draft with the suggested clearer version before you choose one."
-                  : "Write a short quote in your own words. Helpful tags are added automatically."
+                  ? "Compare the current draft with the suggested rewrite before applying it."
+                  : state.settings.mockLLM
+                    ? "Mock LLM is enabled, so Refine returns the original text and skips provider-dependent rewriting."
+                    : "Tags are regenerated automatically by the shared core logic."
               }
             </div>
             ${overlay.status ? `<div class="status ${overlay.isError ? "status-error" : "status-ok"}">${escapeHtml(overlay.status)}</div>` : ""}
@@ -2456,14 +2656,20 @@ function renderOverlay(overlay: OverlayState): string {
         </div>
       `;
     case "shareQuotes":
+      const shareQuotes = selectedQuotesByIds(overlay.context, overlay.ids);
       return `
-        <div class="overlay-backdrop">
-          <div class="modal modal-wide">
+        <div class="overlay-backdrop overlay-backdrop-side">
+          <div class="modal modal-side">
             <div class="modal-title">Share Quotes</div>
+            <div class="modal-copy">Export a portable share file. The file summary comes first; raw JSON is available only if you need to inspect it.</div>
             <div class="summary-list">
-              ${selectedQuotesByIds(overlay.context, overlay.ids)
+              ${shareQuotes
                 .map((quote, index) => `<div class="summary-item">[${index + 1}] v${quote.Version} ${escapeHtml(truncate(quote.Content, 120))}</div>`)
                 .join("")}
+            </div>
+            <div class="result-grid">
+              <div><span class="muted">Quotes:</span> ${shareQuotes.length}</div>
+              <div><span class="muted">Payload size:</span> ${formatBytes(overlay.payload.length)}</div>
             </div>
             <label class="field">
               <span>${isWebRuntime() ? "Download As" : "Save To"}</span>
@@ -2480,10 +2686,15 @@ function renderOverlay(overlay: OverlayState): string {
             </label>
             <div class="muted modal-copy">${
               isWebRuntime()
-                ? "Download the quote file, then send it to someone manually."
-                : "Save the quote file, then send it to someone manually."
+                ? "Download the JSON payload locally, then transfer it manually to the recipient."
+                : "Export to a JSON file and transfer it manually to the recipient."
             }</div>
-            <div class="payload-box"><pre>${escapeHtml(overlay.payload || "Preparing export payload…")}</pre></div>
+            <div class="toolbar toolbar-inline">
+              <button class="button" data-action="share-toggle-payload" type="button" ${!overlay.payload ? "disabled" : ""}>
+                ${overlay.showPayload ? "Hide raw JSON" : "Show raw JSON"}
+              </button>
+            </div>
+            ${overlay.showPayload ? `<div class="payload-box"><pre>${escapeHtml(overlay.payload || "Preparing export payload…")}</pre></div>` : ""}
             ${overlay.status ? `<div class="status ${overlay.isError ? "status-error" : "status-ok"}">${escapeHtml(overlay.status)}</div>` : ""}
             <div class="modal-actions">
               <button class="button button-primary" data-action="share-save" type="button" ${overlay.busy ? "disabled" : ""}>
@@ -2496,10 +2707,10 @@ function renderOverlay(overlay: OverlayState): string {
       `;
     case "importQuotes":
       return `
-        <div class="overlay-backdrop">
-          <div class="modal">
+        <div class="overlay-backdrop overlay-backdrop-side">
+          <div class="modal modal-side">
             <div class="modal-title">Import Quotes</div>
-            <div class="modal-copy">Open a shared iRecall quote file from another device or person.</div>
+            <div class="modal-copy">Import a quote share file exported from another iRecall instance. Start by choosing a file, then review the result summary.</div>
             <label class="field">
               <span>Import From</span>
               ${
@@ -2516,9 +2727,31 @@ function renderOverlay(overlay: OverlayState): string {
                       <input class="text-input" data-bind="import-path" value="${escapeAttribute(overlay.path)}" placeholder="/path/to/irecall-share.json" />
                       <button class="button" data-action="import-browse" type="button" ${overlay.busy ? "disabled" : ""}>Browse</button>
                     </div>
-                  `
+                `
               }
             </label>
+            ${
+              overlay.filename || overlay.path
+                ? `
+                  <div class="result-grid">
+                    <div><span class="muted">File:</span> ${escapeHtml(overlay.filename || overlay.path)}</div>
+                    <div><span class="muted">Payload size:</span> ${formatBytes(overlay.payload.length)}</div>
+                  </div>
+                `
+                : ""
+            }
+            ${
+              overlay.payload
+                ? `
+                  <div class="toolbar toolbar-inline">
+                    <button class="button" data-action="import-toggle-payload" type="button">
+                      ${overlay.showPayload ? "Hide raw JSON" : "Show raw JSON"}
+                    </button>
+                  </div>
+                  ${overlay.showPayload ? `<div class="payload-box"><pre>${escapeHtml(overlay.payload)}</pre></div>` : ""}
+                `
+                : ""
+            }
             ${
               overlay.result
                 ? `
@@ -2541,27 +2774,24 @@ function renderOverlay(overlay: OverlayState): string {
           </div>
         </div>
       `;
-    case "notice":
+    case "quoteInspect":
       return `
         <div class="overlay-backdrop">
-          <div class="modal">
-            <div class="modal-title">${escapeHtml(overlay.title)}</div>
-            <div class="modal-copy">${escapeHtml(overlay.message)}</div>
+          <div class="modal modal-quote-inspect">
+            <div class="modal-title">Quote details</div>
+            <p class="modal-copy">
+              Review the full note and its provenance without leaving the current flow.
+            </p>
+            ${renderQuoteDetail(overlay.quote, overlay.context)}
             <div class="modal-actions">
-              <button class="button button-primary" data-action="overlay-close" type="button">OK</button>
+              <button class="button" data-action="overlay-close" type="button">Close</button>
             </div>
           </div>
         </div>
       `;
+    case "notice":
+      return "";
   }
-}
-
-function renderToast(toast: ToastState): string {
-  return `
-    <div class="toast-layer" aria-live="polite" aria-atomic="true">
-      <div class="toast ${toast.isError ? "toast-error" : "toast-ok"}">${escapeHtml(toast.message)}</div>
-    </div>
-  `;
 }
 
 function selectedQuotesByIds(context: QuoteContext, ids: number[]): Quote[] {
@@ -2584,31 +2814,18 @@ function settingsFormFromPayload(payload: SettingsPayload | BootstrapState["sett
     host: payload.Provider.Host,
     port: String(payload.Provider.Port),
     https: payload.Provider.HTTPS,
+    mockLLM: payload.Debug?.MockLLM ?? false,
     apiKey: payload.Provider.APIKey,
     modelFilter: "",
     model: payload.Provider.Model,
     maxResults: String(payload.Search.MaxResults),
     minRelevance: String(payload.Search.MinRelevance),
-    mockLLM: payload.Debug?.MockLLM ?? false,
     theme: payload.Theme || "violet",
     webPort: String(payload.Web?.Port ?? 9527),
-    rootDir: payload.RootDir ?? "",
     models,
   };
   syncSelectedModel(form);
   return form;
-}
-
-function showToast(message: string, isError = false): void {
-  state.toast = { message, isError };
-  if (toastTimer !== null) {
-    window.clearTimeout(toastTimer);
-  }
-  toastTimer = window.setTimeout(() => {
-    state.toast = null;
-    toastTimer = null;
-    render();
-  }, 2200);
 }
 
 function emptySettingsForm(): SettingsFormState {
@@ -2616,15 +2833,14 @@ function emptySettingsForm(): SettingsFormState {
     host: "",
     port: "11434",
     https: false,
+    mockLLM: false,
     apiKey: "",
     modelFilter: "",
     model: "",
     maxResults: "5",
     minRelevance: "0",
-    mockLLM: false,
     theme: "violet",
     webPort: "9527",
-    rootDir: "",
     models: [],
   };
 }
@@ -2673,12 +2889,7 @@ function settingsPayloadFromForm(form: SettingsFormState): SettingsPayload {
     Web: {
       Port: webPort,
     },
-    RootDir: form.rootDir.trim(),
   };
-}
-
-function normalizeRootDirForCompare(root: string): string {
-  return root.trim();
 }
 
 function getFilteredModels(form: SettingsFormState): string[] {
@@ -2767,15 +2978,6 @@ function previewTags(tags: string[], limit: number): string {
     return tags.join(" · ");
   }
   return `${tags.slice(0, limit).join(" · ")} · +${tags.length - limit} more`;
-}
-
-function renderMiniStat(label: string, value: string): string {
-  return `
-    <div class="mini-stat">
-      <div class="mini-stat-value">${escapeHtml(value)}</div>
-      <div class="mini-stat-label">${escapeHtml(label)}</div>
-    </div>
-  `;
 }
 
 function truncateQuotePreview(content: string, width: number): string {

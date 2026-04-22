@@ -2,7 +2,11 @@
 
 ## Purpose
 
-This document defines the current iRecall UI contract so future clients can implement the same product design consistently.
+This document defines the cross-client iRecall UI contract.
+
+For desktop and web, the target interaction model is now further refined in [DESKTOP_WEB_UX.md](/home/gigo/workspace/iRecall/docs/DESKTOP_WEB_UX.md).
+
+That document should guide layout, action hierarchy, and workflow design for rich clients.
 
 It is not a Bubble Tea implementation guide. It describes:
 
@@ -12,7 +16,12 @@ It is not a Bubble Tea implementation guide. It describes:
 4. interaction contracts
 5. state and feedback rules
 
-The goal is that a Windows desktop app, another terminal UI, or a web client can preserve the same user experience even if the widgets and platform conventions differ.
+The goal is to preserve the same product semantics across clients without forcing the terminal interaction model onto desktop and web.
+
+Important rule:
+
+1. the TUI remains a valid client, but it is no longer the layout or workflow reference for desktop/web
+2. desktop/web should preserve product intent, not literal TUI structure
 
 ## Product Model
 
@@ -50,6 +59,9 @@ Each top-level page has one primary job:
 4. `Settings` is for provider and search configuration
 
 Do not turn the top-level pages into multi-purpose dashboards.
+
+For desktop/web, also do not turn all pages into equal peers when one workflow is clearly primary.
+`DESKTOP_WEB_UX.md` defines the preferred hierarchy for richer clients.
 
 ### 2. Keyboard-first interaction
 

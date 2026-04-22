@@ -3,3 +3,7 @@ desktop/frontend/node_modules
 desktop/frontend/dist
 frontend/node_modules
 .codex
+.cache/
+.codex-temp/
+.debug-web/
+.tools/
