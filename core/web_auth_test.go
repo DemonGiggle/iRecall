@@ -90,3 +90,84 @@ func TestSetupWebPasswordRejectsWeakPassword(t *testing.T) {
 		t.Fatalf("SetupWebPassword() error = nil, want weak password error")
 	}
 }
+
+func TestWebAPITokenLifecycle(t *testing.T) {
+	t.Parallel()
+
+	store, err := db.Open(t.TempDir() + "/irecall.db")
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	engine := New(store, DefaultSettings())
+	ctx := context.Background()
+
+	status, err := engine.GetWebAPITokenStatus(ctx)
+	if err != nil {
+		t.Fatalf("GetWebAPITokenStatus() error = %v", err)
+	}
+	if status.HasToken {
+		t.Fatalf("GetWebAPITokenStatus().HasToken = true, want false")
+	}
+
+	token, status, err := engine.GenerateWebAPIToken(ctx)
+	if err != nil {
+		t.Fatalf("GenerateWebAPIToken() error = %v", err)
+	}
+	if token == "" {
+		t.Fatalf("GenerateWebAPIToken() token = empty")
+	}
+	if !status.HasToken {
+		t.Fatalf("GenerateWebAPIToken().HasToken = false, want true")
+	}
+	if status.TokenPrefix == "" {
+		t.Fatalf("GenerateWebAPIToken().TokenPrefix = empty")
+	}
+	if status.TokenPrefix == token {
+		t.Fatalf("GenerateWebAPIToken().TokenPrefix = full token, want short prefix")
+	}
+
+	storedHash, err := engine.store.GetSetting(webAPITokenHashSettingKey)
+	if err != nil {
+		t.Fatalf("GetSetting(hash) error = %v", err)
+	}
+	if storedHash == "" {
+		t.Fatalf("stored hash = empty")
+	}
+	if storedHash == token {
+		t.Fatalf("stored hash = plaintext token, want hashed token")
+	}
+
+	ok, err := engine.VerifyWebAPIToken(ctx, token)
+	if err != nil {
+		t.Fatalf("VerifyWebAPIToken() error = %v", err)
+	}
+	if !ok {
+		t.Fatalf("VerifyWebAPIToken() = false, want true")
+	}
+
+	nextToken, _, err := engine.GenerateWebAPIToken(ctx)
+	if err != nil {
+		t.Fatalf("GenerateWebAPIToken(renew) error = %v", err)
+	}
+	if nextToken == token {
+		t.Fatalf("renewed token = original token, want replacement")
+	}
+
+	ok, err = engine.VerifyWebAPIToken(ctx, token)
+	if err != nil {
+		t.Fatalf("VerifyWebAPIToken(old) error = %v", err)
+	}
+	if ok {
+		t.Fatalf("VerifyWebAPIToken(old) = true, want false")
+	}
+
+	ok, err = engine.VerifyWebAPIToken(ctx, nextToken)
+	if err != nil {
+		t.Fatalf("VerifyWebAPIToken(new) error = %v", err)
+	}
+	if !ok {
+		t.Fatalf("VerifyWebAPIToken(new) = false, want true")
+	}
+}

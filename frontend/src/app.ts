@@ -108,11 +108,23 @@ interface ImportResult {
   Stale: number;
 }
 
+interface APITokenStatus {
+  hasToken: boolean;
+  tokenPrefix: string;
+}
+
+interface APITokenCreateResult {
+  token: string;
+  tokenPrefix: string;
+}
+
 interface DesktopBackend {
   AuthStatus(): Promise<AuthStatus>;
   Login(password: string): Promise<void>;
   Logout(): Promise<void>;
   ChangePassword(current: string, next: string, confirm: string): Promise<void>;
+  GetAPITokenStatus(): Promise<APITokenStatus>;
+  CreateAPIToken(): Promise<APITokenCreateResult>;
   BootstrapState(): Promise<BootstrapState>;
   ListQuotes(): Promise<Quote[]>;
   AddQuote(content: string): Promise<Quote>;
@@ -196,6 +208,7 @@ type OverlayState =
       result: ImportResult | null;
     }
   | { type: "quoteInspect"; context: QuoteContext; quote: Quote }
+  | { type: "apiTokenReveal"; token: string; tokenPrefix: string }
   | { type: "notice"; title: string; message: string };
 
 interface SettingsFormState {
@@ -220,6 +233,12 @@ interface PasswordFormState {
   busy: boolean;
   status: string;
   isError: boolean;
+}
+
+interface APITokenState {
+  loading: boolean;
+  hasToken: boolean;
+  tokenPrefix: string;
 }
 
 interface ToastState {
@@ -273,6 +292,7 @@ interface AppState {
   settingsStatus: string;
   settingsIsError: boolean;
   passwordForm: PasswordFormState;
+  apiToken: APITokenState;
   overlay: OverlayState | null;
   toast: ToastState | null;
 }
@@ -329,6 +349,11 @@ const state: AppState = {
     busy: false,
     status: "",
     isError: false,
+  },
+  apiToken: {
+    loading: false,
+    hasToken: false,
+    tokenPrefix: "",
   },
   overlay: null,
   toast: null,
@@ -389,6 +414,7 @@ async function finishBootstrap(): Promise<void> {
     };
   }
   render();
+  await loadAPITokenStatus();
   await loadQuotes();
 }
 
@@ -448,7 +474,62 @@ async function submitAuthLogout(): Promise<void> {
   state.authConfirmPassword = "";
   state.authStatus = "";
   state.authIsError = false;
+  state.apiToken = {
+    loading: false,
+    hasToken: false,
+    tokenPrefix: "",
+  };
   render();
+}
+
+async function loadAPITokenStatus(): Promise<void> {
+  state.apiToken.loading = true;
+  render();
+  try {
+    const status = await backend().GetAPITokenStatus();
+    state.apiToken = {
+      loading: false,
+      hasToken: status.hasToken,
+      tokenPrefix: status.tokenPrefix,
+    };
+  } catch (error) {
+    state.apiToken.loading = false;
+    state.settingsStatus = getErrorMessage(error);
+    state.settingsIsError = true;
+  }
+  render();
+}
+
+async function createAPIToken(): Promise<void> {
+  if (state.settingsBusy) {
+    return;
+  }
+  const hadToken = state.apiToken.hasToken;
+  state.settingsBusy = true;
+  state.settingsStatus = "";
+  state.settingsIsError = false;
+  render();
+  try {
+    const result = await backend().CreateAPIToken();
+    state.apiToken = {
+      loading: false,
+      hasToken: true,
+      tokenPrefix: result.tokenPrefix,
+    };
+    state.overlay = {
+      type: "apiTokenReveal",
+      token: result.token,
+      tokenPrefix: result.tokenPrefix,
+    };
+    state.settingsStatus = hadToken ? "API token renewed." : "API token created.";
+    state.settingsIsError = false;
+  } catch (error) {
+    state.settingsStatus = getErrorMessage(error);
+    state.settingsIsError = true;
+  } finally {
+    state.settingsBusy = false;
+    render();
+  }
 }
 
 async function submitPasswordChange(): Promise<void> {
@@ -639,6 +720,9 @@ async function handleClick(event: MouseEvent): Promise<void> {
       return;
     case "settings-change-password":
       await submitPasswordChange();
+      return;
+    case "settings-create-api-token":
+      await createAPIToken();
       return;
     case "recall-run":
       await runRecall();
@@ -855,6 +939,9 @@ async function switchPage(page: PageName): Promise<void> {
   }
   if (page === "History") {
     await loadHistory();
+  }
+  if (page === "Settings") {
+    await loadAPITokenStatus();
   }
 }
 
@@ -2218,6 +2305,12 @@ function renderSettingsPage(): string {
   const filteredModels = getFilteredModels(state.settings);
   const storagePaths = state.bootstrap?.paths;
   const currentPort = state.auth?.currentPort;
+  const tokenButtonLabel = state.apiToken.hasToken ? "Renew API Token" : "Create API Token";
+  const tokenSummary = state.apiToken.loading
+    ? "Loading token status…"
+    : state.apiToken.hasToken
+      ? `Active token prefix: ${state.apiToken.tokenPrefix || "(unavailable)"}`
+      : "No API token has been created yet.";
   const modelSelect =
     state.settings.models.length > 0 && filteredModels.length > 0
       ? `
@@ -2349,6 +2442,19 @@ function renderSettingsPage(): string {
               </button>
             </div>
             ${state.passwordForm.status ? `<div class="status ${state.passwordForm.isError ? "status-error" : "status-ok"}">${escapeHtml(state.passwordForm.status)}</div>` : ""}
+          </section>
+
+          <section class="panel subpanel settings-secondary">
+            <div class="section-title">REST API Token</div>
+            <div class="settings-hint muted">
+              Use this token for external REST clients with <code>Authorization: Bearer &lt;token&gt;</code>. The plaintext token is shown only once after creation or renewal.
+            </div>
+            <div class="readonly-model path-value">${escapeHtml(tokenSummary)}</div>
+            <div class="toolbar">
+              <button class="button" data-action="settings-create-api-token" type="button" ${state.settingsBusy || state.apiToken.loading ? "disabled" : ""}>
+                ${state.settingsBusy ? "Working…" : tokenButtonLabel}
+              </button>
+            </div>
           </section>
 
           <section class="panel subpanel settings-secondary">
@@ -2783,6 +2889,24 @@ function renderOverlay(overlay: OverlayState): string {
               Review the full note and its provenance without leaving the current flow.
             </p>
             ${renderQuoteDetail(overlay.quote, overlay.context)}
+            <div class="modal-actions">
+              <button class="button" data-action="overlay-close" type="button">Close</button>
+            </div>
+          </div>
+        </div>
+      `;
+    case "apiTokenReveal":
+      return `
+        <div class="overlay-backdrop">
+          <div class="modal modal-side">
+            <div class="modal-title">Copy API Token Now</div>
+            <p class="modal-copy">
+              This token is shown only once. Copy it now and store it safely. After you close this dialog, only the prefix
+              <strong> ${escapeHtml(overlay.tokenPrefix)} </strong>
+              will remain visible in Settings.
+            </p>
+            <div class="payload-box"><pre>${escapeHtml(overlay.token)}</pre></div>
+            <div class="muted modal-copy">Use it with <code>Authorization: Bearer &lt;token&gt;</code> on REST API requests.</div>
             <div class="modal-actions">
               <button class="button" data-action="overlay-close" type="button">Close</button>
             </div>

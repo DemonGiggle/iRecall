@@ -206,4 +206,6 @@ make frontend-build
 - [docs/UI_DESIGN.md](docs/UI_DESIGN.md): shared UI contract
 - [docs/WAILS_DESKTOP.md](docs/WAILS_DESKTOP.md): desktop mapping
 - [docs/QUOTES_SHARING_DESIGN.md](docs/QUOTES_SHARING_DESIGN.md): sharing model
+- [docs/WEB_REST_API.md](docs/WEB_REST_API.md): current web REST endpoint reference
+- [docs/WEB_API_TOKEN_AUTH.md](docs/WEB_API_TOKEN_AUTH.md): REST API bearer-token design
 - [tools/redmine_export/README.md](tools/redmine_export/README.md): Redmine export tool usage

@@ -49,24 +49,26 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/auth/status", s.handleAuthStatus)
 	mux.HandleFunc("/api/auth/login", s.handleAuthLogin)
 	mux.HandleFunc("/api/auth/logout", s.handleAuthLogout)
-	mux.Handle("/api/auth/change-password", s.requireAuth(http.HandlerFunc(s.handleChangePassword)))
+	mux.Handle("/api/auth/change-password", s.requireSessionAuth(http.HandlerFunc(s.handleChangePassword)))
 
-	mux.Handle("/api/app/bootstrap-state", s.requireAuth(http.HandlerFunc(s.handleBootstrapState)))
-	mux.Handle("/api/app/list-quotes", s.requireAuth(http.HandlerFunc(s.handleListQuotes)))
-	mux.Handle("/api/app/add-quote", s.requireAuth(http.HandlerFunc(s.handleAddQuote)))
-	mux.Handle("/api/app/save-recall-as-quote", s.requireAuth(http.HandlerFunc(s.handleSaveRecallAsQuote)))
-	mux.Handle("/api/app/refine-quote-draft", s.requireAuth(http.HandlerFunc(s.handleRefineQuoteDraft)))
-	mux.Handle("/api/app/update-quote", s.requireAuth(http.HandlerFunc(s.handleUpdateQuote)))
-	mux.Handle("/api/app/delete-quotes", s.requireAuth(http.HandlerFunc(s.handleDeleteQuotes)))
-	mux.Handle("/api/app/preview-quote-export", s.requireAuth(http.HandlerFunc(s.handlePreviewQuoteExport)))
-	mux.Handle("/api/app/import-quotes-payload", s.requireAuth(http.HandlerFunc(s.handleImportQuotesPayload)))
-	mux.Handle("/api/app/save-user-profile", s.requireAuth(http.HandlerFunc(s.handleSaveUserProfile)))
-	mux.Handle("/api/app/save-settings", s.requireAuth(http.HandlerFunc(s.handleSaveSettings)))
-	mux.Handle("/api/app/fetch-models", s.requireAuth(http.HandlerFunc(s.handleFetchModels)))
-	mux.Handle("/api/app/run-recall", s.requireAuth(http.HandlerFunc(s.handleRunRecall)))
-	mux.Handle("/api/app/list-recall-history", s.requireAuth(http.HandlerFunc(s.handleListRecallHistory)))
-	mux.Handle("/api/app/get-recall-history", s.requireAuth(http.HandlerFunc(s.handleGetRecallHistory)))
-	mux.Handle("/api/app/delete-recall-history", s.requireAuth(http.HandlerFunc(s.handleDeleteRecallHistory)))
+	mux.Handle("/api/app/get-api-token-status", s.requireSessionAuth(http.HandlerFunc(s.handleGetAPITokenStatus)))
+	mux.Handle("/api/app/create-api-token", s.requireSessionAuth(http.HandlerFunc(s.handleCreateAPIToken)))
+	mux.Handle("/api/app/bootstrap-state", s.requireAPIAuth(http.HandlerFunc(s.handleBootstrapState)))
+	mux.Handle("/api/app/list-quotes", s.requireAPIAuth(http.HandlerFunc(s.handleListQuotes)))
+	mux.Handle("/api/app/add-quote", s.requireAPIAuth(http.HandlerFunc(s.handleAddQuote)))
+	mux.Handle("/api/app/save-recall-as-quote", s.requireAPIAuth(http.HandlerFunc(s.handleSaveRecallAsQuote)))
+	mux.Handle("/api/app/refine-quote-draft", s.requireAPIAuth(http.HandlerFunc(s.handleRefineQuoteDraft)))
+	mux.Handle("/api/app/update-quote", s.requireAPIAuth(http.HandlerFunc(s.handleUpdateQuote)))
+	mux.Handle("/api/app/delete-quotes", s.requireAPIAuth(http.HandlerFunc(s.handleDeleteQuotes)))
+	mux.Handle("/api/app/preview-quote-export", s.requireAPIAuth(http.HandlerFunc(s.handlePreviewQuoteExport)))
+	mux.Handle("/api/app/import-quotes-payload", s.requireAPIAuth(http.HandlerFunc(s.handleImportQuotesPayload)))
+	mux.Handle("/api/app/save-user-profile", s.requireAPIAuth(http.HandlerFunc(s.handleSaveUserProfile)))
+	mux.Handle("/api/app/save-settings", s.requireAPIAuth(http.HandlerFunc(s.handleSaveSettings)))
+	mux.Handle("/api/app/fetch-models", s.requireAPIAuth(http.HandlerFunc(s.handleFetchModels)))
+	mux.Handle("/api/app/run-recall", s.requireAPIAuth(http.HandlerFunc(s.handleRunRecall)))
+	mux.Handle("/api/app/list-recall-history", s.requireAPIAuth(http.HandlerFunc(s.handleListRecallHistory)))
+	mux.Handle("/api/app/get-recall-history", s.requireAPIAuth(http.HandlerFunc(s.handleGetRecallHistory)))
+	mux.Handle("/api/app/delete-recall-history", s.requireAPIAuth(http.HandlerFunc(s.handleDeleteRecallHistory)))
 
 	mux.HandleFunc("/bridge.js", s.handleBridge)
 	mux.HandleFunc("/", s.handleFrontend)
@@ -86,7 +88,7 @@ func (s *Server) handleAuthStatus(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"runtime":            "web",
 		"passwordConfigured": hasPassword.PasswordConfigured,
-		"authenticated":      s.isAuthenticated(r),
+		"authenticated":      s.isSessionAuthenticated(r),
 		"currentPort":        s.currentPort,
 	})
 }
@@ -142,6 +144,24 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func (s *Server) handleGetAPITokenStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeMethodNotAllowed(w)
+		return
+	}
+	value, err := s.app.GetAPITokenStatus()
+	writeAppJSON(w, value, err)
+}
+
+func (s *Server) handleCreateAPIToken(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeMethodNotAllowed(w)
+		return
+	}
+	value, err := s.app.CreateAPIToken()
+	writeAppJSON(w, value, err)
 }
 
 func (s *Server) handleBootstrapState(w http.ResponseWriter, r *http.Request) {
@@ -397,9 +417,9 @@ func (s *Server) serveIndex(w http.ResponseWriter) {
 	_, _ = io.WriteString(w, html)
 }
 
-func (s *Server) requireAuth(next http.Handler) http.Handler {
+func (s *Server) requireSessionAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !s.isAuthenticated(r) {
+		if !s.isSessionAuthenticated(r) {
 			writeError(w, http.StatusUnauthorized, errors.New("authentication required"))
 			return
 		}
@@ -407,7 +427,22 @@ func (s *Server) requireAuth(next http.Handler) http.Handler {
 	})
 }
 
-func (s *Server) isAuthenticated(r *http.Request) bool {
+func (s *Server) requireAPIAuth(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ok, err := s.isAPIAuthenticated(r)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		if !ok {
+			writeError(w, http.StatusUnauthorized, errors.New("authentication required"))
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func (s *Server) isSessionAuthenticated(r *http.Request) bool {
 	cookie, err := r.Cookie(sessionCookieName)
 	if err != nil || strings.TrimSpace(cookie.Value) == "" {
 		return false
@@ -424,6 +459,19 @@ func (s *Server) isAuthenticated(r *http.Request) bool {
 	}
 	s.sessions[cookie.Value] = time.Now().Add(24 * time.Hour)
 	return true
+}
+
+func (s *Server) isAPIAuthenticated(r *http.Request) (bool, error) {
+	if token := bearerToken(r.Header.Get("Authorization")); token != "" {
+		ok, err := s.app.VerifyAPIToken(token)
+		if err != nil {
+			return false, err
+		}
+		if ok {
+			return true, nil
+		}
+	}
+	return s.isSessionAuthenticated(r), nil
 }
 
 func (s *Server) startSession(w http.ResponseWriter) error {
@@ -506,6 +554,18 @@ func writeError(w http.ResponseWriter, status int, err error) {
 
 func writeMethodNotAllowed(w http.ResponseWriter) {
 	writeError(w, http.StatusMethodNotAllowed, errors.New("method not allowed"))
+}
+
+func bearerToken(header string) string {
+	header = strings.TrimSpace(header)
+	if header == "" {
+		return ""
+	}
+	const prefix = "Bearer "
+	if !strings.HasPrefix(header, prefix) {
+		return ""
+	}
+	return strings.TrimSpace(strings.TrimPrefix(header, prefix))
 }
 
 func backendToCoreProvider(v struct {

@@ -462,6 +462,8 @@ See:
 
 The HTTP web runtime uses the same shared frontend shell as desktop, but wraps it in browser auth and browser-style import/export flows.
 
+The current route-by-route endpoint reference is documented in [WEB_REST_API.md](WEB_REST_API.md).
+
 Current web responsibilities:
 
 - require a configured password before the server starts listening
@@ -470,6 +472,8 @@ Current web responsibilities:
 - expose quote export as a browser download generated from the backend payload preview
 - expose quote import from a local JSON file read in the browser and posted as raw payload
 - expose the same four frontend pages as desktop: `Recall`, `History`, `Quotes`, and `Settings`
+
+Planned bearer-token auth for external REST clients is documented in [WEB_API_TOKEN_AUTH.md](WEB_API_TOKEN_AUTH.md).
 
 Current auth behavior:
 
