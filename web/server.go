@@ -23,24 +23,26 @@ import (
 const sessionCookieName = "irecall_session"
 
 type Server struct {
-	app         *app.App
-	currentPort int
-	assets      fs.FS
+	app                   *app.App
+	currentPort           int
+	assets                fs.FS
+	unsafeNoPasswordCheck bool
 
 	mu       sync.Mutex
 	sessions map[string]time.Time
 }
 
-func NewServer(app *app.App, assets embed.FS, currentPort int) (*Server, error) {
+func NewServer(app *app.App, assets embed.FS, currentPort int, unsafeNoPasswordCheck bool) (*Server, error) {
 	sub, err := fs.Sub(assets, "dist")
 	if err != nil {
 		return nil, fmt.Errorf("open frontend assets: %w", err)
 	}
 	return &Server{
-		app:         app,
-		currentPort: currentPort,
-		assets:      sub,
-		sessions:    make(map[string]time.Time),
+		app:                   app,
+		currentPort:           currentPort,
+		assets:                sub,
+		unsafeNoPasswordCheck: unsafeNoPasswordCheck,
+		sessions:              make(map[string]time.Time),
 	}, nil
 }
 
@@ -85,10 +87,16 @@ func (s *Server) handleAuthStatus(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
+	authenticated := s.isSessionAuthenticated(r)
+	passwordConfigured := hasPassword.PasswordConfigured
+	if s.unsafeNoPasswordCheck {
+		authenticated = true
+		passwordConfigured = true
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"runtime":            "web",
-		"passwordConfigured": hasPassword.PasswordConfigured,
-		"authenticated":      s.isSessionAuthenticated(r),
+		"passwordConfigured": passwordConfigured,
+		"authenticated":      authenticated,
 		"currentPort":        s.currentPort,
 	})
 }
@@ -423,6 +431,10 @@ func (s *Server) serveIndex(w http.ResponseWriter) {
 
 func (s *Server) requireSessionAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if s.unsafeNoPasswordCheck {
+			next.ServeHTTP(w, r)
+			return
+		}
 		if !s.isSessionAuthenticated(r) {
 			writeError(w, http.StatusUnauthorized, errors.New("authentication required"))
 			return
@@ -433,6 +445,10 @@ func (s *Server) requireSessionAuth(next http.Handler) http.Handler {
 
 func (s *Server) requireAPIAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if s.unsafeNoPasswordCheck {
+			next.ServeHTTP(w, r)
+			return
+		}
 		ok, err := s.isAPIAuthenticated(r)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err)
@@ -447,6 +463,9 @@ func (s *Server) requireAPIAuth(next http.Handler) http.Handler {
 }
 
 func (s *Server) isSessionAuthenticated(r *http.Request) bool {
+	if s.unsafeNoPasswordCheck {
+		return true
+	}
 	cookie, err := r.Cookie(sessionCookieName)
 	if err != nil || strings.TrimSpace(cookie.Value) == "" {
 		return false
@@ -466,6 +485,9 @@ func (s *Server) isSessionAuthenticated(r *http.Request) bool {
 }
 
 func (s *Server) isAPIAuthenticated(r *http.Request) (bool, error) {
+	if s.unsafeNoPasswordCheck {
+		return true, nil
+	}
 	if token := bearerToken(r.Header.Get("Authorization")); token != "" {
 		ok, err := s.app.VerifyAPIToken(token)
 		if err != nil {

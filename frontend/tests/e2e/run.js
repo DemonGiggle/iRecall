@@ -1,6 +1,5 @@
-const { chromium, devices } = require('playwright');
-const http = require('http');
-const fs = require('fs');
+import { chromium, devices } from 'playwright';
+import http from 'node:http';
 
 function waitForServer(url, timeout = 15000) {
   return new Promise((resolve, reject) => {
@@ -19,7 +18,7 @@ function waitForServer(url, timeout = 15000) {
 }
 
 (async () => {
-  const url = 'http://127.0.0.1:9528/';
+  const url = process.env.E2E_BASE_URL || 'http://127.0.0.1:9528/';
   try {
     await waitForServer(url);
   } catch (e) {
@@ -33,9 +32,23 @@ function waitForServer(url, timeout = 15000) {
 
   try {
     await page.goto(url, { waitUntil: 'domcontentloaded' });
+
+    const profileNameInput = page.locator('[data-bind="profile-name"]');
+    if (await profileNameInput.count()) {
+      await profileNameInput.fill('E2E User');
+      await page.locator('[data-action="profile-save"]').click();
+      await profileNameInput.waitFor({ state: 'hidden', timeout: 10000 });
+    }
+
+    const quotesTab = page.locator('[data-action="nav"][data-page="Quotes"]');
+    await quotesTab.waitFor({ timeout: 10000 });
+    await quotesTab.click();
+
     // open quote editor modal
-    const addButton = await page.$('[data-action="quote-add"]');
-    if (!addButton) {
+    const addButton = page.locator('[data-action="quote-add"]');
+    try {
+      await addButton.waitFor({ timeout: 10000 });
+    } catch (_) {
       console.error('Add Quote button not found');
       await page.screenshot({ path: 'e2e-no-button.png' });
       await browser.close();

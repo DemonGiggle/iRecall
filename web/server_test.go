@@ -196,7 +196,7 @@ func TestHandleSaveSettingsPreservesExistingRootWhenOmitted(t *testing.T) {
 		t.Fatalf("Marshal() error = %v", err)
 	}
 
-	server, err := NewServer(runtimeApp, frontendassets.Assets, current.Web.Port)
+	server, err := NewServer(runtimeApp, frontendassets.Assets, current.Web.Port, false)
 	if err != nil {
 		t.Fatalf("NewServer() error = %v", err)
 	}
@@ -246,11 +246,48 @@ func newTestApp(t *testing.T) *irecallapp.App {
 func newTestServer(t *testing.T, app *irecallapp.App) http.Handler {
 	t.Helper()
 
-	server, err := NewServer(app, frontendassets.Assets, 9527)
+	server, err := NewServer(app, frontendassets.Assets, 9527, false)
 	if err != nil {
 		t.Fatalf("NewServer() error = %v", err)
 	}
 	return server.Handler()
+}
+
+func TestUnsafeNoPasswordCheckBypassesAuth(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp(t)
+
+	server, err := NewServer(app, frontendassets.Assets, 9527, true)
+	if err != nil {
+		t.Fatalf("NewServer() error = %v", err)
+	}
+	handler := server.Handler()
+
+	statusReq := httptest.NewRequest(http.MethodGet, "/api/auth/status", nil)
+	statusRes := httptest.NewRecorder()
+	handler.ServeHTTP(statusRes, statusReq)
+	if statusRes.Code != http.StatusOK {
+		t.Fatalf("GET /api/auth/status = %d, want %d", statusRes.Code, http.StatusOK)
+	}
+
+	var status struct {
+		PasswordConfigured bool `json:"passwordConfigured"`
+		Authenticated      bool `json:"authenticated"`
+	}
+	if err := json.Unmarshal(statusRes.Body.Bytes(), &status); err != nil {
+		t.Fatalf("decode auth status: %v", err)
+	}
+	if !status.PasswordConfigured || !status.Authenticated {
+		t.Fatalf("auth status = %#v, want passwordConfigured and authenticated true", status)
+	}
+
+	listReq := httptest.NewRequest(http.MethodGet, "/api/app/list-quotes", nil)
+	listRes := httptest.NewRecorder()
+	handler.ServeHTTP(listRes, listReq)
+	if listRes.Code != http.StatusOK {
+		t.Fatalf("GET /api/app/list-quotes = %d, want %d", listRes.Code, http.StatusOK)
+	}
 }
 
 func jsonBody(t *testing.T, value any) *bytes.Reader {

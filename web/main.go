@@ -23,6 +23,7 @@ func main() {
 	dataPathFlag := flag.String("data-path", "", "store database, config, and logs under this root path")
 	hostFlag := flag.String("host", "0.0.0.0", "host/interface to bind the web server to")
 	portFlag := flag.Int("port", 0, "port to listen on (overrides saved web port)")
+	unsafeNoPasswordCheckFlag := flag.Bool("unsafe-no-password-check", false, "skip first-run web password setup")
 	flag.Parse()
 
 	if *dataPathFlag != "" {
@@ -54,9 +55,11 @@ func main() {
 		os.Exit(1)
 	}
 	defer runtimeApp.Shutdown(nil)
-	if err := ensureWebPasswordConfigured(runtimeApp); err != nil {
-		fmt.Fprintf(os.Stderr, "irecall-web: %v\n", err)
-		os.Exit(1)
+	if !*unsafeNoPasswordCheckFlag {
+		if err := ensureWebPasswordConfigured(runtimeApp); err != nil {
+			fmt.Fprintf(os.Stderr, "irecall-web: %v\n", err)
+			os.Exit(1)
+		}
 	}
 
 	port := *portFlag
@@ -67,7 +70,7 @@ func main() {
 		port = 9527
 	}
 
-	server, err := NewServer(runtimeApp, frontendassets.Assets, port)
+	server, err := NewServer(runtimeApp, frontendassets.Assets, port, *unsafeNoPasswordCheckFlag)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "irecall-web: %v\n", err)
 		os.Exit(1)

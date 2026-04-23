@@ -17,7 +17,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v4
         with:
-          go-version: '1.20'
+          go-version-file: go.mod
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -37,7 +37,7 @@ jobs:
       - name: Install Playwright browsers
         working-directory: frontend
         run: |
-          npx playwright install --with-deps
+          npx playwright install --with-deps chromium
 
       - name: Start backend
         run: |
@@ -49,7 +49,11 @@ jobs:
             fi
             sleep 1
           done
-          cat /tmp/irecall-e2e.log | sed -n '1,200p'
+          if ! curl -sSf http://127.0.0.1:9528/ >/dev/null 2>&1; then
+            sed -n '1,200p' /tmp/irecall-e2e.log
+            exit 1
+          fi
+          sed -n '1,200p' /tmp/irecall-e2e.log
 
       - name: Run E2E script
         working-directory: frontend
