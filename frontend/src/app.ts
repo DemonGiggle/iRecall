@@ -58,6 +58,7 @@ interface SettingsPayload {
   Debug: DebugConfig;
   Theme: string;
   Web: WebConfig;
+  RootDir: string;
 }
 
 interface BootstrapState {
@@ -70,6 +71,7 @@ interface BootstrapState {
     Debug: DebugConfig;
     Theme: string;
     Web: WebConfig;
+    RootDir: string;
   };
   paths: {
     rootDir: string;
@@ -223,6 +225,7 @@ interface SettingsFormState {
   minRelevance: string;
   theme: string;
   webPort: string;
+  rootDir: string;
   models: string[];
 }
 
@@ -2946,6 +2949,7 @@ function settingsFormFromPayload(payload: SettingsPayload | BootstrapState["sett
     minRelevance: String(payload.Search.MinRelevance),
     theme: payload.Theme || "violet",
     webPort: String(payload.Web?.Port ?? 9527),
+    rootDir: payload.RootDir ?? "",
     models,
   };
   syncSelectedModel(form);
@@ -2965,6 +2969,7 @@ function emptySettingsForm(): SettingsFormState {
     minRelevance: "0",
     theme: "violet",
     webPort: "9527",
+    rootDir: "",
     models: [],
   };
 }
@@ -3013,6 +3018,7 @@ function settingsPayloadFromForm(form: SettingsFormState): SettingsPayload {
     Web: {
       Port: webPort,
     },
+    RootDir: form.rootDir,
   };
 }
 
