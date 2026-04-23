@@ -201,7 +201,7 @@ func TestHandleSaveSettingsPreservesExistingRootWhenOmitted(t *testing.T) {
 		t.Fatalf("NewServer() error = %v", err)
 	}
 
-	req = httptest.NewRequest(http.MethodPost, "/api/app/save-settings", bytes.NewReader(reqBody))
+	req := httptest.NewRequest(http.MethodPost, "/api/app/save-settings", bytes.NewReader(reqBody))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	server.handleSaveSettings(rec, req)
