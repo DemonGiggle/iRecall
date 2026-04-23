@@ -23,7 +23,9 @@ func main() {
 	dataPathFlag := flag.String("data-path", "", "store database, config, and logs under this root path")
 	hostFlag := flag.String("host", "0.0.0.0", "host/interface to bind the web server to")
 	portFlag := flag.Int("port", 0, "port to listen on (overrides saved web port)")
-	unsafeNoPasswordCheckFlag := flag.Bool("unsafe-no-password-check", false, "skip first-run web password setup")
+	// WARNING: This flag disables the interactive web password check. For testing only.
+	// Do NOT enable this in production environments.
+	unsafeNoPasswordCheckFlag := flag.Bool("unsafe-no-password-check", false, "DISABLE web password check (testing only). Do NOT use in production.")
 	flag.Parse()
 
 	if *dataPathFlag != "" {
@@ -60,6 +62,8 @@ func main() {
 			fmt.Fprintf(os.Stderr, "irecall-web: %v\n", err)
 			os.Exit(1)
 		}
+	} else {
+		fmt.Fprintln(os.Stderr, "WARNING: running with --unsafe-no-password-check; web password check is disabled (testing only). Do NOT use in production.")
 	}
 
 	port := *portFlag
