@@ -41,3 +41,18 @@ func (a *App) SelectQuoteExportFile() (string, error) {
 		},
 	})
 }
+
+func (a *App) SelectRootDir() (string, error) {
+	if a.ctx == nil {
+		return "", errors.New("desktop runtime is not available")
+	}
+	return runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{
+		Title: "Choose iRecall Root Directory",
+		DefaultDirectory: func() string {
+			if a.paths.RootDir != "" {
+				return a.paths.RootDir
+			}
+			return a.paths.DataDir
+		}(),
+	})
+}
