@@ -140,6 +140,7 @@ interface DesktopBackend {
   ExportQuotesToFile(ids: number[], path: string): Promise<void>;
   SelectQuoteImportFile(): Promise<string>;
   ImportQuotesFromFile(path: string): Promise<ImportResult>;
+  SelectRootDir(): Promise<string>;
   SaveUserProfile(name: string): Promise<UserProfile>;
   SaveSettings(settings: SettingsPayload): Promise<SettingsPayload>;
   FetchModels(settings: ProviderConfig): Promise<string[]>;
@@ -721,6 +722,12 @@ async function handleClick(event: MouseEvent): Promise<void> {
     case "settings-save":
       await saveSettings();
       return;
+    case "settings-browse-root":
+      await chooseRootDir();
+      return;
+    case "settings-clear-root":
+      clearRootDir();
+      return;
     case "settings-change-password":
       await submitPasswordChange();
       return;
@@ -819,6 +826,9 @@ function handleInput(event: Event): void {
       return;
     case "settings-web-port":
       state.settings.webPort = target.value;
+      return;
+    case "settings-root-dir":
+      state.settings.rootDir = target.value;
       return;
     case "settings-password-current":
       state.passwordForm.current = target.value;
@@ -1626,11 +1636,10 @@ async function saveSettings(): Promise<void> {
 
   try {
     const saved = await backend().SaveSettings(payload);
-    state.settings = settingsFormFromPayload(saved, state.settings.models);
+    const refreshedBootstrap = await backend().BootstrapState();
+    state.bootstrap = refreshedBootstrap;
+    state.settings = settingsFormFromPayload(refreshedBootstrap.settings, state.settings.models);
     applyTheme(state.settings.theme);
-    if (state.bootstrap) {
-      state.bootstrap.settings = saved;
-    }
     const needsRestart =
       state.auth?.runtime === "web" && state.auth.currentPort > 0 && state.auth.currentPort !== saved.Web.Port;
     state.settingsStatus = needsRestart ? "Saved. Restart the web server to apply the new port." : "Saved.";
@@ -1642,6 +1651,33 @@ async function saveSettings(): Promise<void> {
     state.settingsBusy = false;
     render();
   }
+}
+
+async function chooseRootDir(): Promise<void> {
+  if (state.settingsBusy || isWebRuntime()) {
+    return;
+  }
+  try {
+    const path = await backend().SelectRootDir();
+    if (!path) {
+      return;
+    }
+    state.settings.rootDir = path;
+    state.settingsStatus = "Selected a new storage root. Save changes to apply it.";
+    state.settingsIsError = false;
+    render();
+  } catch (error) {
+    state.settingsStatus = getErrorMessage(error);
+    state.settingsIsError = true;
+    render();
+  }
+}
+
+function clearRootDir(): void {
+  state.settings.rootDir = "";
+  state.settingsStatus = "Storage root cleared. Save changes to return to the default app directories.";
+  state.settingsIsError = false;
+  render();
 }
 
 function closeOverlay(): void {
@@ -2463,6 +2499,30 @@ function renderSettingsPage(): string {
           <section class="panel subpanel settings-secondary">
             <div class="section-title">Advanced</div>
             <label class="field">
+              <span>Storage Root</span>
+              <input
+                class="text-input"
+                data-bind="settings-root-dir"
+                value="${escapeAttribute(state.settings.rootDir)}"
+                placeholder="${escapeAttribute(isWebRuntime() ? "/path/to/irecall-root" : "Choose a folder or enter a full path")}"
+              />
+            </label>
+            <div class="toolbar">
+              ${
+                isWebRuntime()
+                  ? ""
+                  : `<button class="button" data-action="settings-browse-root" type="button" ${state.settingsBusy ? "disabled" : ""}>Browse…</button>`
+              }
+              <button class="button" data-action="settings-clear-root" type="button" ${state.settingsBusy ? "disabled" : ""}>Use Default Paths</button>
+            </div>
+            <div class="settings-hint muted">
+              ${
+                isWebRuntime()
+                  ? "Enter an absolute path to keep data, config, state, and the database under one custom root. Leave it empty to use the default app directories."
+                  : "Choose a folder to keep data, config, state, and the database under one custom root. Leave it empty to use the default app directories."
+              }
+            </div>
+            <label class="field">
               <span>Web Port</span>
               <input class="text-input" data-bind="settings-web-port" value="${escapeAttribute(state.settings.webPort)}" />
             </label>
@@ -3018,7 +3078,7 @@ function settingsPayloadFromForm(form: SettingsFormState): SettingsPayload {
     Web: {
       Port: webPort,
     },
-    RootDir: form.rootDir,
+    RootDir: form.rootDir.trim(),
   };
 }
 
