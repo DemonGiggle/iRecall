@@ -25,7 +25,7 @@ func main() {
 	portFlag := flag.Int("port", 0, "port to listen on (overrides saved web port)")
 	// WARNING: This flag disables the interactive web password check. For testing only.
 	// Do NOT enable this in production environments.
-	unsafeNoPassword := flag.Bool("unsafe-no-password-check", false, "DISABLE web password check (testing only). Do NOT use in production.")
+	unsafeNoPasswordCheckFlag := flag.Bool("unsafe-no-password-check", false, "DISABLE web password check (testing only). Do NOT use in production.")
 	flag.Parse()
 
 	if *dataPathFlag != "" {
@@ -57,7 +57,7 @@ func main() {
 		os.Exit(1)
 	}
 	defer runtimeApp.Shutdown(nil)
-	if !*unsafeNoPassword {
+	if !*unsafeNoPasswordCheckFlag {
 		if err := ensureWebPasswordConfigured(runtimeApp); err != nil {
 			fmt.Fprintf(os.Stderr, "irecall-web: %v\n", err)
 			os.Exit(1)
@@ -74,7 +74,7 @@ func main() {
 		port = 9527
 	}
 
-	server, err := NewServer(runtimeApp, frontendassets.Assets, port)
+	server, err := NewServer(runtimeApp, frontendassets.Assets, port, *unsafeNoPasswordCheckFlag)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "irecall-web: %v\n", err)
 		os.Exit(1)

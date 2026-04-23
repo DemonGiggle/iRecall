@@ -209,3 +209,14 @@ make frontend-build
 - [docs/WEB_REST_API.md](docs/WEB_REST_API.md): current web REST endpoint reference
 - [docs/WEB_API_TOKEN_AUTH.md](docs/WEB_API_TOKEN_AUTH.md): REST API bearer-token design
 - [tools/redmine_export/README.md](tools/redmine_export/README.md): Redmine export tool usage
+
+## Testing: disable web password check
+
+For automated testing or local debugging you can disable the interactive web password setup by starting the web server with the `--unsafe-no-password-check` flag. This will skip the requirement to create a web password on first run.
+
+WARNING: This flag disables an important security control. Only use it in trusted test environments and never in production.
+
+Example:
+
+    go run ./web --port 9527 --unsafe-no-password-check
+
