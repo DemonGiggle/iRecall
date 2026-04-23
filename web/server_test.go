@@ -6,10 +6,12 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"testing"
 
 	irecallapp "github.com/gigol/irecall/app"
-	"github.com/gigol/irecall/frontend"
+	"github.com/gigol/irecall/config"
+	frontendassets "github.com/gigol/irecall/frontend"
 )
 
 func TestBearerTokenAuthenticatesAppRoutes(t *testing.T) {
@@ -120,6 +122,114 @@ func TestCreateAPITokenRequiresSession(t *testing.T) {
 	}
 }
 
+func TestHandleSaveSettingsPreservesExistingRootWhenOmitted(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(t.TempDir(), "xdg-config"))
+
+	root := filepath.Join(t.TempDir(), "web-root")
+	runtimeApp, err := irecallapp.NewApp(root)
+	if err != nil {
+		t.Fatalf("NewApp() error = %v", err)
+	}
+	t.Cleanup(func() { runtimeApp.Shutdown(context.Background()) })
+
+	current := runtimeApp.GetSettings()
+	if current == nil {
+		t.Fatal("GetSettings() returned nil")
+	}
+	if current.RootDir == "" {
+		t.Fatal("GetSettings().RootDir = empty, want persisted root")
+	}
+
+	reqBody, err := json.Marshal(struct {
+		Provider struct {
+			Host   string `json:"Host"`
+			Port   int    `json:"Port"`
+			HTTPS  bool   `json:"HTTPS"`
+			APIKey string `json:"APIKey"`
+			Model  string `json:"Model"`
+		} `json:"Provider"`
+		Search struct {
+			MaxResults   int     `json:"MaxResults"`
+			MinRelevance float64 `json:"MinRelevance"`
+		} `json:"Search"`
+		Debug struct {
+			MockLLM bool `json:"MockLLM"`
+		} `json:"Debug"`
+		Theme string `json:"Theme"`
+		Web   struct {
+			Port int `json:"Port"`
+		} `json:"Web"`
+	}{
+		Provider: struct {
+			Host   string `json:"Host"`
+			Port   int    `json:"Port"`
+			HTTPS  bool   `json:"HTTPS"`
+			APIKey string `json:"APIKey"`
+			Model  string `json:"Model"`
+		}{
+			Host:   current.Provider.Host,
+			Port:   current.Provider.Port,
+			HTTPS:  current.Provider.HTTPS,
+			APIKey: current.Provider.APIKey,
+			Model:  current.Provider.Model,
+		},
+		Search: struct {
+			MaxResults   int     `json:"MaxResults"`
+			MinRelevance float64 `json:"MinRelevance"`
+		}{
+			MaxResults:   current.Search.MaxResults,
+			MinRelevance: current.Search.MinRelevance,
+		},
+		Debug: struct {
+			MockLLM bool `json:"MockLLM"`
+		}{
+			MockLLM: current.Debug.MockLLM,
+		},
+		Theme: "forest",
+		Web: struct {
+			Port int `json:"Port"`
+		}{
+			Port: current.Web.Port,
+		},
+	})
+	if err != nil {
+		t.Fatalf("Marshal() error = %v", err)
+	}
+
+	server, err := NewServer(runtimeApp, frontendassets.Assets, current.Web.Port)
+	if err != nil {
+		t.Fatalf("NewServer() error = %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/app/save-settings", bytes.NewReader(reqBody))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	server.handleSaveSettings(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("handleSaveSettings() status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+
+	saved := runtimeApp.GetSettings()
+	if saved == nil {
+		t.Fatal("GetSettings() after save returned nil")
+	}
+	if saved.Theme != "forest" {
+		t.Fatalf("saved theme = %q, want %q", saved.Theme, "forest")
+	}
+	if saved.RootDir != current.RootDir {
+		t.Fatalf("saved root = %q, want %q", saved.RootDir, current.RootDir)
+	}
+
+	preferredRoot, err := config.LoadPreferredRootPath()
+	if err != nil {
+		t.Fatalf("LoadPreferredRootPath() error = %v", err)
+	}
+	if preferredRoot != current.RootDir {
+		t.Fatalf("preferred root = %q, want %q", preferredRoot, current.RootDir)
+	}
+}
+
 func newTestApp(t *testing.T) *irecallapp.App {
 	t.Helper()
 
@@ -136,7 +246,7 @@ func newTestApp(t *testing.T) *irecallapp.App {
 func newTestServer(t *testing.T, app *irecallapp.App) http.Handler {
 	t.Helper()
 
-	server, err := NewServer(app, frontend.Assets, 9527)
+	server, err := NewServer(app, frontendassets.Assets, 9527)
 	if err != nil {
 		t.Fatalf("NewServer() error = %v", err)
 	}

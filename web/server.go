@@ -304,11 +304,15 @@ func (s *Server) handleSaveSettings(w http.ResponseWriter, r *http.Request) {
 		Web   struct {
 			Port int `json:"Port"`
 		} `json:"Web"`
-		RootDir string `json:"RootDir"`
+		RootDir *string `json:"RootDir"`
 	}
 	if err := json.Unmarshal(body, &settings); err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return
+	}
+	if settings.RootDir == nil && s.app.GetSettings() != nil {
+		rootDir := s.app.GetSettings().RootDir
+		settings.RootDir = &rootDir
 	}
 	result, err := s.app.SaveSettings(backendToCoreSettings(settings))
 	if err != nil {
@@ -603,9 +607,9 @@ func backendToCoreSettings(v struct {
 	Web   struct {
 		Port int `json:"Port"`
 	} `json:"Web"`
-	RootDir string `json:"RootDir"`
+	RootDir *string `json:"RootDir"`
 }) core.Settings {
-	return core.Settings{
+	settings := core.Settings{
 		Provider: core.ProviderConfig{
 			Host:   v.Provider.Host,
 			Port:   v.Provider.Port,
@@ -624,6 +628,9 @@ func backendToCoreSettings(v struct {
 		Web: core.WebConfig{
 			Port: v.Web.Port,
 		},
-		RootDir: v.RootDir,
 	}
+	if v.RootDir != nil {
+		settings.RootDir = *v.RootDir
+	}
+	return settings
 }
