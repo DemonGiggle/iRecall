@@ -60,6 +60,43 @@ func TestWebPasswordLifecycle(t *testing.T) {
 	}
 }
 
+func TestResetWebPasswordClearsConfiguredPassword(t *testing.T) {
+	t.Parallel()
+
+	store, err := db.Open(t.TempDir() + "/irecall.db")
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	engine := New(store, DefaultSettings())
+	ctx := context.Background()
+
+	if err := engine.SetupWebPassword(ctx, "Secret-pass-123!", "Secret-pass-123!"); err != nil {
+		t.Fatalf("SetupWebPassword() error = %v", err)
+	}
+
+	if err := engine.ResetWebPassword(ctx); err != nil {
+		t.Fatalf("ResetWebPassword() error = %v", err)
+	}
+
+	hasPassword, err := engine.HasWebPassword(ctx)
+	if err != nil {
+		t.Fatalf("HasWebPassword() error = %v", err)
+	}
+	if hasPassword {
+		t.Fatalf("HasWebPassword() after reset = true, want false")
+	}
+
+	ok, err := engine.VerifyWebPassword(ctx, "Secret-pass-123!")
+	if err == nil {
+		t.Fatalf("VerifyWebPassword() error = nil, want not configured error")
+	}
+	if ok {
+		t.Fatalf("VerifyWebPassword() after reset = true, want false")
+	}
+}
+
 func TestSetupWebPasswordRejectsMismatch(t *testing.T) {
 	t.Parallel()
 

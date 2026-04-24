@@ -67,6 +67,11 @@ func (e *Engine) SetupWebPassword(ctx context.Context, password, confirm string)
 	return e.store.SetSetting(webPasswordHashSettingKey, string(hash))
 }
 
+func (e *Engine) ResetWebPassword(ctx context.Context) error {
+	_ = ctx
+	return e.store.SetSetting(webPasswordHashSettingKey, "")
+}
+
 func (e *Engine) VerifyWebPassword(ctx context.Context, password string) (bool, error) {
 	_ = ctx
 	hash, err := e.store.GetSetting(webPasswordHashSettingKey)
