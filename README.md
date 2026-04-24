@@ -31,7 +31,7 @@ The project currently ships with:
 
 - Go
 - a compatible OpenAI-style API endpoint for chat completions
-- optional: Node.js and npm for the desktop frontend build
+- optional: Node.js and npm for frontend-backed builds (`make frontend-build`, `make build-web`, `make build-desktop`)
 
 ### Build the terminal client
 
@@ -219,4 +219,3 @@ WARNING: This flag disables an important security control. Only use it in truste
 Example:
 
     go run ./web --port 9527 --unsafe-no-password-check
-
