@@ -234,6 +234,10 @@ func (a *App) SetupPassword(password, confirm string) error {
 	return a.engine.SetupWebPassword(a.context(), password, confirm)
 }
 
+func (a *App) ResetPassword() error {
+	return a.engine.ResetWebPassword(a.context())
+}
+
 func (a *App) Login(password string) error {
 	ok, err := a.engine.VerifyWebPassword(a.context(), password)
 	if err != nil {
