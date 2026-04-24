@@ -2,6 +2,7 @@ bin
 desktop/frontend/node_modules
 desktop/frontend/dist
 frontend/node_modules
+frontend/dist
 .codex
 .cache/
 .codex-temp/
