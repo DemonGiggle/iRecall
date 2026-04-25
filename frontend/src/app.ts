@@ -820,10 +820,6 @@ function handleInput(event: Event): void {
     case "settings-min-relevance":
       state.settings.minRelevance = target.value;
       return;
-    case "settings-theme":
-      state.settings.theme = target.value;
-      applyTheme(state.settings.theme);
-      return;
     case "settings-web-port":
       state.settings.webPort = target.value;
       return;
@@ -870,6 +866,10 @@ function handleChange(event: Event): void {
       return;
     case "settings-model":
       state.settings.model = target.value;
+      return;
+    case "settings-theme":
+      state.settings.theme = target.value;
+      applyTheme(state.settings.theme);
       return;
     case "import-file":
       if (target instanceof HTMLInputElement) {
