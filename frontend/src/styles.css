@@ -487,6 +487,13 @@ pre {
   gap: 14px;
 }
 
+.reference-scroll {
+  max-height: min(380px, 46vh);
+  overflow-y: auto;
+  padding-right: 4px;
+  scrollbar-gutter: stable;
+}
+
 .answer-anchor {
   display: grid;
   gap: 6px;

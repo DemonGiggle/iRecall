@@ -2061,7 +2061,7 @@ function renderRecallPage(): string {
   const keywords =
     state.recallKeywords.length > 0
       ? state.recallKeywords.map((keyword) => `<span class="keyword-chip">${escapeHtml(keyword)}</span>`).join("")
-      : '<span class="muted">Keywords: —</span>';
+      : '<span class="muted">Keywords: -</span>';
 
   return `
     <section class="page page-recall">
@@ -2069,8 +2069,8 @@ function renderRecallPage(): string {
         <div class="page-hero">
           <div>
             <div class="eyebrow">Recall</div>
-            <div class="page-title">Question, references, then answer</div>
-            <div class="muted page-copy">Run recall once, inspect the retrieved quotes, then read the grounded response.</div>
+            <div class="page-title">Question, answer, then references</div>
+            <div class="muted page-copy">Run recall once, read the grounded response, then inspect the quotes that shaped it.</div>
           </div>
         </div>
 
@@ -2101,21 +2101,7 @@ function renderRecallPage(): string {
           <section class="panel subpanel">
             <div class="subpanel-header">
               <div>
-                <div class="section-title">2. Reference quotes</div>
-                <div class="muted">${state.recallBusy ? "Searching your quotes for relevant evidence…" : mockMode ? `${state.recallQuotes.length} retrieved quotes. Mock LLM uses simple split keywords and deterministic recall behavior.` : `${state.recallQuotes.length} retrieved quotes. Open one to inspect the full note.`}</div>
-              </div>
-            </div>
-            <div class="keyword-row">
-              <span class="muted">Keywords</span>
-              <div class="keyword-list">${keywords}</div>
-            </div>
-            ${renderQuoteList("recall", state.recallQuotes, state.recallCursor, state.recallSelected, false)}
-          </section>
-
-          <section class="panel subpanel">
-            <div class="subpanel-header">
-              <div>
-                <div class="section-title">3. Response</div>
+                <div class="section-title">2. Response</div>
                 <div class="muted">${state.recallBusy ? "Writing a grounded response from the retrieved evidence…" : mockMode ? "Mock LLM combines the retrieved reference quotes into a deterministic placeholder answer." : "The response is generated from the current question and reference set."}</div>
               </div>
               <div class="toolbar toolbar-quiet">
@@ -2135,6 +2121,22 @@ function renderRecallPage(): string {
                   : ""
               }
               <pre class="response-box">${response}</pre>
+            </div>
+          </section>
+
+          <section class="panel subpanel">
+            <div class="subpanel-header">
+              <div>
+                <div class="section-title">3. Reference quotes</div>
+                <div class="muted">${state.recallBusy ? "Searching your quotes for relevant evidence…" : mockMode ? `${state.recallQuotes.length} retrieved quotes. Mock LLM uses simple split keywords and deterministic recall behavior.` : `${state.recallQuotes.length} retrieved quotes. Open one to inspect the full note.`}</div>
+              </div>
+            </div>
+            <div class="keyword-row">
+              <span class="muted">Keywords</span>
+              <div class="keyword-list">${keywords}</div>
+            </div>
+            <div class="reference-scroll">
+              ${renderQuoteList("recall", state.recallQuotes, state.recallCursor, state.recallSelected, false)}
             </div>
           </section>
         </div>
