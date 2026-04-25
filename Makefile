@@ -1,6 +1,7 @@
 VERSION  := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 LDFLAGS  := -ldflags "-X main.version=$(VERSION) -s -w"
 BIN      := bin/irecall
+MCP_BIN  := bin/irecall-mcp
 WEB_BIN  := bin/irecall-web
 WEB_WINDOWS_BIN := bin/irecall-web-windows-amd64.exe
 DESKTOP_BIN := bin/irecall-desktop
@@ -8,13 +9,17 @@ DESKTOP_WINDOWS_BIN := bin/irecall-desktop-windows-amd64.exe
 FRONTEND_DIR := frontend
 WAILS_BUILD_TAGS := wails,production
 
-.PHONY: build build-cli build-web build-web-windows build-desktop build-desktop-windows build-local build-everything frontend-install frontend-build test lint install clean run tidy
+.PHONY: build build-cli build-mcp build-web build-web-windows build-desktop build-desktop-windows build-local build-everything frontend-install frontend-build test lint install clean run tidy
 
 build: build-cli
 
 build-cli:
 	@mkdir -p bin
 	go build $(LDFLAGS) -o $(BIN) ./cmd/irecall
+
+build-mcp:
+	@mkdir -p bin
+	go build $(LDFLAGS) -o $(MCP_BIN) ./cmd/irecall-mcp
 
 build-web: frontend-build
 	@mkdir -p bin
