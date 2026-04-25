@@ -25,6 +25,10 @@ type Client struct {
 	httpClient *http.Client
 }
 
+const maxResponseBodySize = 2 << 20
+
+var errResponseTooLarge = errors.New("response exceeds 2MB limit")
+
 func NewClient(cfg Config) (*Client, error) {
 	if strings.TrimSpace(cfg.BaseURL) == "" {
 		return nil, errors.New("base URL is required")
@@ -116,9 +120,12 @@ func (c *Client) doJSON(ctx context.Context, method, path string, payload any, d
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBodySize+1))
 	if err != nil {
 		return fmt.Errorf("read response: %w", err)
+	}
+	if len(respBody) > maxResponseBodySize {
+		return errResponseTooLarge
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return parseAPIError(resp.StatusCode, respBody)

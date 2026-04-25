@@ -1,4 +1,4 @@
-package mcpbridge
+package mcp
 
 import (
 	"errors"
@@ -33,7 +33,7 @@ func LoadConfig(baseURLOverride string, timeout time.Duration) (Config, error) {
 	}
 	parsed, err := url.Parse(baseURL)
 	if err != nil {
-		return Config{}, fmt.Errorf("parse %s: %w", EnvBaseURL, err)
+		return Config{}, fmt.Errorf("parse base URL: %w", err)
 	}
 	if parsed.Scheme == "" || parsed.Host == "" {
 		return Config{}, errors.New("iRecall base URL must include scheme and host")
