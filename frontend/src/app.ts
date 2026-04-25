@@ -859,6 +859,24 @@ function handleChange(event: Event): void {
         state.settings.https = target.checked;
       }
       return;
+    case "quote-select-visible":
+      if (target instanceof HTMLInputElement) {
+        if (target.checked) {
+          selectAllQuotes(target.dataset.context as QuoteContext);
+        } else {
+          clearQuoteSelection(target.dataset.context as QuoteContext);
+        }
+      }
+      return;
+    case "history-select-visible":
+      if (target instanceof HTMLInputElement) {
+        if (target.checked) {
+          selectAllHistory();
+        } else {
+          clearHistorySelection();
+        }
+      }
+      return;
     case "settings-mock-llm":
       if (target instanceof HTMLInputElement) {
         state.settings.mockLLM = target.checked;
@@ -1877,7 +1895,17 @@ function render(): void {
   }
   const focusSnapshot = captureFocusSnapshot();
   rootEl.innerHTML = renderShell();
+  syncIndeterminateCheckboxes();
   restoreFocusSnapshot(focusSnapshot);
+}
+
+function syncIndeterminateCheckboxes(): void {
+  if (!rootEl) {
+    return;
+  }
+  rootEl.querySelectorAll<HTMLInputElement>('input[type="checkbox"][data-indeterminate="true"]').forEach((input) => {
+    input.indeterminate = true;
+  });
 }
 
 function captureFocusSnapshot(): FocusSnapshot | null {
@@ -2106,7 +2134,6 @@ function renderRecallPage(): string {
               </div>
               <div class="toolbar toolbar-quiet">
                 <button class="button button-primary" data-action="recall-save-quote" type="button" ${responseActionsDisabled ? "disabled" : ""}>Save as Quote</button>
-                <button class="button" data-action="nav" data-page="History" type="button" ${responseActionsDisabled ? "disabled" : ""}>Open history</button>
               </div>
             </div>
             <div class="answer-card">
@@ -2152,6 +2179,8 @@ function renderQuotesPage(): string {
   const filteredQuotes = getFilteredLibraryQuotes();
   const libraryCursor = clampCursor(state.quotesCursor, filteredQuotes);
   const selectedCount = filteredQuotes.filter((quote) => state.quotesSelected.has(quote.ID)).length;
+  const allSelected = filteredQuotes.length > 0 && selectedCount === filteredQuotes.length;
+  const partiallySelected = selectedCount > 0 && !allSelected;
 
   return `
     <section class="page page-quotes">
@@ -2172,16 +2201,25 @@ function renderQuotesPage(): string {
         <div class="workspace workspace-library">
           <section class="panel subpanel">
             <div class="subpanel-header">
-              <div>
-                <div class="section-title">Quote list</div>
-                <div class="muted">${filteredQuotes.length} ${filteredQuotes.length === 1 ? "quote" : "quotes"}</div>
-              </div>
-              <div class="toolbar toolbar-quiet">
-                <button class="button" data-action="quote-select-all" data-context="quotes" type="button" ${filteredQuotes.length === 0 ? "disabled" : ""}>Select all</button>
-                <button class="button" data-action="quote-deselect-all" data-context="quotes" type="button" ${selectedCount === 0 ? "disabled" : ""}>Clear</button>
-                <button class="button" data-action="quote-share-current" data-context="quotes" type="button" ${selectedCount === 0 ? "disabled" : ""}>Share</button>
+              <div class="selection-heading">
+                <label class="selection-toggle selection-toggle-header">
+                  <input
+                    type="checkbox"
+                    data-bind="quote-select-visible"
+                    data-context="quotes"
+                    ${allSelected ? "checked" : ""}
+                    ${partiallySelected ? 'data-indeterminate="true"' : ""}
+                    ${filteredQuotes.length === 0 ? "disabled" : ""}
+                    aria-label="Select all visible quotes"
+                  />
+                </label>
+                <div>
+                  <div class="section-title">Quote list</div>
+                  <div class="muted">${filteredQuotes.length} ${filteredQuotes.length === 1 ? "quote" : "quotes"}</div>
+                </div>
               </div>
             </div>
+            ${renderQuoteSelectionToolbar("quotes", selectedCount, filteredQuotes.length)}
             ${
               state.quotesLoading
                 ? '<div class="empty-state">Loading quotes…</div>'
@@ -2197,6 +2235,10 @@ function renderQuotesPage(): string {
 }
 
 function renderHistoryPage(): string {
+  const selectedCount = state.historyEntries.filter((entry) => state.historySelected.has(entry.ID)).length;
+  const allSelected = state.historyEntries.length > 0 && selectedCount === state.historyEntries.length;
+  const partiallySelected = selectedCount > 0 && !allSelected;
+
   return `
     <section class="page page-history">
       <div class="panel page-panel">
@@ -2214,15 +2256,24 @@ function renderHistoryPage(): string {
         <div class="flow-stack">
           <section class="panel subpanel">
             <div class="subpanel-header">
-              <div>
-                <div class="section-title">History list</div>
-                <div class="muted">${state.historyEntries.length} saved recall sessions</div>
-              </div>
-              <div class="toolbar toolbar-quiet">
-                <button class="button" data-action="history-select-all" type="button" ${state.historyEntries.length === 0 ? "disabled" : ""}>Select all</button>
-                <button class="button" data-action="history-deselect-all" type="button" ${state.historySelected.size === 0 ? "disabled" : ""}>Clear</button>
+              <div class="selection-heading">
+                <label class="selection-toggle selection-toggle-header">
+                  <input
+                    type="checkbox"
+                    data-bind="history-select-visible"
+                    ${allSelected ? "checked" : ""}
+                    ${partiallySelected ? 'data-indeterminate="true"' : ""}
+                    ${state.historyEntries.length === 0 ? "disabled" : ""}
+                    aria-label="Select all history sessions"
+                  />
+                </label>
+                <div>
+                  <div class="section-title">History list</div>
+                  <div class="muted">${state.historyEntries.length} saved recall sessions</div>
+                </div>
               </div>
             </div>
+            ${renderHistorySelectionToolbar(selectedCount, state.historyEntries.length)}
             ${
               state.historyLoading
                 ? '<div class="empty-state">Loading history…</div>'
@@ -2236,6 +2287,46 @@ function renderHistoryPage(): string {
         </div>
       </div>
     </section>
+  `;
+}
+
+function renderQuoteSelectionToolbar(context: QuoteContext, selectedCount: number, totalCount: number): string {
+  if (selectedCount === 0) {
+    return "";
+  }
+  return `
+    <div class="selection-toolbar">
+      <div class="selection-summary">${selectedCount} selected</div>
+      <div class="toolbar toolbar-quiet">
+        ${
+          selectedCount < totalCount
+            ? `<button class="button button-subtle" data-action="quote-select-all" data-context="${context}" type="button">Select all</button>`
+            : ""
+        }
+        <button class="button button-primary" data-action="quote-share-current" data-context="${context}" type="button">Share</button>
+        <button class="button button-subtle" data-action="quote-deselect-all" data-context="${context}" type="button">Clear</button>
+      </div>
+    </div>
+  `;
+}
+
+function renderHistorySelectionToolbar(selectedCount: number, totalCount: number): string {
+  if (selectedCount === 0) {
+    return "";
+  }
+  return `
+    <div class="selection-toolbar">
+      <div class="selection-summary">${selectedCount} selected</div>
+      <div class="toolbar toolbar-quiet">
+        ${
+          selectedCount < totalCount
+            ? '<button class="button button-subtle" data-action="history-select-all" type="button">Select all</button>'
+            : ""
+        }
+        <button class="button button-danger" data-action="history-delete-current" type="button">Delete</button>
+        <button class="button button-subtle" data-action="history-deselect-all" type="button">Clear</button>
+      </div>
+    </div>
   `;
 }
 
@@ -2615,7 +2706,7 @@ function renderQuoteList(
                 </div>
               </div>
               <div class="quote-content">${escapeHtml(truncateQuotePreview(quote.Content, context === "quotes" ? 160 : 136))}</div>
-              ${isReferenceList ? `<div class="quote-actions-inline"><button class="button button-subtle" data-action="quote-inspect" data-context="${context}" data-index="${index}" type="button">Details</button></div>` : `<div class="quote-meta"><span class="muted">${!quote.IsOwnedByMe && quote.SourceName ? "Imported from" : "Author"}</span> ${sourceLine}</div>`}
+              ${isReferenceList ? "" : `<div class="quote-meta"><span class="muted">${!quote.IsOwnedByMe && quote.SourceName ? "Imported from" : "Author"}</span> ${sourceLine}</div>`}
               ${tagsLine}
             </article>
           `;
