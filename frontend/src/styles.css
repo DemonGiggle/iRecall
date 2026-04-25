@@ -293,6 +293,28 @@ pre {
   justify-content: flex-start;
 }
 
+.selection-heading {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.selection-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid var(--accent-border);
+  border-radius: 14px;
+  background: var(--accent-muted);
+  padding: 10px 12px;
+}
+
+.selection-summary {
+  color: var(--accent);
+  font-weight: 700;
+}
+
 .chip-row {
   display: flex;
   gap: 8px;
@@ -580,6 +602,15 @@ pre {
   accent-color: var(--accent);
   width: 16px;
   height: 16px;
+}
+
+.selection-toggle-header {
+  padding-top: 2px;
+}
+
+.selection-toggle-header input {
+  width: 18px;
+  height: 18px;
 }
 
 .selection-toggle span {
@@ -920,6 +951,11 @@ pre {
   .subpanel-header {
     flex-direction: column;
     align-items: start;
+  }
+
+  .selection-toolbar {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .question-bar,
