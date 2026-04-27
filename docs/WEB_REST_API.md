@@ -301,15 +301,22 @@ Response:
 
 ### `GET /api/app/list-quotes`
 
-Lists all stored quotes.
+Lists stored quotes, newest first.
 
 Authentication: session or bearer token required.
 
-Parameters: none.
+Query parameters:
+
+- `limit` — optional non-negative integer. `0` or omitted returns all quotes for browser compatibility. Machine clients should pass an explicit page size.
+- `offset` — optional non-negative integer. Defaults to `0`.
+
+The server caps `limit` at `500` when provided.
 
 Response:
 
 - `200 OK` with `Quote[]`
+
+MCP note: `irecall_list_quotes` always uses pagination and defaults to `limit=20`, with a maximum of `100`.
 
 ### `POST /api/app/add-quote`
 

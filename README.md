@@ -149,6 +149,7 @@ Desktop and web currently show the active storage paths in `Settings`, but they 
 ```text
 iRecall/
 ├── cmd/irecall/      # terminal entry point
+├── cmd/irecall-mcp/  # MCP bridge entry point
 ├── config/           # XDG path helpers
 ├── core/             # engine, models, DB layer, LLM client
 │   ├── db/
@@ -156,6 +157,7 @@ iRecall/
 ├── app/              # Shared desktop/web application orchestration
 ├── desktop/          # Wails desktop runtime
 ├── frontend/         # Shared frontend assets and source
+├── mcp/              # MCP bridge package and iRecall REST wrapper
 ├── web/              # HTTP web UI runtime
 ├── docs/             # roadmap, specs, design docs, plans
 ├── tools/            # auxiliary tools such as Redmine export
@@ -172,6 +174,8 @@ Common targets:
 
 ```bash
 make build
+make build-mcp
+make build-web
 make run
 make test
 make lint
@@ -188,6 +192,19 @@ Web UI build:
 
 ```bash
 make build-web
+```
+
+MCP bridge build:
+
+```bash
+make build-mcp
+```
+
+MCP token provisioning uses the web binary:
+
+```bash
+make build-web
+printf '%s\n' 'your-web-password' | ./bin/irecall-web auth issue-token --password-stdin --write-token-file ~/.config/irecall/mcp-api-token
 ```
 
 Frontend dependencies:
@@ -208,6 +225,7 @@ make frontend-build
 - [docs/QUOTES_SHARING_DESIGN.md](docs/QUOTES_SHARING_DESIGN.md): sharing model
 - [docs/WEB_REST_API.md](docs/WEB_REST_API.md): current web REST endpoint reference
 - [docs/WEB_API_TOKEN_AUTH.md](docs/WEB_API_TOKEN_AUTH.md): REST API bearer-token design
+- [docs/MCP_OPENCLAW.md](docs/MCP_OPENCLAW.md): MCP bridge scaffold and operator notes
 - [tools/redmine_export/README.md](tools/redmine_export/README.md): Redmine export tool usage
 
 ## Testing: disable web password check
