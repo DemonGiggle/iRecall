@@ -24,3 +24,20 @@ type SaveRecallAsQuoteRequest struct {
 	Response string   `json:"response"`
 	Keywords []string `json:"keywords"`
 }
+
+type UpdateQuoteRequest struct {
+	ID      int64  `json:"id"`
+	Content string `json:"content"`
+}
+
+type DeleteQuotesRequest struct {
+	IDs []int64 `json:"ids"`
+}
+
+type DeleteRecallHistoryRequest struct {
+	IDs []int64 `json:"ids"`
+}
+
+type OKResponse struct {
+	OK bool `json:"ok"`
+}

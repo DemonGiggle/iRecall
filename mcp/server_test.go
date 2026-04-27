@@ -3,6 +3,7 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -81,6 +82,59 @@ func TestMCPToolsCallAuthenticatedRESTAPI(t *testing.T) {
 			}
 			call.Body = req.Question + "|" + req.Response
 			_, _ = w.Write([]byte(`{"ID":9,"Content":"saved recall"}`))
+		case "/api/app/update-quote":
+			if r.Method != http.MethodPost {
+				http.NotFound(w, r)
+				return
+			}
+			var req struct {
+				ID      int64  `json:"id"`
+				Content string `json:"content"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				t.Fatalf("decode update quote request: %v", err)
+			}
+			call.Body = req.Content
+			_, _ = w.Write([]byte(`{"ID":10,"Content":"` + req.Content + `"}`))
+		case "/api/app/delete-quotes":
+			if r.Method != http.MethodPost {
+				http.NotFound(w, r)
+				return
+			}
+			var req struct {
+				IDs []int64 `json:"ids"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				t.Fatalf("decode delete quotes request: %v", err)
+			}
+			call.Body = encodeIDs(req.IDs)
+			_, _ = w.Write([]byte(`{"ok":true}`))
+		case "/api/app/list-recall-history":
+			if r.Method != http.MethodGet {
+				http.NotFound(w, r)
+				return
+			}
+			_, _ = w.Write([]byte(`[{"ID":11,"Question":"old question","Response":"old response"}]`))
+		case "/api/app/get-recall-history":
+			if r.Method != http.MethodGet {
+				http.NotFound(w, r)
+				return
+			}
+			call.Body = r.URL.Query().Get("id")
+			_, _ = w.Write([]byte(`{"ID":11,"Question":"old question","Response":"old response","Quotes":[{"ID":7,"Content":"stored quote"}]}`))
+		case "/api/app/delete-recall-history":
+			if r.Method != http.MethodPost {
+				http.NotFound(w, r)
+				return
+			}
+			var req struct {
+				IDs []int64 `json:"ids"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				t.Fatalf("decode delete history request: %v", err)
+			}
+			call.Body = encodeIDs(req.IDs)
+			_, _ = w.Write([]byte(`{"ok":true}`))
 		default:
 			http.NotFound(w, r)
 		}
@@ -100,6 +154,11 @@ func TestMCPToolsCallAuthenticatedRESTAPI(t *testing.T) {
 		"irecall_list_quotes",
 		"irecall_add_quote",
 		"irecall_save_recall_as_quote",
+		"irecall_update_quote",
+		"irecall_delete_quotes",
+		"irecall_list_history",
+		"irecall_get_history",
+		"irecall_delete_history",
 	})
 
 	healthResult := callTool(t, client, "irecall_health", nil)
@@ -110,6 +169,11 @@ func TestMCPToolsCallAuthenticatedRESTAPI(t *testing.T) {
 	assertToolTextContains(t, callTool(t, client, "irecall_add_quote", map[string]any{"content": "new note"}), "new note")
 	assertToolTextContains(t, callTool(t, client, "irecall_recall", map[string]any{"question": "what did I save?"}), "grounded answer")
 	assertToolTextContains(t, callTool(t, client, "irecall_save_recall_as_quote", map[string]any{"question": "q", "response": "r", "keywords": []string{"k"}}), "saved recall")
+	assertToolTextContains(t, callTool(t, client, "irecall_update_quote", map[string]any{"id": 10, "content": "updated note"}), "updated note")
+	assertToolTextContains(t, callTool(t, client, "irecall_delete_quotes", map[string]any{"ids": []int64{10, 11}}), `"ok": true`)
+	assertToolTextContains(t, callTool(t, client, "irecall_list_history", nil), "old question")
+	assertToolTextContains(t, callTool(t, client, "irecall_get_history", map[string]any{"id": 11}), "stored quote")
+	assertToolTextContains(t, callTool(t, client, "irecall_delete_history", map[string]any{"ids": []int64{11}}), `"ok": true`)
 
 	want := []restCall{
 		{Method: http.MethodGet, Path: "/api/app/bootstrap-state"},
@@ -117,6 +181,11 @@ func TestMCPToolsCallAuthenticatedRESTAPI(t *testing.T) {
 		{Method: http.MethodPost, Path: "/api/app/add-quote", Body: "new note"},
 		{Method: http.MethodPost, Path: "/api/app/run-recall", Body: "what did I save?"},
 		{Method: http.MethodPost, Path: "/api/app/save-recall-as-quote", Body: "q|r"},
+		{Method: http.MethodPost, Path: "/api/app/update-quote", Body: "updated note"},
+		{Method: http.MethodPost, Path: "/api/app/delete-quotes", Body: "10,11"},
+		{Method: http.MethodGet, Path: "/api/app/list-recall-history"},
+		{Method: http.MethodGet, Path: "/api/app/get-recall-history", Query: "id=11", Body: "11"},
+		{Method: http.MethodPost, Path: "/api/app/delete-recall-history", Body: "11"},
 	}
 	if !equalRESTCalls(seen, want) {
 		t.Fatalf("REST calls = %#v, want %#v", seen, want)
@@ -229,4 +298,12 @@ func equalRESTCalls(a, b []restCall) bool {
 		}
 	}
 	return true
+}
+
+func encodeIDs(ids []int64) string {
+	parts := make([]string, 0, len(ids))
+	for _, id := range ids {
+		parts = append(parts, fmt.Sprintf("%d", id))
+	}
+	return strings.Join(parts, ",")
 }

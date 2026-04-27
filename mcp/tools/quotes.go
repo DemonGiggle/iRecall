@@ -24,6 +24,15 @@ type saveRecallAsQuoteArgs struct {
 	Keywords []string `json:"keywords"`
 }
 
+type updateQuoteArgs struct {
+	ID      int64  `json:"id"`
+	Content string `json:"content"`
+}
+
+type deleteQuotesArgs struct {
+	IDs []int64 `json:"ids"`
+}
+
 func RegisterQuoteTools(srv *mcpserver.MCPServer, client *irecallapi.Client) {
 	listTool := mcpproto.NewTool(
 		"irecall_list_quotes",
@@ -79,6 +88,58 @@ func RegisterQuoteTools(srv *mcpserver.MCPServer, client *irecallapi.Client) {
 			return mcpproto.NewToolResultErrorFromErr("Failed to add a quote to iRecall.", err), nil
 		}
 		return jsonResult(quote)
+	}))
+
+	updateTool := mcpproto.NewTool(
+		"irecall_update_quote",
+		mcpproto.WithDescription("Update an existing iRecall quote by ID."),
+		mcpproto.WithNumber("id",
+			mcpproto.Required(),
+			mcpproto.Description("Quote ID to update."),
+		),
+		mcpproto.WithString("content",
+			mcpproto.Required(),
+			mcpproto.Description("Replacement quote content."),
+		),
+	)
+	srv.AddTool(updateTool, mcpproto.NewTypedToolHandler(func(ctx context.Context, request mcpproto.CallToolRequest, args updateQuoteArgs) (*mcpproto.CallToolResult, error) {
+		if args.ID <= 0 {
+			return mcpproto.NewToolResultError("id must be positive"), nil
+		}
+		content := strings.TrimSpace(args.Content)
+		if content == "" {
+			return mcpproto.NewToolResultError("content is required"), nil
+		}
+		quote, err := client.UpdateQuote(ctx, args.ID, content)
+		if err != nil {
+			return mcpproto.NewToolResultErrorFromErr("Failed to update quote in iRecall.", err), nil
+		}
+		return jsonResult(quote)
+	}))
+
+	deleteTool := mcpproto.NewTool(
+		"irecall_delete_quotes",
+		mcpproto.WithDescription("Delete one or more iRecall quotes by ID."),
+		mcpproto.WithArray("ids",
+			mcpproto.Required(),
+			mcpproto.Description("Quote IDs to delete."),
+			mcpproto.Items(map[string]any{"type": "number"}),
+		),
+	)
+	srv.AddTool(deleteTool, mcpproto.NewTypedToolHandler(func(ctx context.Context, request mcpproto.CallToolRequest, args deleteQuotesArgs) (*mcpproto.CallToolResult, error) {
+		if len(args.IDs) == 0 {
+			return mcpproto.NewToolResultError("ids is required"), nil
+		}
+		for _, id := range args.IDs {
+			if id <= 0 {
+				return mcpproto.NewToolResultError("ids must contain only positive IDs"), nil
+			}
+		}
+		result, err := client.DeleteQuotes(ctx, args.IDs)
+		if err != nil {
+			return mcpproto.NewToolResultErrorFromErr("Failed to delete quotes from iRecall.", err), nil
+		}
+		return jsonResult(result)
 	}))
 
 	saveTool := mcpproto.NewTool(

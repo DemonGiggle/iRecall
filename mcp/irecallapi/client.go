@@ -106,6 +106,47 @@ func (c *Client) SaveRecallAsQuote(ctx context.Context, question, response strin
 	return &value, nil
 }
 
+func (c *Client) UpdateQuote(ctx context.Context, id int64, content string) (*Quote, error) {
+	var value Quote
+	if err := c.doJSON(ctx, http.MethodPost, "/api/app/update-quote", UpdateQuoteRequest{ID: id, Content: content}, &value); err != nil {
+		return nil, err
+	}
+	return &value, nil
+}
+
+func (c *Client) DeleteQuotes(ctx context.Context, ids []int64) (*OKResponse, error) {
+	var value OKResponse
+	if err := c.doJSON(ctx, http.MethodPost, "/api/app/delete-quotes", DeleteQuotesRequest{IDs: ids}, &value); err != nil {
+		return nil, err
+	}
+	return &value, nil
+}
+
+func (c *Client) ListRecallHistory(ctx context.Context) ([]RecallHistorySummary, error) {
+	var value []RecallHistorySummary
+	if err := c.doJSON(ctx, http.MethodGet, "/api/app/list-recall-history", nil, &value); err != nil {
+		return nil, err
+	}
+	return value, nil
+}
+
+func (c *Client) GetRecallHistory(ctx context.Context, id int64) (*RecallHistoryEntry, error) {
+	var value RecallHistoryEntry
+	path := "/api/app/get-recall-history?id=" + url.QueryEscape(fmt.Sprintf("%d", id))
+	if err := c.doJSON(ctx, http.MethodGet, path, nil, &value); err != nil {
+		return nil, err
+	}
+	return &value, nil
+}
+
+func (c *Client) DeleteRecallHistory(ctx context.Context, ids []int64) (*OKResponse, error) {
+	var value OKResponse
+	if err := c.doJSON(ctx, http.MethodPost, "/api/app/delete-recall-history", DeleteRecallHistoryRequest{IDs: ids}, &value); err != nil {
+		return nil, err
+	}
+	return &value, nil
+}
+
 func (c *Client) doJSON(ctx context.Context, method, path string, payload any, dst any) error {
 	var body io.Reader
 	if payload != nil {
