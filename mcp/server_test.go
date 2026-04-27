@@ -23,7 +23,7 @@ func TestMCPToolsCallAuthenticatedRESTAPI(t *testing.T) {
 			return
 		}
 
-		call := restCall{Method: r.Method, Path: r.URL.Path}
+		call := restCall{Method: r.Method, Path: r.URL.Path, Query: r.URL.RawQuery}
 		defer func() { seen = append(seen, call) }()
 		w.Header().Set("Content-Type", "application/json")
 
@@ -102,15 +102,18 @@ func TestMCPToolsCallAuthenticatedRESTAPI(t *testing.T) {
 		"irecall_save_recall_as_quote",
 	})
 
-	assertToolTextContains(t, callTool(t, client, "irecall_health", nil), `"ok": true`)
-	assertToolTextContains(t, callTool(t, client, "irecall_list_quotes", nil), "stored quote")
+	healthResult := callTool(t, client, "irecall_health", nil)
+	assertToolTextContains(t, healthResult, `"ok": true`)
+	assertToolTextNotContains(t, healthResult, `"pages"`)
+	assertToolTextNotContains(t, healthResult, `"paths"`)
+	assertToolTextContains(t, callTool(t, client, "irecall_list_quotes", map[string]any{"limit": 10, "offset": 20}), "stored quote")
 	assertToolTextContains(t, callTool(t, client, "irecall_add_quote", map[string]any{"content": "new note"}), "new note")
 	assertToolTextContains(t, callTool(t, client, "irecall_recall", map[string]any{"question": "what did I save?"}), "grounded answer")
 	assertToolTextContains(t, callTool(t, client, "irecall_save_recall_as_quote", map[string]any{"question": "q", "response": "r", "keywords": []string{"k"}}), "saved recall")
 
 	want := []restCall{
 		{Method: http.MethodGet, Path: "/api/app/bootstrap-state"},
-		{Method: http.MethodGet, Path: "/api/app/list-quotes"},
+		{Method: http.MethodGet, Path: "/api/app/list-quotes", Query: "limit=10&offset=20"},
 		{Method: http.MethodPost, Path: "/api/app/add-quote", Body: "new note"},
 		{Method: http.MethodPost, Path: "/api/app/run-recall", Body: "what did I save?"},
 		{Method: http.MethodPost, Path: "/api/app/save-recall-as-quote", Body: "q|r"},
@@ -141,6 +144,7 @@ func TestMCPToolReturnsRESTErrorAsToolError(t *testing.T) {
 type restCall struct {
 	Method string
 	Path   string
+	Query  string
 	Body   string
 }
 
@@ -193,12 +197,26 @@ func assertToolNames(t *testing.T, result *mcpproto.ListToolsResult, names []str
 
 func assertToolTextContains(t *testing.T, result *mcpproto.CallToolResult, want string) {
 	t.Helper()
+	if !strings.Contains(toolText(result), want) {
+		t.Fatalf("tool result %#v does not contain %q", result, want)
+	}
+}
+
+func assertToolTextNotContains(t *testing.T, result *mcpproto.CallToolResult, unwanted string) {
+	t.Helper()
+	if strings.Contains(toolText(result), unwanted) {
+		t.Fatalf("tool result %#v unexpectedly contains %q", result, unwanted)
+	}
+}
+
+func toolText(result *mcpproto.CallToolResult) string {
+	var out strings.Builder
 	for _, content := range result.Content {
-		if text, ok := content.(mcpproto.TextContent); ok && strings.Contains(text.Text, want) {
-			return
+		if text, ok := content.(mcpproto.TextContent); ok {
+			out.WriteString(text.Text)
 		}
 	}
-	t.Fatalf("tool result %#v does not contain %q", result, want)
+	return out.String()
 }
 
 func equalRESTCalls(a, b []restCall) bool {

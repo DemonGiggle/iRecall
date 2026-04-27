@@ -19,28 +19,13 @@ func RegisterHealthTool(srv *mcpserver.MCPServer, client *irecallapi.Client) {
 			return mcpproto.NewToolResultErrorFromErr("Failed to reach the iRecall web API.", err), nil
 		}
 		return jsonResult(struct {
-			OK             bool                    `json:"ok"`
-			ProductName    string                  `json:"productName"`
-			Greeting       string                  `json:"greeting"`
-			Pages          []string                `json:"pages"`
-			Paths          any                     `json:"paths"`
-			ProfilePresent bool                    `json:"profilePresent"`
-			Settings       *struct{ Theme string } `json:"settings,omitempty"`
-			Docs           map[string]string       `json:"docs"`
+			OK             bool   `json:"ok"`
+			ProductName    string `json:"productName,omitempty"`
+			ProfilePresent bool   `json:"profilePresent"`
 		}{
 			OK:             true,
 			ProductName:    state.ProductName,
-			Greeting:       state.Greeting,
-			Pages:          state.Pages,
-			Paths:          state.Paths,
 			ProfilePresent: state.Profile != nil,
-			Settings: func() *struct{ Theme string } {
-				if state.Settings == nil {
-					return nil
-				}
-				return &struct{ Theme string }{Theme: state.Settings.Theme}
-			}(),
-			Docs: state.Docs,
 		})
 	})
 }

@@ -195,18 +195,35 @@ func (s *Store) UpdateImportedQuote(id int64, content string, identity QuoteIden
 
 // ListQuotes returns all quotes with their tags, newest first.
 func (s *Store) ListQuotes() ([]QuoteRow, error) {
-	slog.Debug("db: listing all quotes")
-	rows, err := s.db.Query(baseQuoteSelect + `
+	return s.ListQuotesPage(0, 0)
+}
+
+// ListQuotesPage returns quotes with their tags, newest first.
+// limit <= 0 returns all quotes. offset < 0 is treated as 0.
+func (s *Store) ListQuotesPage(limit, offset int) ([]QuoteRow, error) {
+	if offset < 0 {
+		offset = 0
+	}
+	slog.Debug("db: listing quotes", "limit", limit, "offset", offset)
+	query := baseQuoteSelect + `
 		GROUP BY q.id
 		ORDER BY q.created_at DESC
-	`)
+	`
+	var args []any
+	if limit > 0 {
+		query += `
+			LIMIT ? OFFSET ?
+		`
+		args = append(args, limit, offset)
+	}
+	rows, err := s.db.Query(query, args...)
 	if err != nil {
 		slog.Error("db: list quotes failed", "error", err)
 		return nil, err
 	}
 	defer rows.Close()
 	result, err := scanQuoteRows(rows)
-	slog.Debug("db: listed quotes", "count", len(result))
+	slog.Debug("db: listed quotes", "count", len(result), "limit", limit, "offset", offset)
 	return result, err
 }
 

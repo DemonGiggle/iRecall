@@ -160,14 +160,20 @@ func (e *Engine) addQuoteWithSuggestedTags(ctx context.Context, content string, 
 
 // ListQuotes returns all quotes, newest first.
 func (e *Engine) ListQuotes(ctx context.Context) ([]Quote, error) {
-	slog.Debug("engine: listing quotes")
-	rows, err := e.store.ListQuotes()
+	return e.ListQuotesPage(ctx, 0, 0)
+}
+
+// ListQuotesPage returns quotes newest first using limit/offset pagination.
+// limit <= 0 returns all quotes. offset < 0 is treated as 0.
+func (e *Engine) ListQuotesPage(ctx context.Context, limit, offset int) ([]Quote, error) {
+	slog.Debug("engine: listing quotes", "limit", limit, "offset", offset)
+	rows, err := e.store.ListQuotesPage(limit, offset)
 	if err != nil {
 		slog.Error("engine: list quotes failed", "error", err)
 		return nil, err
 	}
 	quotes := rowsToQuotes(rows, e.localUserID())
-	slog.Debug("engine: listed quotes", "count", len(quotes))
+	slog.Debug("engine: listed quotes", "count", len(quotes), "limit", limit, "offset", offset)
 	return quotes, nil
 }
 

@@ -110,6 +110,10 @@ func (a *App) ListQuotes() ([]core.Quote, error) {
 	return a.engine.ListQuotes(a.context())
 }
 
+func (a *App) ListQuotesPage(limit, offset int) ([]core.Quote, error) {
+	return a.engine.ListQuotesPage(a.context(), limit, offset)
+}
+
 func (a *App) AddQuote(content string) (*core.Quote, error) {
 	return a.engine.AddQuote(a.context(), content)
 }

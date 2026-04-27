@@ -28,9 +28,9 @@ This keeps the integration decoupled:
 
 ## Current MCP tool set
 
-- `irecall_health` — checks the local iRecall REST API and bearer-token auth
+- `irecall_health` — checks the local iRecall REST API and bearer-token auth, returning only minimal status
 - `irecall_recall` — calls the recall flow
-- `irecall_list_quotes` — lists stored quotes
+- `irecall_list_quotes` — lists stored quotes with `limit`/`offset` pagination
 - `irecall_add_quote` — stores a free-form note or quote
 - `irecall_save_recall_as_quote` — persists a recall question/response pair as a quote
 
@@ -114,6 +114,7 @@ The token file is written with mode `0600`. Command output prints only the desti
 
 - stdio is the only bridge transport in this implementation
 - tool responses are currently returned as JSON text payloads
+- health intentionally omits bootstrap details such as UI pages, local paths, settings, and docs
 - history/update/delete MCP tools are not wired yet, although REST endpoints exist
 - the bridge assumes the iRecall web server is already running
 

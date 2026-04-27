@@ -9,6 +9,11 @@ import (
 	mcpserver "github.com/mark3labs/mcp-go/server"
 )
 
+type listQuotesArgs struct {
+	Limit  int `json:"limit"`
+	Offset int `json:"offset"`
+}
+
 type addQuoteArgs struct {
 	Content string `json:"content"`
 }
@@ -22,15 +27,39 @@ type saveRecallAsQuoteArgs struct {
 func RegisterQuoteTools(srv *mcpserver.MCPServer, client *irecallapi.Client) {
 	listTool := mcpproto.NewTool(
 		"irecall_list_quotes",
-		mcpproto.WithDescription("List stored quotes from iRecall."),
+		mcpproto.WithDescription("List stored quotes from iRecall using limit/offset pagination."),
+		mcpproto.WithNumber("limit",
+			mcpproto.Description("Maximum quotes to return. Defaults to 20; maximum 100."),
+		),
+		mcpproto.WithNumber("offset",
+			mcpproto.Description("Number of newest quotes to skip before returning results. Defaults to 0."),
+		),
 	)
-	srv.AddTool(listTool, func(ctx context.Context, request mcpproto.CallToolRequest) (*mcpproto.CallToolResult, error) {
-		quotes, err := client.ListQuotes(ctx)
+	srv.AddTool(listTool, mcpproto.NewTypedToolHandler(func(ctx context.Context, request mcpproto.CallToolRequest, args listQuotesArgs) (*mcpproto.CallToolResult, error) {
+		limit := args.Limit
+		if limit < 0 {
+			return mcpproto.NewToolResultError("limit must be non-negative"), nil
+		}
+		if limit == 0 {
+			limit = 20
+		}
+		if limit > 100 {
+			limit = 100
+		}
+		offset := args.Offset
+		if offset < 0 {
+			return mcpproto.NewToolResultError("offset must be non-negative"), nil
+		}
+		quotes, err := client.ListQuotes(ctx, limit, offset)
 		if err != nil {
 			return mcpproto.NewToolResultErrorFromErr("Failed to list quotes from iRecall.", err), nil
 		}
-		return jsonResult(quotes)
-	})
+		return jsonResult(struct {
+			Limit  int                `json:"limit"`
+			Offset int                `json:"offset"`
+			Quotes []irecallapi.Quote `json:"quotes"`
+		}{Limit: limit, Offset: offset, Quotes: quotes})
+	}))
 
 	addTool := mcpproto.NewTool(
 		"irecall_add_quote",

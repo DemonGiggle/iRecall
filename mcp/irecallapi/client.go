@@ -59,9 +59,20 @@ func (c *Client) BootstrapState(ctx context.Context) (*BootstrapState, error) {
 	return &value, nil
 }
 
-func (c *Client) ListQuotes(ctx context.Context) ([]Quote, error) {
+func (c *Client) ListQuotes(ctx context.Context, limit, offset int) ([]Quote, error) {
 	var value []Quote
-	if err := c.doJSON(ctx, http.MethodGet, "/api/app/list-quotes", nil, &value); err != nil {
+	path := "/api/app/list-quotes"
+	if limit > 0 || offset > 0 {
+		query := url.Values{}
+		if limit > 0 {
+			query.Set("limit", fmt.Sprintf("%d", limit))
+		}
+		if offset > 0 {
+			query.Set("offset", fmt.Sprintf("%d", offset))
+		}
+		path += "?" + query.Encode()
+	}
+	if err := c.doJSON(ctx, http.MethodGet, path, nil, &value); err != nil {
 		return nil, err
 	}
 	return value, nil

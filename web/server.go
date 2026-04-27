@@ -185,8 +185,35 @@ func (s *Server) handleListQuotes(w http.ResponseWriter, r *http.Request) {
 		writeMethodNotAllowed(w)
 		return
 	}
-	value, err := s.app.ListQuotes()
+	limit, offset, err := parsePagination(r, 0, 0, 500)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	value, err := s.app.ListQuotesPage(limit, offset)
 	writeAppJSON(w, value, err)
+}
+
+func parsePagination(r *http.Request, defaultLimit, defaultOffset, maxLimit int) (int, int, error) {
+	limit := defaultLimit
+	offset := defaultOffset
+	var err error
+	if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
+		limit, err = strconv.Atoi(raw)
+		if err != nil || limit < 0 {
+			return 0, 0, fmt.Errorf("limit must be a non-negative integer")
+		}
+	}
+	if raw := strings.TrimSpace(r.URL.Query().Get("offset")); raw != "" {
+		offset, err = strconv.Atoi(raw)
+		if err != nil || offset < 0 {
+			return 0, 0, fmt.Errorf("offset must be a non-negative integer")
+		}
+	}
+	if maxLimit > 0 && limit > maxLimit {
+		limit = maxLimit
+	}
+	return limit, offset, nil
 }
 
 func (s *Server) handleAddQuote(w http.ResponseWriter, r *http.Request) {
