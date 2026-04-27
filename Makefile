@@ -9,7 +9,7 @@ DESKTOP_WINDOWS_BIN := bin/irecall-desktop-windows-amd64.exe
 FRONTEND_DIR := frontend
 WAILS_BUILD_TAGS := wails,production
 
-.PHONY: build build-cli build-mcp build-web build-web-windows build-desktop build-desktop-windows build-local build-everything frontend-install frontend-build test lint install clean run tidy
+.PHONY: build build-cli build-mcp build-web build-web-windows build-desktop build-desktop-windows build-local build-everything frontend-install frontend-build test test-mcp-bootstrap lint install clean run tidy
 
 build: build-cli
 
@@ -52,6 +52,9 @@ run: build
 
 test:
 	go test ./...
+
+test-mcp-bootstrap:
+	go test ./web -run TestOperatorBootstrapIssuesTokenAndMCPHealthChecksRealWebServer -count=1
 
 lint:
 	go vet ./...

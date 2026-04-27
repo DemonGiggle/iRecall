@@ -171,8 +171,23 @@ Security note: OpenClaw's MCP server schema accepts literal `env` values. Avoid 
 - `IRECALL_API_TOKEN` is configured as a process env var; keep the OpenClaw config private if it contains the literal token
 - the bridge assumes the iRecall web server is already running
 
+## Validation
+
+Run the normal test suite:
+
+```bash
+make test
+```
+
+Run the operator-bootstrap MCP gate explicitly:
+
+```bash
+make test-mcp-bootstrap
+```
+
+`test-mcp-bootstrap` creates a temporary iRecall data root, configures a web password, issues an API token through the headless auth CLI path, starts a real in-process web HTTP server, starts the MCP bridge through an in-process MCP client, and calls `irecall_health` plus `irecall_list_quotes`. It does not modify the operator's real OpenClaw config or iRecall data directory.
+
 ## Next likely steps
 
-1. Run a real local operator bootstrap: start web, issue token, launch MCP, call `irecall_health`
-2. Refine response formatting once the bridge contract settles
-3. Replace the placeholder paths in the OpenClaw config example with release/install paths once packaging is finalized
+1. Refine response formatting once the bridge contract settles
+2. Replace the placeholder paths in the OpenClaw config example with release/install paths once packaging is finalized
