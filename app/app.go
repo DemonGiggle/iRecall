@@ -110,6 +110,10 @@ func (a *App) ListQuotes() ([]core.Quote, error) {
 	return a.engine.ListQuotes(a.context())
 }
 
+func (a *App) ListQuotesPage(limit, offset int) ([]core.Quote, error) {
+	return a.engine.ListQuotesPage(a.context(), limit, offset)
+}
+
 func (a *App) AddQuote(content string) (*core.Quote, error) {
 	return a.engine.AddQuote(a.context(), content)
 }
@@ -273,6 +277,20 @@ func (a *App) CreateAPIToken() (APITokenCreateResult, error) {
 		Token:       token,
 		TokenPrefix: status.TokenPrefix,
 	}, nil
+}
+
+func (a *App) CreateAPITokenWithPassword(password string) (APITokenCreateResult, error) {
+	if err := a.Login(password); err != nil {
+		return APITokenCreateResult{}, err
+	}
+	return a.CreateAPIToken()
+}
+
+func (a *App) RevokeAPITokenWithPassword(password string) error {
+	if err := a.Login(password); err != nil {
+		return err
+	}
+	return a.engine.RevokeWebAPIToken(a.context())
 }
 
 func (a *App) VerifyAPIToken(token string) (bool, error) {

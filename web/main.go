@@ -19,6 +19,7 @@ import (
 )
 
 func main() {
+	maybeHandleAuthCommand(os.Args[1:])
 	debugFlag := flag.Bool("debug", false, "enable debug logging")
 	dataPathFlag := flag.String("data-path", "", "store database, config, and logs under this root path")
 	hostFlag := flag.String("host", "0.0.0.0", "host/interface to bind the web server to")
