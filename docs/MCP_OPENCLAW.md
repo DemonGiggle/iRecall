@@ -113,32 +113,66 @@ The token file is written with mode `0600`. Command output prints only the desti
 4. Configure the MCP launcher to run `irecall-mcp` with `IRECALL_BASE_URL` and `IRECALL_API_TOKEN` loaded from the protected local credential file or systemd credential.
 5. Verify the connection by calling `irecall_health`.
 
-## OpenClaw MCP launcher example
+## OpenClaw MCP configuration
 
-The exact OpenClaw MCP configuration shape may vary by OpenClaw version, but the launcher should be equivalent to:
+OpenClaw's current global MCP config schema stores named servers under `mcp.servers`.
+For this stdio bridge, the relevant fields are:
+
+- `command` — executable path
+- `args` — optional string array
+- `env` — environment variables passed to the MCP process
+- `cwd` / `workingDirectory` — optional working directory
+
+Direct OpenClaw config patch example:
 
 ```json
 {
-  "command": "/path/to/bin/irecall-mcp",
-  "env": {
-    "IRECALL_BASE_URL": "http://127.0.0.1:9527",
-    "IRECALL_API_TOKEN": "<contents of ~/.config/irecall/mcp-api-token>"
+  "mcp": {
+    "servers": {
+      "irecall": {
+        "command": "/home/YOUR_USER/path/to/iRecall/bin/irecall-mcp",
+        "env": {
+          "IRECALL_BASE_URL": "http://127.0.0.1:9527",
+          "IRECALL_API_TOKEN": "PASTE_TOKEN_CONTENTS_HERE"
+        }
+      }
+    }
   }
 }
 ```
 
-Prefer loading `IRECALL_API_TOKEN` from a protected local file or service credential rather than hard-coding it into a shared config file.
+If you want to preserve existing MCP servers, merge only the `mcp.servers.irecall` entry into the existing config instead of replacing the whole `mcp.servers` object.
+
+Equivalent OpenClaw CLI patch shape:
+
+```bash
+openclaw config patch '{
+  "mcp": {
+    "servers": {
+      "irecall": {
+        "command": "/home/YOUR_USER/path/to/iRecall/bin/irecall-mcp",
+        "env": {
+          "IRECALL_BASE_URL": "http://127.0.0.1:9527",
+          "IRECALL_API_TOKEN": "'"$(cat ~/.config/irecall/mcp-api-token)"'"
+        }
+      }
+    }
+  }
+}'
+```
+
+Security note: OpenClaw's MCP server schema accepts literal `env` values. Avoid committing this config to a repository, and prefer a private machine-local config file. If your deployment supports service credentials or another secret injection layer, use that to provide `IRECALL_API_TOKEN` to the MCP process.
 
 ## Current limitations
 
 - stdio is the only bridge transport in this implementation
 - tool responses are currently returned as JSON text payloads
 - health intentionally omits bootstrap details such as UI pages, local paths, settings, and docs
-- concrete OpenClaw config may need adjustment for the installed OpenClaw MCP config schema
+- `IRECALL_API_TOKEN` is configured as a process env var; keep the OpenClaw config private if it contains the literal token
 - the bridge assumes the iRecall web server is already running
 
 ## Next likely steps
 
 1. Run a real local operator bootstrap: start web, issue token, launch MCP, call `irecall_health`
 2. Refine response formatting once the bridge contract settles
-3. Add a version-pinned OpenClaw config snippet after confirming the target config schema
+3. Replace the placeholder paths in the OpenClaw config example with release/install paths once packaging is finalized
