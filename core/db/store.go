@@ -210,11 +210,17 @@ func (s *Store) ListQuotesPage(limit, offset int) ([]QuoteRow, error) {
 		ORDER BY q.created_at DESC
 	`
 	var args []any
-	if limit > 0 {
+	switch {
+	case limit > 0:
 		query += `
 			LIMIT ? OFFSET ?
 		`
 		args = append(args, limit, offset)
+	case offset > 0:
+		query += `
+			LIMIT -1 OFFSET ?
+		`
+		args = append(args, offset)
 	}
 	rows, err := s.db.Query(query, args...)
 	if err != nil {

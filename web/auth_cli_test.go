@@ -125,7 +125,9 @@ func TestAuthCommandRejectsMissingPasswordStdin(t *testing.T) {
 
 func setupAuthCommandPassword(t *testing.T, root, password string) {
 	t.Helper()
+	originalRoot := config.RootPath()
 	config.SetRootPath(root)
+	t.Cleanup(func() { config.SetRootPath(originalRoot) })
 	if err := config.EnsureDirs(); err != nil {
 		t.Fatalf("EnsureDirs() error = %v", err)
 	}

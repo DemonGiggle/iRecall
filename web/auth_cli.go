@@ -148,5 +148,11 @@ func writeTokenFile(path, token string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return fmt.Errorf("create token file directory: %w", err)
 	}
-	return os.WriteFile(path, []byte(token+"\n"), 0o600)
+	if err := os.WriteFile(path, []byte(token+"\n"), 0o600); err != nil {
+		return fmt.Errorf("write token file: %w", err)
+	}
+	if err := os.Chmod(path, 0o600); err != nil {
+		return fmt.Errorf("set token file permissions: %w", err)
+	}
+	return nil
 }
