@@ -271,6 +271,20 @@ func (a *App) CreateAPIToken() (APITokenCreateResult, error) {
 	}, nil
 }
 
+func (a *App) CreateAPITokenWithPassword(password string) (APITokenCreateResult, error) {
+	if err := a.Login(password); err != nil {
+		return APITokenCreateResult{}, err
+	}
+	return a.CreateAPIToken()
+}
+
+func (a *App) RevokeAPITokenWithPassword(password string) error {
+	if err := a.Login(password); err != nil {
+		return err
+	}
+	return a.engine.RevokeWebAPIToken(a.context())
+}
+
 func (a *App) VerifyAPIToken(token string) (bool, error) {
 	return a.engine.VerifyWebAPIToken(a.context(), token)
 }

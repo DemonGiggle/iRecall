@@ -175,6 +175,7 @@ Common targets:
 ```bash
 make build
 make build-mcp
+make build-web
 make run
 make test
 make lint
@@ -197,6 +198,13 @@ MCP bridge build:
 
 ```bash
 make build-mcp
+```
+
+MCP token provisioning uses the web binary:
+
+```bash
+make build-web
+printf '%s\n' 'your-web-password' | ./bin/irecall-web auth issue-token --password-stdin --write-token-file ~/.config/irecall/mcp-api-token
 ```
 
 Frontend dependencies:

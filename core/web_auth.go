@@ -145,6 +145,14 @@ func (e *Engine) GenerateWebAPIToken(ctx context.Context) (string, WebAPITokenSt
 	}, nil
 }
 
+func (e *Engine) RevokeWebAPIToken(ctx context.Context) error {
+	_ = ctx
+	if err := e.store.SetSetting(webAPITokenHashSettingKey, ""); err != nil {
+		return err
+	}
+	return e.store.SetSetting(webAPITokenPrefixSettingKey, "")
+}
+
 func (e *Engine) VerifyWebAPIToken(ctx context.Context, token string) (bool, error) {
 	_ = ctx
 	token = strings.TrimSpace(token)
