@@ -63,11 +63,7 @@ func RegisterQuoteTools(srv *mcpserver.MCPServer, client *irecallapi.Client) {
 		if err != nil {
 			return mcpproto.NewToolResultErrorFromErr("Failed to list quotes from iRecall.", err), nil
 		}
-		return jsonResult(struct {
-			Limit  int                `json:"limit"`
-			Offset int                `json:"offset"`
-			Quotes []irecallapi.Quote `json:"quotes"`
-		}{Limit: limit, Offset: offset, Quotes: quotes})
+		return jsonResult(newListQuotesResponse(limit, offset, quotes))
 	}))
 
 	addTool := mcpproto.NewTool(
@@ -87,7 +83,7 @@ func RegisterQuoteTools(srv *mcpserver.MCPServer, client *irecallapi.Client) {
 		if err != nil {
 			return mcpproto.NewToolResultErrorFromErr("Failed to add a quote to iRecall.", err), nil
 		}
-		return jsonResult(quote)
+		return jsonResult(newQuoteResponse(quote))
 	}))
 
 	updateTool := mcpproto.NewTool(
@@ -114,7 +110,7 @@ func RegisterQuoteTools(srv *mcpserver.MCPServer, client *irecallapi.Client) {
 		if err != nil {
 			return mcpproto.NewToolResultErrorFromErr("Failed to update quote in iRecall.", err), nil
 		}
-		return jsonResult(quote)
+		return jsonResult(newQuoteResponse(quote))
 	}))
 
 	deleteTool := mcpproto.NewTool(
@@ -171,6 +167,6 @@ func RegisterQuoteTools(srv *mcpserver.MCPServer, client *irecallapi.Client) {
 		if err != nil {
 			return mcpproto.NewToolResultErrorFromErr("Failed to save the recall result as a quote in iRecall.", err), nil
 		}
-		return jsonResult(quote)
+		return jsonResult(newQuoteResponse(quote))
 	}))
 }

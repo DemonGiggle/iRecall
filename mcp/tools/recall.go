@@ -31,6 +31,6 @@ func RegisterRecallTool(srv *mcpserver.MCPServer, client *irecallapi.Client) {
 		if err != nil {
 			return mcpproto.NewToolResultErrorFromErr("Failed to run recall in iRecall.", err), nil
 		}
-		return jsonResult(result)
+		return jsonResult(newRecallResultResponse(result))
 	}))
 }

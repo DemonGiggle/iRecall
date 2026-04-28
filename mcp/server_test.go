@@ -16,6 +16,11 @@ import (
 
 func TestMCPToolsCallAuthenticatedRESTAPI(t *testing.T) {
 	const token = "irc_test_token"
+	const (
+		quoteCreatedAt   = "2026-04-27T16:00:00Z"
+		quoteUpdatedAt   = "2026-04-27T16:05:00Z"
+		historyCreatedAt = "2026-04-27T16:10:00Z"
+	)
 
 	var seen []restCall
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -40,7 +45,7 @@ func TestMCPToolsCallAuthenticatedRESTAPI(t *testing.T) {
 				http.NotFound(w, r)
 				return
 			}
-			_, _ = w.Write([]byte(`[{"ID":7,"Content":"stored quote","Tags":["test"]}]`))
+			_, _ = w.Write([]byte(`[{"ID":7,"GlobalID":"quote-7","Content":"stored quote","Tags":["test"],"Version":2,"IsOwnedByMe":true,"CreatedAt":"` + quoteCreatedAt + `","UpdatedAt":"` + quoteUpdatedAt + `"}]`))
 		case "/api/app/add-quote":
 			if r.Method != http.MethodPost {
 				http.NotFound(w, r)
@@ -53,7 +58,7 @@ func TestMCPToolsCallAuthenticatedRESTAPI(t *testing.T) {
 				t.Fatalf("decode add quote request: %v", err)
 			}
 			call.Body = req.Content
-			_, _ = w.Write([]byte(`{"ID":8,"Content":"` + req.Content + `"}`))
+			_, _ = w.Write([]byte(`{"ID":8,"GlobalID":"quote-8","Content":"` + req.Content + `","Tags":["captured"],"CreatedAt":"` + quoteCreatedAt + `","UpdatedAt":"` + quoteUpdatedAt + `"}`))
 		case "/api/app/run-recall":
 			if r.Method != http.MethodPost {
 				http.NotFound(w, r)
@@ -66,7 +71,7 @@ func TestMCPToolsCallAuthenticatedRESTAPI(t *testing.T) {
 				t.Fatalf("decode recall request: %v", err)
 			}
 			call.Body = req.Question
-			_, _ = w.Write([]byte(`{"question":"` + req.Question + `","keywords":["memory"],"quotes":[],"response":"grounded answer"}`))
+			_, _ = w.Write([]byte(`{"question":"` + req.Question + `","keywords":["memory"],"quotes":[{"ID":7,"GlobalID":"quote-7","Content":"stored quote","Tags":["test"],"CreatedAt":"` + quoteCreatedAt + `","UpdatedAt":"` + quoteUpdatedAt + `"}],"response":"grounded answer"}`))
 		case "/api/app/save-recall-as-quote":
 			if r.Method != http.MethodPost {
 				http.NotFound(w, r)
@@ -81,7 +86,7 @@ func TestMCPToolsCallAuthenticatedRESTAPI(t *testing.T) {
 				t.Fatalf("decode save recall request: %v", err)
 			}
 			call.Body = req.Question + "|" + req.Response
-			_, _ = w.Write([]byte(`{"ID":9,"Content":"saved recall"}`))
+			_, _ = w.Write([]byte(`{"ID":9,"GlobalID":"quote-9","Content":"saved recall","Tags":["memory"],"CreatedAt":"` + quoteCreatedAt + `","UpdatedAt":"` + quoteUpdatedAt + `"}`))
 		case "/api/app/update-quote":
 			if r.Method != http.MethodPost {
 				http.NotFound(w, r)
@@ -95,7 +100,7 @@ func TestMCPToolsCallAuthenticatedRESTAPI(t *testing.T) {
 				t.Fatalf("decode update quote request: %v", err)
 			}
 			call.Body = req.Content
-			_, _ = w.Write([]byte(`{"ID":10,"Content":"` + req.Content + `"}`))
+			_, _ = w.Write([]byte(`{"ID":10,"GlobalID":"quote-10","Content":"` + req.Content + `","CreatedAt":"` + quoteCreatedAt + `","UpdatedAt":"` + quoteUpdatedAt + `"}`))
 		case "/api/app/delete-quotes":
 			if r.Method != http.MethodPost {
 				http.NotFound(w, r)
@@ -114,14 +119,14 @@ func TestMCPToolsCallAuthenticatedRESTAPI(t *testing.T) {
 				http.NotFound(w, r)
 				return
 			}
-			_, _ = w.Write([]byte(`[{"ID":11,"Question":"old question","Response":"old response"}]`))
+			_, _ = w.Write([]byte(`[{"ID":11,"Question":"old question","Response":"old response","CreatedAt":"` + historyCreatedAt + `"}]`))
 		case "/api/app/get-recall-history":
 			if r.Method != http.MethodGet {
 				http.NotFound(w, r)
 				return
 			}
 			call.Body = r.URL.Query().Get("id")
-			_, _ = w.Write([]byte(`{"ID":11,"Question":"old question","Response":"old response","Quotes":[{"ID":7,"Content":"stored quote"}]}`))
+			_, _ = w.Write([]byte(`{"ID":11,"Question":"old question","Response":"old response","CreatedAt":"` + historyCreatedAt + `","Quotes":[{"ID":7,"GlobalID":"quote-7","Content":"stored quote","Tags":["test"],"CreatedAt":"` + quoteCreatedAt + `","UpdatedAt":"` + quoteUpdatedAt + `"}]}`))
 		case "/api/app/delete-recall-history":
 			if r.Method != http.MethodPost {
 				http.NotFound(w, r)
@@ -165,14 +170,45 @@ func TestMCPToolsCallAuthenticatedRESTAPI(t *testing.T) {
 	assertToolTextContains(t, healthResult, `"ok": true`)
 	assertToolTextNotContains(t, healthResult, `"pages"`)
 	assertToolTextNotContains(t, healthResult, `"paths"`)
-	assertToolTextContains(t, callTool(t, client, "irecall_list_quotes", map[string]any{"limit": 10, "offset": 20}), "stored quote")
-	assertToolTextContains(t, callTool(t, client, "irecall_add_quote", map[string]any{"content": "new note"}), "new note")
-	assertToolTextContains(t, callTool(t, client, "irecall_recall", map[string]any{"question": "what did I save?"}), "grounded answer")
-	assertToolTextContains(t, callTool(t, client, "irecall_save_recall_as_quote", map[string]any{"question": "q", "response": "r", "keywords": []string{"k"}}), "saved recall")
-	assertToolTextContains(t, callTool(t, client, "irecall_update_quote", map[string]any{"id": 10, "content": "updated note"}), "updated note")
+	listQuotesResult := callTool(t, client, "irecall_list_quotes", map[string]any{"limit": 10, "offset": 20})
+	assertToolTextContains(t, listQuotesResult, `"quotes": [`)
+	assertToolTextContains(t, listQuotesResult, `"id": 7`)
+	assertToolTextContains(t, listQuotesResult, `"globalId": "quote-7"`)
+	assertToolTextContains(t, listQuotesResult, `"content": "stored quote"`)
+	assertToolTextContains(t, listQuotesResult, `"createdAt": "`+quoteCreatedAt+`"`)
+	assertToolTextNotContainsAny(t, listQuotesResult, []string{`"ID":`, `"GlobalID":`, `"Content":`, `"CreatedAt":`, `"UpdatedAt":`})
+	addQuoteResult := callTool(t, client, "irecall_add_quote", map[string]any{"content": "new note"})
+	assertToolTextContains(t, addQuoteResult, `"id": 8`)
+	assertToolTextContains(t, addQuoteResult, `"content": "new note"`)
+	assertToolTextContains(t, addQuoteResult, `"createdAt": "`+quoteCreatedAt+`"`)
+	assertToolTextNotContainsAny(t, addQuoteResult, []string{`"ID":`, `"GlobalID":`, `"Content":`, `"CreatedAt":`, `"UpdatedAt":`})
+	recallResult := callTool(t, client, "irecall_recall", map[string]any{"question": "what did I save?"})
+	assertToolTextContains(t, recallResult, `"response": "grounded answer"`)
+	assertToolTextContains(t, recallResult, `"quotes": [`)
+	assertToolTextContains(t, recallResult, `"id": 7`)
+	assertToolTextContains(t, recallResult, `"globalId": "quote-7"`)
+	assertToolTextNotContainsAny(t, recallResult, []string{`"ID":`, `"GlobalID":`, `"Content":`, `"CreatedAt":`, `"UpdatedAt":`})
+	saveRecallResult := callTool(t, client, "irecall_save_recall_as_quote", map[string]any{"question": "q", "response": "r", "keywords": []string{"k"}})
+	assertToolTextContains(t, saveRecallResult, `"id": 9`)
+	assertToolTextContains(t, saveRecallResult, `"content": "saved recall"`)
+	assertToolTextNotContainsAny(t, saveRecallResult, []string{`"ID":`, `"GlobalID":`, `"Content":`, `"CreatedAt":`, `"UpdatedAt":`})
+	updateQuoteResult := callTool(t, client, "irecall_update_quote", map[string]any{"id": 10, "content": "updated note"})
+	assertToolTextContains(t, updateQuoteResult, `"id": 10`)
+	assertToolTextContains(t, updateQuoteResult, `"content": "updated note"`)
+	assertToolTextNotContainsAny(t, updateQuoteResult, []string{`"ID":`, `"GlobalID":`, `"Content":`, `"CreatedAt":`, `"UpdatedAt":`})
 	assertToolTextContains(t, callTool(t, client, "irecall_delete_quotes", map[string]any{"ids": []int64{10, 11}}), `"ok": true`)
-	assertToolTextContains(t, callTool(t, client, "irecall_list_history", nil), "old question")
-	assertToolTextContains(t, callTool(t, client, "irecall_get_history", map[string]any{"id": 11}), "stored quote")
+	listHistoryResult := callTool(t, client, "irecall_list_history", nil)
+	assertToolTextContains(t, listHistoryResult, `"id": 11`)
+	assertToolTextContains(t, listHistoryResult, `"question": "old question"`)
+	assertToolTextContains(t, listHistoryResult, `"createdAt": "`+historyCreatedAt+`"`)
+	assertToolTextNotContainsAny(t, listHistoryResult, []string{`"ID":`, `"Question":`, `"Response":`, `"CreatedAt":`})
+	getHistoryResult := callTool(t, client, "irecall_get_history", map[string]any{"id": 11})
+	assertToolTextContains(t, getHistoryResult, `"id": 11`)
+	assertToolTextContains(t, getHistoryResult, `"question": "old question"`)
+	assertToolTextContains(t, getHistoryResult, `"quotes": [`)
+	assertToolTextContains(t, getHistoryResult, `"globalId": "quote-7"`)
+	assertToolTextContains(t, getHistoryResult, `"createdAt": "`+historyCreatedAt+`"`)
+	assertToolTextNotContainsAny(t, getHistoryResult, []string{`"ID":`, `"Question":`, `"Response":`, `"CreatedAt":`, `"GlobalID":`, `"Content":`})
 	assertToolTextContains(t, callTool(t, client, "irecall_delete_history", map[string]any{"ids": []int64{11}}), `"ok": true`)
 
 	want := []restCall{
@@ -275,6 +311,13 @@ func assertToolTextNotContains(t *testing.T, result *mcpproto.CallToolResult, un
 	t.Helper()
 	if strings.Contains(toolText(result), unwanted) {
 		t.Fatalf("tool result %#v unexpectedly contains %q", result, unwanted)
+	}
+}
+
+func assertToolTextNotContainsAny(t *testing.T, result *mcpproto.CallToolResult, unwanted []string) {
+	t.Helper()
+	for _, value := range unwanted {
+		assertToolTextNotContains(t, result, value)
 	}
 }
 

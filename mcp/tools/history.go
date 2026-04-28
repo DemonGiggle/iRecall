@@ -26,7 +26,7 @@ func RegisterHistoryTools(srv *mcpserver.MCPServer, client *irecallapi.Client) {
 		if err != nil {
 			return mcpproto.NewToolResultErrorFromErr("Failed to list iRecall history.", err), nil
 		}
-		return jsonResult(history)
+		return jsonResult(newRecallHistorySummaryResponses(history))
 	})
 
 	getTool := mcpproto.NewTool(
@@ -45,7 +45,7 @@ func RegisterHistoryTools(srv *mcpserver.MCPServer, client *irecallapi.Client) {
 		if err != nil {
 			return mcpproto.NewToolResultErrorFromErr("Failed to get iRecall history entry.", err), nil
 		}
-		return jsonResult(entry)
+		return jsonResult(newRecallHistoryEntryResponse(entry))
 	}))
 
 	deleteTool := mcpproto.NewTool(

@@ -39,6 +39,129 @@ This keeps the integration decoupled:
 - `irecall_get_history` — gets one saved recall-history entry with referenced quotes
 - `irecall_delete_history` — deletes one or more recall-history entries by ID
 
+## Response contract
+
+MCP tool results are currently returned as JSON text payloads. Quote, recall, and recall-history payloads are normalized by the bridge to stable lowerCamelCase field names even when the backing web API still uses Go-exported struct fields.
+
+Representative `irecall_list_quotes` response:
+
+```json
+{
+  "limit": 10,
+  "offset": 20,
+  "quotes": [
+    {
+      "id": 7,
+      "globalId": "quote-7",
+      "authorUserId": "",
+      "authorName": "",
+      "sourceUserId": "",
+      "sourceName": "",
+      "sourceBackend": "",
+      "sourceNamespace": "",
+      "sourceEntityType": "",
+      "sourceEntityId": "",
+      "sourceLabel": "",
+      "sourceUrl": "",
+      "content": "stored quote",
+      "tags": [
+        "test"
+      ],
+      "version": 2,
+      "isOwnedByMe": true,
+      "createdAt": "2026-04-27T16:00:00Z",
+      "updatedAt": "2026-04-27T16:05:00Z"
+    }
+  ]
+}
+```
+
+Representative `irecall_recall` response:
+
+```json
+{
+  "question": "what did I save?",
+  "keywords": [
+    "memory"
+  ],
+  "quotes": [
+    {
+      "id": 7,
+      "globalId": "quote-7",
+      "authorUserId": "",
+      "authorName": "",
+      "sourceUserId": "",
+      "sourceName": "",
+      "sourceBackend": "",
+      "sourceNamespace": "",
+      "sourceEntityType": "",
+      "sourceEntityId": "",
+      "sourceLabel": "",
+      "sourceUrl": "",
+      "content": "stored quote",
+      "tags": [
+        "test"
+      ],
+      "version": 2,
+      "isOwnedByMe": true,
+      "createdAt": "2026-04-27T16:00:00Z",
+      "updatedAt": "2026-04-27T16:05:00Z"
+    }
+  ],
+  "response": "grounded answer"
+}
+```
+
+Representative `irecall_list_history` response:
+
+```json
+[
+  {
+    "id": 11,
+    "question": "old question",
+    "response": "old response",
+    "createdAt": "2026-04-27T16:10:00Z"
+  }
+]
+```
+
+Representative `irecall_get_history` response:
+
+```json
+{
+  "id": 11,
+  "question": "old question",
+  "response": "old response",
+  "createdAt": "2026-04-27T16:10:00Z",
+  "quotes": [
+    {
+      "id": 7,
+      "globalId": "quote-7",
+      "authorUserId": "",
+      "authorName": "",
+      "sourceUserId": "",
+      "sourceName": "",
+      "sourceBackend": "",
+      "sourceNamespace": "",
+      "sourceEntityType": "",
+      "sourceEntityId": "",
+      "sourceLabel": "",
+      "sourceUrl": "",
+      "content": "stored quote",
+      "tags": [
+        "test"
+      ],
+      "version": 2,
+      "isOwnedByMe": true,
+      "createdAt": "2026-04-27T16:00:00Z",
+      "updatedAt": "2026-04-27T16:05:00Z"
+    }
+  ]
+}
+```
+
+`irecall_health` and the delete tools already return small lowerCamelCase objects such as `{"ok":true}` and are unchanged by this contract stabilization. Timestamps continue to use Go's standard RFC3339 JSON encoding for `time.Time`.
+
 ## Required environment for `irecall-mcp`
 
 - `IRECALL_API_TOKEN` — required bearer token used for authenticated REST calls
@@ -189,5 +312,5 @@ make test-mcp-bootstrap
 
 ## Next likely steps
 
-1. Refine response formatting once the bridge contract settles
+1. Consider moving from JSON text payloads to richer MCP content types once the client stack supports them without breaking the documented JSON contract
 2. Replace the placeholder paths in the OpenClaw config example with release/install paths once packaging is finalized
