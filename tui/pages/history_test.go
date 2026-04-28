@@ -159,8 +159,8 @@ func TestHistoryPagePageKeysMoveListCursor(t *testing.T) {
 	model, _ = page.Update(tea.KeyMsg{Type: tea.KeyPgDown})
 	page = model
 
-	if page.selection.cursor != 2 {
-		t.Fatalf("cursor after pgdown = %d, want 2", page.selection.cursor)
+	if page.selection.cursor != 1 {
+		t.Fatalf("cursor after pgdown = %d, want 1", page.selection.cursor)
 	}
 	if page.listViewport.YOffset == 0 {
 		t.Fatalf("list viewport y offset = %d, want > 0 after pgdown", page.listViewport.YOffset)
@@ -200,8 +200,8 @@ func TestHistoryPagePageKeysMoveReferenceQuoteCursor(t *testing.T) {
 	model, _ := page.Update(tea.KeyMsg{Type: tea.KeyPgDown})
 	page = model
 
-	if page.quoteFns.cursor != 2 {
-		t.Fatalf("reference quote cursor after pgdown = %d, want 2", page.quoteFns.cursor)
+	if page.quoteFns.cursor != 1 {
+		t.Fatalf("reference quote cursor after pgdown = %d, want 1", page.quoteFns.cursor)
 	}
 	if page.refViewport.YOffset == 0 {
 		t.Fatalf("reference quotes y offset = %d, want > 0 after pgdown", page.refViewport.YOffset)

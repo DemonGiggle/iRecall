@@ -263,12 +263,13 @@ func (w *quoteListWidget) Update(msg tea.Msg) (quoteListAction, tea.Cmd) {
 				break
 			}
 			prevOffset := w.listViewport.YOffset
-			w.listViewport, _ = w.listViewport.Update(msg)
+			var cmd tea.Cmd
+			w.listViewport, cmd = w.listViewport.Update(msg)
 			if w.listViewport.YOffset != prevOffset {
 				w.selection.syncToViewportOffset(w.quotes, w.listViewport.YOffset)
 				w.refresh()
 			}
-			return quoteListAction{}, nil
+			return quoteListAction{}, cmd
 		case "x":
 			w.selection.toggleCurrent(w.quotes)
 			w.refresh()
@@ -506,24 +507,21 @@ func quoteEntryLineRange(quotes []core.Quote, index int) (start, end int) {
 }
 
 func quoteIndexAtOrAfterLine(quotes []core.Quote, offset int) int {
-	if len(quotes) == 0 {
+	if len(quotes) == 0 || offset <= 0 {
 		return 0
 	}
-	if offset <= 0 {
-		return 0
-	}
-	fallback := -1
-	for i := range quotes {
-		start, end := quoteEntryLineRange(quotes, i)
-		if start >= offset {
+	line := 0
+	for i, q := range quotes {
+		line += 2 // preview + tags
+		if !q.IsOwnedByMe && q.SourceName != "" {
+			line++
+		}
+		if offset < line {
 			return i
 		}
-		if fallback == -1 && end >= offset {
-			fallback = i
+		if i < len(quotes)-1 {
+			line++ // separator
 		}
-	}
-	if fallback >= 0 {
-		return fallback
 	}
 	return len(quotes) - 1
 }

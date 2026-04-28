@@ -223,12 +223,13 @@ func (p HistoryPage) Update(msg tea.Msg) (HistoryPage, tea.Cmd) {
 				return p, nil
 			case "pgup", "pgdown":
 				prevOffset := p.listViewport.YOffset
-				p.listViewport, _ = p.listViewport.Update(msg)
+				var cmd tea.Cmd
+				p.listViewport, cmd = p.listViewport.Update(msg)
 				if p.listViewport.YOffset != prevOffset {
 					p.selection.syncToViewportOffset(p.entries, p.listViewport.YOffset)
 					p.listViewport.SetContent(p.renderList())
 				}
-				return p, nil
+				return p, cmd
 			case "x":
 				p.selection.toggleCurrent(p.entries)
 				p.listViewport.SetContent(p.renderList())
@@ -291,12 +292,13 @@ func (p HistoryPage) Update(msg tea.Msg) (HistoryPage, tea.Cmd) {
 			case "pgup", "pgdown":
 				if p.focus == historyFocusReferenceQuotes {
 					prevOffset := p.refViewport.YOffset
-					p.refViewport, _ = p.refViewport.Update(msg)
+					var cmd tea.Cmd
+					p.refViewport, cmd = p.refViewport.Update(msg)
 					if p.refViewport.YOffset != prevOffset {
 						p.quoteFns.syncToViewportOffset(p.currentQuotes(), p.refViewport.YOffset)
 						p.refreshReferenceQuotes()
 					}
-					return p, nil
+					return p, cmd
 				}
 			case "x":
 				if p.focus == historyFocusReferenceQuotes {
@@ -596,45 +598,18 @@ func formatHistoryTime(t time.Time) string {
 	return t.Local().Format("2006-01-02 15:04")
 }
 
-func historyEntryLineRange(entries []core.RecallHistorySummary, index int) (start, end int) {
-	if index < 0 || index >= len(entries) {
-		return -1, -1
-	}
-	line := 0
-	for i := range entries {
-		itemStart := line
-		line++ // question preview
-		line++ // response preview
-		itemEnd := line - 1
-		if i == index {
-			return itemStart, itemEnd
-		}
-		if i < len(entries)-1 {
-			line++ // separator
-		}
-	}
-	return -1, -1
-}
-
 func historyEntryIndexAtOrAfterLine(entries []core.RecallHistorySummary, offset int) int {
-	if len(entries) == 0 {
+	if len(entries) == 0 || offset <= 0 {
 		return 0
 	}
-	if offset <= 0 {
-		return 0
-	}
-	fallback := -1
 	for i := range entries {
-		start, end := historyEntryLineRange(entries, i)
-		if start >= offset {
+		offset -= 2 // question + response preview
+		if offset < 0 {
 			return i
 		}
-		if fallback == -1 && end >= offset {
-			fallback = i
+		if i < len(entries)-1 {
+			offset-- // separator
 		}
-	}
-	if fallback >= 0 {
-		return fallback
 	}
 	return len(entries) - 1
 }
