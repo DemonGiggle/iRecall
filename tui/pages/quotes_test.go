@@ -199,6 +199,41 @@ func TestQuotesPageCursorMovementScrollsViewport(t *testing.T) {
 	}
 }
 
+func TestQuotesPagePageKeysMoveListCursor(t *testing.T) {
+	t.Parallel()
+
+	page := NewQuotesPage(nil, 80, 12)
+	page.loading = false
+	page.quoteList.SetQuotes([]core.Quote{
+		{ID: 1, Content: "first quote"},
+		{ID: 2, Content: "second quote"},
+		{ID: 3, Content: "third quote"},
+		{ID: 4, Content: "fourth quote"},
+		{ID: 5, Content: "fifth quote"},
+	})
+	page.quoteList.SetTitle("Stored Quotes (5)")
+
+	model, _ := page.Update(tea.KeyMsg{Type: tea.KeyPgDown})
+	page = model
+
+	if page.quoteList.currentCursor() != 2 {
+		t.Fatalf("cursor after pgdown = %d, want 2", page.quoteList.currentCursor())
+	}
+	if page.quoteList.yOffset() == 0 {
+		t.Fatalf("viewport y offset = %d, want > 0 after pgdown", page.quoteList.yOffset())
+	}
+
+	model, _ = page.Update(tea.KeyMsg{Type: tea.KeyPgUp})
+	page = model
+
+	if page.quoteList.currentCursor() != 0 {
+		t.Fatalf("cursor after pgup = %d, want 0", page.quoteList.currentCursor())
+	}
+	if page.quoteList.yOffset() != 0 {
+		t.Fatalf("viewport y offset after pgup = %d, want 0", page.quoteList.yOffset())
+	}
+}
+
 func TestQuotesPageCanOpenAddQuoteModal(t *testing.T) {
 	t.Parallel()
 

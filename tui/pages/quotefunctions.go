@@ -12,7 +12,7 @@ import (
 	"github.com/gigol/irecall/tui/styles"
 )
 
-const quoteListEntryActions = "↑/↓: Move   x: Select   a: Select all   u: Deselect all   e: Edit   d: Delete   s: Share"
+const quoteListEntryActions = "↑/↓: Move   pgup/pgdn: Page   x: Select   a: Select all   u: Deselect all   e: Edit   d: Delete   s: Share"
 const quoteDetailEntryActions = "enter/esc: Back   ↑/↓: Scroll   pgup/pgdn: Page   x: Select   e: Edit   d: Delete   s: Share"
 
 type quoteListActionKind int
@@ -74,6 +74,14 @@ func (s *quoteSelection) move(delta int, quotes []core.Quote) {
 	if s.cursor >= len(quotes) {
 		s.cursor = len(quotes) - 1
 	}
+}
+
+func (s *quoteSelection) syncToViewportOffset(quotes []core.Quote, offset int) {
+	if len(quotes) == 0 {
+		s.cursor = 0
+		return
+	}
+	s.cursor = quoteIndexAtOrAfterLine(quotes, offset)
 }
 
 func (s *quoteSelection) current(quotes []core.Quote) *core.Quote {
@@ -249,6 +257,17 @@ func (w *quoteListWidget) Update(msg tea.Msg) (quoteListAction, tea.Cmd) {
 			}
 			w.selection.move(1, w.quotes)
 			w.refresh()
+			return quoteListAction{}, nil
+		case "pgup", "pgdown":
+			if w.detail {
+				break
+			}
+			prevOffset := w.listViewport.YOffset
+			w.listViewport, _ = w.listViewport.Update(msg)
+			if w.listViewport.YOffset != prevOffset {
+				w.selection.syncToViewportOffset(w.quotes, w.listViewport.YOffset)
+				w.refresh()
+			}
 			return quoteListAction{}, nil
 		case "x":
 			w.selection.toggleCurrent(w.quotes)
@@ -484,6 +503,29 @@ func quoteEntryLineRange(quotes []core.Quote, index int) (start, end int) {
 		}
 	}
 	return -1, -1
+}
+
+func quoteIndexAtOrAfterLine(quotes []core.Quote, offset int) int {
+	if len(quotes) == 0 {
+		return 0
+	}
+	if offset <= 0 {
+		return 0
+	}
+	fallback := -1
+	for i := range quotes {
+		start, end := quoteEntryLineRange(quotes, i)
+		if start >= offset {
+			return i
+		}
+		if fallback == -1 && end >= offset {
+			fallback = i
+		}
+	}
+	if fallback >= 0 {
+		return fallback
+	}
+	return len(quotes) - 1
 }
 
 func previewTags(tags []string, limit int) string {
