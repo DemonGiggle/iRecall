@@ -204,7 +204,7 @@ MCP token provisioning uses the web binary:
 
 ```bash
 make build-web
-printf '%s\n' 'your-web-password' | ./bin/irecall-web auth issue-token --password-stdin --write-token-file ~/.config/irecall/mcp-api-token
+./bin/irecall-web auth issue-token --write-token-file ~/.config/irecall/mcp-api-token
 ```
 
 Frontend dependencies:

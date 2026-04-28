@@ -14,18 +14,16 @@ import (
 	"github.com/gigol/irecall/config"
 )
 
-func TestAuthCommandIssueTokenWithPasswordStdinAndTokenFile(t *testing.T) {
+func TestAuthCommandIssueTokenWithoutWebPasswordAndWritesTokenFile(t *testing.T) {
 	root := t.TempDir()
-	setupAuthCommandPassword(t, root, "Secret-pass-123!")
 
 	tokenPath := filepath.Join(t.TempDir(), "secrets", "irecall-api-token")
 	var stdout bytes.Buffer
 	err := runAuthCommand([]string{
 		"issue-token",
 		"--data-path", root,
-		"--password-stdin",
 		"--write-token-file", tokenPath,
-	}, strings.NewReader("Secret-pass-123!\n"), &stdout)
+	}, strings.NewReader(""), &stdout)
 	if err != nil {
 		t.Fatalf("runAuthCommand(issue-token) error = %v", err)
 	}
@@ -62,15 +60,14 @@ func TestAuthCommandIssueTokenWithPasswordStdinAndTokenFile(t *testing.T) {
 	}
 }
 
-func TestAuthCommandRotateAndRevokeToken(t *testing.T) {
+func TestAuthCommandRotateAndRevokeTokenWithoutWebPassword(t *testing.T) {
 	root := t.TempDir()
-	setupAuthCommandPassword(t, root, "Secret-pass-123!")
 
-	firstToken, err := issueTokenForTest(root, "Secret-pass-123!")
+	firstToken, err := issueTokenForTest(root)
 	if err != nil {
 		t.Fatalf("issue first token: %v", err)
 	}
-	secondToken, err := issueTokenForTest(root, "Secret-pass-123!")
+	secondToken, err := issueTokenForTest(root)
 	if err != nil {
 		t.Fatalf("rotate token: %v", err)
 	}
@@ -99,7 +96,7 @@ func TestAuthCommandRotateAndRevokeToken(t *testing.T) {
 	runtimeApp.Shutdown(context.Background())
 
 	var stdout bytes.Buffer
-	if err := runAuthCommand([]string{"revoke-token", "--data-path", root, "--password-stdin"}, strings.NewReader("Secret-pass-123!\n"), &stdout); err != nil {
+	if err := runAuthCommand([]string{"revoke-token", "--data-path", root}, strings.NewReader(""), &stdout); err != nil {
 		t.Fatalf("runAuthCommand(revoke-token) error = %v", err)
 	}
 	runtimeApp, err = irecallapp.NewApp(root)
@@ -116,41 +113,42 @@ func TestAuthCommandRotateAndRevokeToken(t *testing.T) {
 	}
 }
 
-func TestAuthCommandRejectsMissingPasswordStdin(t *testing.T) {
-	err := runAuthCommand([]string{"issue-token", "--data-path", t.TempDir()}, strings.NewReader(""), &bytes.Buffer{})
-	if err == nil {
-		t.Fatalf("runAuthCommand() error = nil, want missing --password-stdin error")
-	}
-}
-
-func setupAuthCommandPassword(t *testing.T, root, password string) {
-	t.Helper()
-	originalRoot := config.RootPath()
-	config.SetRootPath(root)
-	t.Cleanup(func() { config.SetRootPath(originalRoot) })
-	if err := config.EnsureDirs(); err != nil {
-		t.Fatalf("EnsureDirs() error = %v", err)
-	}
-	runtimeApp, err := irecallapp.NewApp(root)
+func TestAuthCommandAcceptsDeprecatedPasswordStdinWithoutPasswordConfigured(t *testing.T) {
+	root := t.TempDir()
+	err := runAuthCommand([]string{"issue-token", "--data-path", root, "--password-stdin"}, strings.NewReader("legacy-password\n"), &bytes.Buffer{})
 	if err != nil {
-		t.Fatalf("NewApp() error = %v", err)
-	}
-	defer runtimeApp.Shutdown(context.Background())
-	if err := runtimeApp.SetupPassword(password, password); err != nil {
-		t.Fatalf("SetupPassword() error = %v", err)
+		t.Fatalf("runAuthCommand() with deprecated --password-stdin error = %v", err)
 	}
 }
 
-func issueTokenForTest(root, password string) (string, error) {
+func TestAuthCommandDataPathDoesNotPersistPreferredRoot(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(t.TempDir(), "xdg-config"))
+	originalRoot := config.RootPath()
+	config.SetRootPath("")
+	t.Cleanup(func() { config.SetRootPath(originalRoot) })
+
+	root := t.TempDir()
+	if err := runAuthCommand([]string{"issue-token", "--data-path", root}, strings.NewReader(""), &bytes.Buffer{}); err != nil {
+		t.Fatalf("runAuthCommand(issue-token) error = %v", err)
+	}
+	preferredRoot, err := config.LoadPreferredRootPath()
+	if err != nil {
+		t.Fatalf("LoadPreferredRootPath() error = %v", err)
+	}
+	if preferredRoot != "" {
+		t.Fatalf("preferred root = %q, want empty", preferredRoot)
+	}
+}
+
+func issueTokenForTest(root string) (string, error) {
 	tokenPath := filepath.Join(os.TempDir(), "irecall-token-test-"+filepath.Base(root))
 	defer os.Remove(tokenPath)
 	var stdout bytes.Buffer
 	if err := runAuthCommand([]string{
 		"rotate-token",
 		"--data-path", root,
-		"--password-stdin",
 		"--write-token-file", tokenPath,
-	}, strings.NewReader(password+"\n"), &stdout); err != nil {
+	}, strings.NewReader(""), &stdout); err != nil {
 		return "", err
 	}
 	data, err := os.ReadFile(tokenPath)

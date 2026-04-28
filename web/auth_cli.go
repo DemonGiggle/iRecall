@@ -42,7 +42,7 @@ func runAuthCommand(args []string, stdin io.Reader, stdout io.Writer) error {
 	fs.SetOutput(io.Discard)
 	opts := authCLIOptions{}
 	fs.StringVar(&opts.DataPath, "data-path", "", "store database, config, and logs under this root path")
-	fs.BoolVar(&opts.PasswordStdin, "password-stdin", false, "read the web password from stdin")
+	fs.BoolVar(&opts.PasswordStdin, "password-stdin", false, "deprecated no-op; token management no longer requires the web password")
 	fs.StringVar(&opts.WriteTokenFile, "write-token-file", "", "write the issued token to a file with mode 0600")
 	if err := fs.Parse(args[1:]); err != nil {
 		return err
@@ -50,16 +50,13 @@ func runAuthCommand(args []string, stdin io.Reader, stdout io.Writer) error {
 
 	switch subcommand {
 	case "issue-token", "rotate-token":
-		password, err := readAuthCommandPassword(stdin, opts.PasswordStdin)
-		if err != nil {
-			return err
-		}
+		drainDeprecatedPassword(stdin, opts.PasswordStdin)
 		runtimeApp, err := openAuthCommandApp(opts.DataPath)
 		if err != nil {
 			return err
 		}
 		defer runtimeApp.Shutdown(nil)
-		result, err := runtimeApp.CreateAPITokenWithPassword(password)
+		result, err := runtimeApp.CreateAPIToken()
 		if err != nil {
 			return err
 		}
@@ -74,16 +71,13 @@ func runAuthCommand(args []string, stdin io.Reader, stdout io.Writer) error {
 		fmt.Fprintf(stdout, "token prefix: %s\n", result.TokenPrefix)
 		return nil
 	case "revoke-token":
-		password, err := readAuthCommandPassword(stdin, opts.PasswordStdin)
-		if err != nil {
-			return err
-		}
+		drainDeprecatedPassword(stdin, opts.PasswordStdin)
 		runtimeApp, err := openAuthCommandApp(opts.DataPath)
 		if err != nil {
 			return err
 		}
 		defer runtimeApp.Shutdown(nil)
-		if err := runtimeApp.RevokeAPITokenWithPassword(password); err != nil {
+		if err := runtimeApp.RevokeAPIToken(); err != nil {
 			return err
 		}
 		fmt.Fprintln(stdout, "token revoked")
@@ -110,6 +104,9 @@ func runAuthCommand(args []string, stdin io.Reader, stdout io.Writer) error {
 }
 
 func openAuthCommandApp(dataPath string) (*irecallapp.App, error) {
+	originalRoot := config.RootPath()
+	defer config.SetRootPath(originalRoot)
+
 	if strings.TrimSpace(dataPath) != "" {
 		config.SetRootPath(dataPath)
 	} else if _, err := config.ApplyPreferredRootPath(); err != nil {
@@ -125,19 +122,11 @@ func openAuthCommandApp(dataPath string) (*irecallapp.App, error) {
 	return runtimeApp, nil
 }
 
-func readAuthCommandPassword(stdin io.Reader, passwordStdin bool) (string, error) {
+func drainDeprecatedPassword(stdin io.Reader, passwordStdin bool) {
 	if !passwordStdin {
-		return "", errors.New("--password-stdin is required for non-interactive auth token commands")
+		return
 	}
-	data, err := io.ReadAll(io.LimitReader(stdin, 64*1024))
-	if err != nil {
-		return "", fmt.Errorf("read password: %w", err)
-	}
-	password := strings.TrimRight(string(data), "\r\n")
-	if strings.TrimSpace(password) == "" {
-		return "", errors.New("password from stdin is empty")
-	}
-	return password, nil
+	_, _ = io.Copy(io.Discard, io.LimitReader(stdin, 64*1024))
 }
 
 func writeTokenFile(path, token string) error {

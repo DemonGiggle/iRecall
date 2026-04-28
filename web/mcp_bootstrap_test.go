@@ -19,18 +19,16 @@ import (
 )
 
 func TestOperatorBootstrapIssuesTokenAndMCPHealthChecksRealWebServer(t *testing.T) {
-	root := t.TempDir()
-	password := "Secret-pass-123!"
-	setupAuthCommandPassword(t, root, password)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(t.TempDir(), "xdg-config"))
 
+	root := t.TempDir()
 	tokenPath := filepath.Join(t.TempDir(), "secrets", "irecall-api-token")
 	var stdout bytes.Buffer
 	if err := runAuthCommand([]string{
 		"issue-token",
 		"--data-path", root,
-		"--password-stdin",
 		"--write-token-file", tokenPath,
-	}, strings.NewReader(password+"\n"), &stdout); err != nil {
+	}, strings.NewReader(""), &stdout); err != nil {
 		t.Fatalf("runAuthCommand(issue-token) error = %v", err)
 	}
 	tokenData, err := os.ReadFile(tokenPath)

@@ -290,6 +290,10 @@ func (a *App) RevokeAPITokenWithPassword(password string) error {
 	if err := a.Login(password); err != nil {
 		return err
 	}
+	return a.RevokeAPIToken()
+}
+
+func (a *App) RevokeAPIToken() error {
 	return a.engine.RevokeWebAPIToken(a.context())
 }
 

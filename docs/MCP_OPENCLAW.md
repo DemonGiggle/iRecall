@@ -177,7 +177,7 @@ IRECALL_API_TOKEN="$(cat ~/.config/irecall/mcp-api-token)" \
 
 ## Local token provisioning
 
-Token provisioning is intentionally a local operator action. It requires the existing web password and does not require browser automation.
+Token provisioning is intentionally a local operator action. It does not require the frontend web password and does not require browser automation.
 
 Build the web binary first:
 
@@ -185,29 +185,24 @@ Build the web binary first:
 make build-web
 ```
 
-Issue the first MCP token and write it to a protected file:
+Issue the first MCP token and write it to a protected file. This operator CLI path intentionally does not require the frontend web password:
 
 ```bash
-printf '%s\n' 'your-web-password' | \
-  ./bin/irecall-web auth issue-token \
-    --password-stdin \
-    --write-token-file ~/.config/irecall/mcp-api-token
+./bin/irecall-web auth issue-token \
+  --write-token-file ~/.config/irecall/mcp-api-token
 ```
 
 Rotate the token with the same flow:
 
 ```bash
-printf '%s\n' 'your-web-password' | \
-  ./bin/irecall-web auth rotate-token \
-    --password-stdin \
-    --write-token-file ~/.config/irecall/mcp-api-token
+./bin/irecall-web auth rotate-token \
+  --write-token-file ~/.config/irecall/mcp-api-token
 ```
 
 Revoke the token:
 
 ```bash
-printf '%s\n' 'your-web-password' | \
-  ./bin/irecall-web auth revoke-token --password-stdin
+./bin/irecall-web auth revoke-token
 ```
 
 Check whether a token is configured without printing the token:
@@ -219,11 +214,9 @@ Check whether a token is configured without printing the token:
 For isolated instances, pass `--data-path` to each auth command:
 
 ```bash
-printf '%s\n' 'your-web-password' | \
-  ./bin/irecall-web auth issue-token \
-    --data-path /path/to/irecall-instance \
-    --password-stdin \
-    --write-token-file /path/to/irecall-token
+./bin/irecall-web auth issue-token \
+  --data-path /path/to/irecall-instance \
+  --write-token-file /path/to/irecall-token
 ```
 
 The token file is written with mode `0600`. Command output prints only the destination path and token prefix when `--write-token-file` is used.
@@ -232,7 +225,7 @@ The token file is written with mode `0600`. Command output prints only the desti
 
 1. Start `irecall-web` locally, preferably bound to `127.0.0.1`.
 2. Configure the web password through the normal first-run flow if it is not already configured.
-3. Use `irecall-web auth issue-token --password-stdin --write-token-file ...` to create the MCP bearer token.
+3. Use `irecall-web auth issue-token --write-token-file ...` to create the MCP bearer token.
 4. Configure the MCP launcher to run `irecall-mcp` with `IRECALL_BASE_URL` and `IRECALL_API_TOKEN` loaded from the protected local credential file or systemd credential.
 5. Verify the connection by calling `irecall_health`.
 
@@ -308,7 +301,7 @@ Run the operator-bootstrap MCP gate explicitly:
 make test-mcp-bootstrap
 ```
 
-`test-mcp-bootstrap` creates a temporary iRecall data root, configures a web password, issues an API token through the headless auth CLI path, starts a real in-process web HTTP server, starts the MCP bridge through an in-process MCP client, and calls `irecall_health` plus `irecall_list_quotes`. It does not modify the operator's real OpenClaw config or iRecall data directory.
+`test-mcp-bootstrap` creates a temporary iRecall data root, issues an API token through the headless auth CLI path, starts a real in-process web HTTP server, starts the MCP bridge through an in-process MCP client, and calls `irecall_health` plus `irecall_list_quotes`. It does not modify the operator's real OpenClaw config or iRecall data directory.
 
 ## Next likely steps
 
