@@ -72,7 +72,7 @@ Useful flags:
 2. Open `Settings`.
 3. Configure the provider host, port, HTTPS setting, API key if required, and model.
 4. Optionally fetch available models from `/v1/models`.
-5. If you are using the web UI, the first launch prompts for the web password in the terminal before the server starts listening. Use `Settings` to change it later. For headless MCP/operator usage, start `irecall-web` with `--api-only` instead of configuring the frontend password.
+5. If you are using the web UI, the first launch prompts for the web password in the terminal before the server starts listening. Use `Settings` to change it later. For headless MCP/operator usage, start `irecall-web` with `--api-only` and pass the provider settings on startup instead of going through the frontend UI.
 6. Save the settings and start adding quotes.
 
 ## Provider Compatibility
@@ -204,7 +204,15 @@ MCP token provisioning uses the web binary:
 
 ```bash
 make build-web
-./bin/irecall-web --api-only -host 127.0.0.1 -port 9527
+./bin/irecall-web \
+  --api-only \
+  --host 127.0.0.1 \
+  --port 9527 \
+  --provider-host api.openai.example/v1 \
+  --provider-port 443 \
+  --provider-https \
+  --provider-api-key-path ~/.config/irecall/provider-api-key \
+  --provider-model gpt-4.1-mini
 ./bin/irecall-web auth issue-token --write-token-file ~/.config/irecall/mcp-api-token
 ```
 
@@ -236,9 +244,23 @@ For production-safe operator or MCP usage, start the web server with `--api-only
 Example:
 
 ```bash
-go run ./web --host 127.0.0.1 --port 9527 --api-only
+go run ./web \
+  --host 127.0.0.1 \
+  --port 9527 \
+  --api-only \
+  --provider-host api.openai.example/v1 \
+  --provider-port 443 \
+  --provider-https \
+  --provider-api-key-path ~/.config/irecall/provider-api-key \
+  --provider-model gpt-4.1-mini
 ./bin/irecall-web auth issue-token --write-token-file ~/.config/irecall/mcp-api-token
 ```
+
+Notes:
+
+- `--provider-host`, `--provider-port`, `--provider-https`, `--provider-api-key-path`, and `--provider-model` apply the provider config in memory for that API-only process before recall/refine/tagging flows run.
+- The API key is read from the file path at startup. If the file is missing, unreadable, or empty, the server exits with a clear error instead of starting with partial configuration.
+- The startup-loaded API key is not persisted back into iRecall's saved settings unless you explicitly save settings through the app later.
 
 ## Testing-only password bypass
 
