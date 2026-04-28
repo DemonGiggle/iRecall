@@ -77,6 +77,14 @@ func (s *historyListSelection) move(delta int, entries []core.RecallHistorySumma
 	}
 }
 
+func (s *historyListSelection) syncToViewportOffset(entries []core.RecallHistorySummary, offset int) {
+	if len(entries) == 0 {
+		s.cursor = 0
+		return
+	}
+	s.cursor = historyEntryIndexAtOrAfterLine(entries, offset)
+}
+
 func (s *historyListSelection) current(entries []core.RecallHistorySummary) *core.RecallHistorySummary {
 	if len(entries) == 0 || s.cursor < 0 || s.cursor >= len(entries) {
 		return nil
@@ -213,6 +221,15 @@ func (p HistoryPage) Update(msg tea.Msg) (HistoryPage, tea.Cmd) {
 				p.selection.move(1, p.entries)
 				p.listViewport.SetContent(p.renderList())
 				return p, nil
+			case "pgup", "pgdown":
+				prevOffset := p.listViewport.YOffset
+				var cmd tea.Cmd
+				p.listViewport, cmd = p.listViewport.Update(msg)
+				if p.listViewport.YOffset != prevOffset {
+					p.selection.syncToViewportOffset(p.entries, p.listViewport.YOffset)
+					p.listViewport.SetContent(p.renderList())
+				}
+				return p, cmd
 			case "x":
 				p.selection.toggleCurrent(p.entries)
 				p.listViewport.SetContent(p.renderList())
@@ -271,6 +288,17 @@ func (p HistoryPage) Update(msg tea.Msg) (HistoryPage, tea.Cmd) {
 					p.quoteFns.move(1, p.currentQuotes())
 					p.refreshReferenceQuotes()
 					return p, nil
+				}
+			case "pgup", "pgdown":
+				if p.focus == historyFocusReferenceQuotes {
+					prevOffset := p.refViewport.YOffset
+					var cmd tea.Cmd
+					p.refViewport, cmd = p.refViewport.Update(msg)
+					if p.refViewport.YOffset != prevOffset {
+						p.quoteFns.syncToViewportOffset(p.currentQuotes(), p.refViewport.YOffset)
+						p.refreshReferenceQuotes()
+					}
+					return p, cmd
 				}
 			case "x":
 				if p.focus == historyFocusReferenceQuotes {
@@ -336,7 +364,7 @@ func (p HistoryPage) Update(msg tea.Msg) (HistoryPage, tea.Cmd) {
 }
 
 func (p HistoryPage) View() string {
-	help := "↑/↓: Move   enter: View   x: Select   a: Select all   u: Deselect all   d: Delete   r: Refresh"
+	help := "↑/↓: Move   pgup/pgdn: Page   enter: View   x: Select   a: Select all   u: Deselect all   d: Delete   r: Refresh"
 	body := styles.Muted.Render("  Loading history...")
 	if p.errMsg != "" {
 		body = styles.StatusErr.Render("  " + p.errMsg)
@@ -492,7 +520,7 @@ func (p HistoryPage) detailView() string {
 		detailStyle = styles.PanelActive
 	} else {
 		refStyle = styles.PanelActive
-		refHelp = "ctrl+j: Focus detail   ↑/↓: Move   x: Select   e: Edit   d: Delete   s: Share"
+		refHelp = "ctrl+j: Focus detail   ↑/↓: Move   pgup/pgdn: Page   x: Select   e: Edit   d: Delete   s: Share"
 	}
 	detailBox := detailStyle.Width(p.width - 8).Height(p.detailViewport.Height + 3).Render(
 		styles.Accent.Render("History Entry") + "\n" + p.detailViewport.View(),
@@ -568,4 +596,20 @@ func (p *HistoryPage) currentQuotes() []core.Quote {
 
 func formatHistoryTime(t time.Time) string {
 	return t.Local().Format("2006-01-02 15:04")
+}
+
+func historyEntryIndexAtOrAfterLine(entries []core.RecallHistorySummary, offset int) int {
+	if len(entries) == 0 || offset <= 0 {
+		return 0
+	}
+	for i := range entries {
+		offset -= 2 // question + response preview
+		if offset < 0 {
+			return i
+		}
+		if i < len(entries)-1 {
+			offset-- // separator
+		}
+	}
+	return len(entries) - 1
 }

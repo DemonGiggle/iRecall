@@ -12,7 +12,7 @@ import (
 	"github.com/gigol/irecall/tui/styles"
 )
 
-const quoteListEntryActions = "↑/↓: Move   x: Select   a: Select all   u: Deselect all   e: Edit   d: Delete   s: Share"
+const quoteListEntryActions = "↑/↓: Move   pgup/pgdn: Page   x: Select   a: Select all   u: Deselect all   e: Edit   d: Delete   s: Share"
 const quoteDetailEntryActions = "enter/esc: Back   ↑/↓: Scroll   pgup/pgdn: Page   x: Select   e: Edit   d: Delete   s: Share"
 
 type quoteListActionKind int
@@ -74,6 +74,14 @@ func (s *quoteSelection) move(delta int, quotes []core.Quote) {
 	if s.cursor >= len(quotes) {
 		s.cursor = len(quotes) - 1
 	}
+}
+
+func (s *quoteSelection) syncToViewportOffset(quotes []core.Quote, offset int) {
+	if len(quotes) == 0 {
+		s.cursor = 0
+		return
+	}
+	s.cursor = quoteIndexAtOrAfterLine(quotes, offset)
 }
 
 func (s *quoteSelection) current(quotes []core.Quote) *core.Quote {
@@ -250,6 +258,18 @@ func (w *quoteListWidget) Update(msg tea.Msg) (quoteListAction, tea.Cmd) {
 			w.selection.move(1, w.quotes)
 			w.refresh()
 			return quoteListAction{}, nil
+		case "pgup", "pgdown":
+			if w.detail {
+				break
+			}
+			prevOffset := w.listViewport.YOffset
+			var cmd tea.Cmd
+			w.listViewport, cmd = w.listViewport.Update(msg)
+			if w.listViewport.YOffset != prevOffset {
+				w.selection.syncToViewportOffset(w.quotes, w.listViewport.YOffset)
+				w.refresh()
+			}
+			return quoteListAction{}, cmd
 		case "x":
 			w.selection.toggleCurrent(w.quotes)
 			w.refresh()
@@ -484,6 +504,26 @@ func quoteEntryLineRange(quotes []core.Quote, index int) (start, end int) {
 		}
 	}
 	return -1, -1
+}
+
+func quoteIndexAtOrAfterLine(quotes []core.Quote, offset int) int {
+	if len(quotes) == 0 || offset <= 0 {
+		return 0
+	}
+	line := 0
+	for i, q := range quotes {
+		line += 2 // preview + tags
+		if !q.IsOwnedByMe && q.SourceName != "" {
+			line++
+		}
+		if offset < line {
+			return i
+		}
+		if i < len(quotes)-1 {
+			line++ // separator
+		}
+	}
+	return len(quotes) - 1
 }
 
 func previewTags(tags []string, limit int) string {

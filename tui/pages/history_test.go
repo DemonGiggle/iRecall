@@ -143,6 +143,81 @@ func TestHistoryPageSaveAsQuoteStatusInDetail(t *testing.T) {
 	}
 }
 
+func TestHistoryPagePageKeysMoveListCursor(t *testing.T) {
+	t.Parallel()
+
+	page := NewHistoryPage(nil, 80, 12)
+	model, _ := page.Update(HistoryLoadedMsg{Entries: []core.RecallHistorySummary{
+		{ID: 1, Question: "first", Response: "response one", CreatedAt: time.Now()},
+		{ID: 2, Question: "second", Response: "response two", CreatedAt: time.Now()},
+		{ID: 3, Question: "third", Response: "response three", CreatedAt: time.Now()},
+		{ID: 4, Question: "fourth", Response: "response four", CreatedAt: time.Now()},
+		{ID: 5, Question: "fifth", Response: "response five", CreatedAt: time.Now()},
+	}})
+	page = model
+
+	model, _ = page.Update(tea.KeyMsg{Type: tea.KeyPgDown})
+	page = model
+
+	if page.selection.cursor != 1 {
+		t.Fatalf("cursor after pgdown = %d, want 1", page.selection.cursor)
+	}
+	if page.listViewport.YOffset == 0 {
+		t.Fatalf("list viewport y offset = %d, want > 0 after pgdown", page.listViewport.YOffset)
+	}
+
+	model, _ = page.Update(tea.KeyMsg{Type: tea.KeyPgUp})
+	page = model
+
+	if page.selection.cursor != 0 {
+		t.Fatalf("cursor after pgup = %d, want 0", page.selection.cursor)
+	}
+	if page.listViewport.YOffset != 0 {
+		t.Fatalf("list viewport y offset after pgup = %d, want 0", page.listViewport.YOffset)
+	}
+}
+
+func TestHistoryPagePageKeysMoveReferenceQuoteCursor(t *testing.T) {
+	t.Parallel()
+
+	page := NewHistoryPage(nil, 80, 20)
+	page.detail = true
+	page.focus = historyFocusReferenceQuotes
+	page.entry = &core.RecallHistoryEntry{
+		ID:       1,
+		Question: "How do I page?",
+		Response: "By moving the viewport and cursor together.",
+		Quotes: []core.Quote{
+			{ID: 1, Content: "first quote"},
+			{ID: 2, Content: "second quote"},
+			{ID: 3, Content: "third quote"},
+			{ID: 4, Content: "fourth quote"},
+			{ID: 5, Content: "fifth quote"},
+		},
+	}
+	page.refreshDetail()
+
+	model, _ := page.Update(tea.KeyMsg{Type: tea.KeyPgDown})
+	page = model
+
+	if page.quoteFns.cursor != 1 {
+		t.Fatalf("reference quote cursor after pgdown = %d, want 1", page.quoteFns.cursor)
+	}
+	if page.refViewport.YOffset == 0 {
+		t.Fatalf("reference quotes y offset = %d, want > 0 after pgdown", page.refViewport.YOffset)
+	}
+
+	model, _ = page.Update(tea.KeyMsg{Type: tea.KeyPgUp})
+	page = model
+
+	if page.quoteFns.cursor != 0 {
+		t.Fatalf("reference quote cursor after pgup = %d, want 0", page.quoteFns.cursor)
+	}
+	if page.refViewport.YOffset != 0 {
+		t.Fatalf("reference quotes y offset after pgup = %d, want 0", page.refViewport.YOffset)
+	}
+}
+
 func newHistoryTestEngine(t *testing.T) (*core.Engine, core.Quote) {
 	t.Helper()
 
