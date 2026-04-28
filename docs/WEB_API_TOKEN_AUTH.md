@@ -20,10 +20,12 @@ Provide a simple bearer-token mechanism for all REST API requests so clients can
 ## Current implementation notes
 
 - The browser Settings page manages the token through session-protected endpoints.
+- The local operator CLI can also manage the token through `irecall-web auth issue-token`, `rotate-token`, `revoke-token`, and `token-status` without requiring the frontend password.
 - The current management endpoints are:
   - `GET /api/app/get-api-token-status`
   - `POST /api/app/create-api-token`
-- `/api/app/*` routes accept either a valid browser session or a valid bearer token, while token creation itself still requires a browser session.
+- In normal frontend-serving mode, `/api/app/*` routes accept either a valid browser session or a valid bearer token, while token creation itself still requires a browser session.
+- In `irecall-web --api-only` mode, the server skips frontend password bootstrap, disables browser-session auth/UI routes, and requires a valid bearer token for `/api/app/*`.
 
 ## UX notes
 
@@ -43,3 +45,4 @@ Provide a simple bearer-token mechanism for all REST API requests so clients can
 - The token should apply to every REST endpoint consistently.
 - Renewing the token must make the previous token unusable immediately.
 - Clients should not depend on query parameters or custom headers for authentication.
+- Headless/operator deployments should use `irecall-web --api-only` instead of the testing-only `--unsafe-no-password-check` flag.

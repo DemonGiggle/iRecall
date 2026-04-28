@@ -223,11 +223,19 @@ The token file is written with mode `0600`. Command output prints only the desti
 
 ## OpenClaw setup outline
 
-1. Start `irecall-web` locally, preferably bound to `127.0.0.1`.
-2. Configure the web password through the normal first-run flow if it is not already configured.
-3. Use `irecall-web auth issue-token --write-token-file ...` to create the MCP bearer token.
-4. Configure the MCP launcher to run `irecall-mcp` with `IRECALL_BASE_URL` and `IRECALL_API_TOKEN` loaded from the protected local credential file or systemd credential.
-5. Verify the connection by calling `irecall_health`.
+Start the local REST server in production-safe API mode:
+
+```bash
+./bin/irecall-web --api-only --host 127.0.0.1 --port 9527
+```
+
+`--api-only` skips the frontend password bootstrap, does not serve the browser UI, does not create browser sessions, and keeps `/api/app/*` protected by bearer-token auth.
+
+Then:
+
+1. Use `irecall-web auth issue-token --write-token-file ...` to create the MCP bearer token.
+2. Configure the MCP launcher to run `irecall-mcp` with `IRECALL_BASE_URL` and `IRECALL_API_TOKEN` loaded from the protected local credential file or systemd credential.
+3. Verify the connection by calling `irecall_health`.
 
 ## OpenClaw MCP configuration
 

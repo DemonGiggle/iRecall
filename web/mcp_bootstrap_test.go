@@ -57,7 +57,7 @@ func TestOperatorBootstrapIssuesTokenAndMCPHealthChecksRealWebServer(t *testing.
 		t.Fatalf("AddQuote() error = %v", err)
 	}
 
-	handler := newTestServer(t, runtimeApp)
+	handler := newTestServerWithOptions(t, runtimeApp, ServerOptions{APIOnly: true})
 	httpServer := httptest.NewServer(handler)
 	defer httpServer.Close()
 

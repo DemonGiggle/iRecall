@@ -40,6 +40,76 @@ func TestBearerTokenAuthenticatesAppRoutes(t *testing.T) {
 	}
 }
 
+func TestAPIOnlyModeStartsWithoutWebPasswordAndRequiresBearerToken(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp(t)
+	tokenResult, err := app.CreateAPIToken()
+	if err != nil {
+		t.Fatalf("CreateAPIToken() error = %v", err)
+	}
+	server := newTestServerWithOptions(t, app, ServerOptions{APIOnly: true})
+
+	statusReq := httptest.NewRequest(http.MethodGet, "/api/auth/status", nil)
+	statusRes := httptest.NewRecorder()
+	server.ServeHTTP(statusRes, statusReq)
+	if statusRes.Code != http.StatusOK {
+		t.Fatalf("GET /api/auth/status = %d, want %d", statusRes.Code, http.StatusOK)
+	}
+	var status struct {
+		PasswordConfigured bool `json:"passwordConfigured"`
+		Authenticated      bool `json:"authenticated"`
+	}
+	if err := json.Unmarshal(statusRes.Body.Bytes(), &status); err != nil {
+		t.Fatalf("decode auth status: %v", err)
+	}
+	if status.PasswordConfigured {
+		t.Fatalf("passwordConfigured = true, want false")
+	}
+	if status.Authenticated {
+		t.Fatalf("authenticated = true, want false")
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/app/list-quotes", nil)
+	res := httptest.NewRecorder()
+	server.ServeHTTP(res, req)
+	if res.Code != http.StatusUnauthorized {
+		t.Fatalf("GET /api/app/list-quotes without auth = %d, want %d", res.Code, http.StatusUnauthorized)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/api/app/list-quotes", nil)
+	req.Header.Set("Authorization", "Bearer "+tokenResult.Token)
+	res = httptest.NewRecorder()
+	server.ServeHTTP(res, req)
+	if res.Code != http.StatusOK {
+		t.Fatalf("GET /api/app/list-quotes with bearer token = %d, want %d", res.Code, http.StatusOK)
+	}
+}
+
+func TestAPIOnlyModeDisablesBrowserSessionRoutes(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp(t)
+	server := newTestServerWithOptions(t, app, ServerOptions{APIOnly: true})
+
+	loginReq := httptest.NewRequest(http.MethodPost, "/api/auth/login", jsonBody(t, map[string]string{
+		"password": "Secret-pass-123!",
+	}))
+	loginReq.Header.Set("Content-Type", "application/json")
+	loginRes := httptest.NewRecorder()
+	server.ServeHTTP(loginRes, loginReq)
+	if loginRes.Code != http.StatusForbidden {
+		t.Fatalf("POST /api/auth/login in api-only mode = %d, want %d", loginRes.Code, http.StatusForbidden)
+	}
+
+	tokenReq := httptest.NewRequest(http.MethodPost, "/api/app/create-api-token", nil)
+	tokenRes := httptest.NewRecorder()
+	server.ServeHTTP(tokenRes, tokenReq)
+	if tokenRes.Code != http.StatusForbidden {
+		t.Fatalf("POST /api/app/create-api-token in api-only mode = %d, want %d", tokenRes.Code, http.StatusForbidden)
+	}
+}
+
 func TestCreateAPITokenRequiresSession(t *testing.T) {
 	t.Parallel()
 
@@ -196,7 +266,7 @@ func TestHandleSaveSettingsPreservesExistingRootWhenOmitted(t *testing.T) {
 		t.Fatalf("Marshal() error = %v", err)
 	}
 
-	server, err := NewServer(runtimeApp, frontendassets.Assets, current.Web.Port, false)
+	server, err := NewServer(runtimeApp, frontendassets.Assets, current.Web.Port, ServerOptions{})
 	if err != nil {
 		t.Fatalf("NewServer() error = %v", err)
 	}
@@ -244,9 +314,13 @@ func newTestApp(t *testing.T) *irecallapp.App {
 }
 
 func newTestServer(t *testing.T, app *irecallapp.App) http.Handler {
+	return newTestServerWithOptions(t, app, ServerOptions{})
+}
+
+func newTestServerWithOptions(t *testing.T, app *irecallapp.App, options ServerOptions) http.Handler {
 	t.Helper()
 
-	server, err := NewServer(app, frontendassets.Assets, 9527, false)
+	server, err := NewServer(app, frontendassets.Assets, 9527, options)
 	if err != nil {
 		t.Fatalf("NewServer() error = %v", err)
 	}
@@ -258,7 +332,7 @@ func TestUnsafeNoPasswordCheckBypassesAuth(t *testing.T) {
 
 	app := newTestApp(t)
 
-	server, err := NewServer(app, frontendassets.Assets, 9527, true)
+	server, err := NewServer(app, frontendassets.Assets, 9527, ServerOptions{UnsafeNoPasswordCheck: true})
 	if err != nil {
 		t.Fatalf("NewServer() error = %v", err)
 	}

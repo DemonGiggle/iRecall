@@ -22,27 +22,53 @@ import (
 
 const sessionCookieName = "irecall_session"
 
+type ServerOptions struct {
+	APIOnly               bool
+	UnsafeNoPasswordCheck bool
+}
+
+func (o ServerOptions) Validate() error {
+	if o.APIOnly && o.UnsafeNoPasswordCheck {
+		return errors.New("cannot combine --api-only with --unsafe-no-password-check")
+	}
+	return nil
+}
+
+func (o ServerOptions) requiresWebPasswordBootstrap() bool {
+	return !o.APIOnly && !o.UnsafeNoPasswordCheck
+}
+
+func (o ServerOptions) listenerLabel() string {
+	if o.APIOnly {
+		return "iRecall API server"
+	}
+	return "iRecall web UI"
+}
+
 type Server struct {
-	app                   *app.App
-	currentPort           int
-	assets                fs.FS
-	unsafeNoPasswordCheck bool
+	app         *app.App
+	currentPort int
+	assets      fs.FS
+	options     ServerOptions
 
 	mu       sync.Mutex
 	sessions map[string]time.Time
 }
 
-func NewServer(app *app.App, assets embed.FS, currentPort int, unsafeNoPasswordCheck bool) (*Server, error) {
+func NewServer(app *app.App, assets embed.FS, currentPort int, options ServerOptions) (*Server, error) {
+	if err := options.Validate(); err != nil {
+		return nil, err
+	}
 	sub, err := fs.Sub(assets, "dist")
 	if err != nil {
 		return nil, fmt.Errorf("open frontend assets: %w", err)
 	}
 	return &Server{
-		app:                   app,
-		currentPort:           currentPort,
-		assets:                sub,
-		unsafeNoPasswordCheck: unsafeNoPasswordCheck,
-		sessions:              make(map[string]time.Time),
+		app:         app,
+		currentPort: currentPort,
+		assets:      sub,
+		options:     options,
+		sessions:    make(map[string]time.Time),
 	}, nil
 }
 
@@ -89,7 +115,7 @@ func (s *Server) handleAuthStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	authenticated := s.isSessionAuthenticated(r)
 	passwordConfigured := hasPassword.PasswordConfigured
-	if s.unsafeNoPasswordCheck {
+	if s.options.UnsafeNoPasswordCheck {
 		authenticated = true
 		passwordConfigured = true
 	}
@@ -104,6 +130,10 @@ func (s *Server) handleAuthStatus(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleAuthLogin(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeMethodNotAllowed(w)
+		return
+	}
+	if s.options.APIOnly {
+		writeError(w, http.StatusForbidden, errors.New("browser login is disabled in api-only mode"))
 		return
 	}
 	var req struct {
@@ -127,6 +157,10 @@ func (s *Server) handleAuthLogin(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleAuthLogout(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeMethodNotAllowed(w)
+		return
+	}
+	if s.options.APIOnly {
+		writeError(w, http.StatusForbidden, errors.New("browser login is disabled in api-only mode"))
 		return
 	}
 	s.endSession(w, r)
@@ -421,11 +455,19 @@ func (s *Server) handleDeleteRecallHistory(w http.ResponseWriter, r *http.Reques
 }
 
 func (s *Server) handleBridge(w http.ResponseWriter, r *http.Request) {
+	if s.options.APIOnly {
+		writeError(w, http.StatusNotFound, errors.New("frontend UI is disabled in api-only mode"))
+		return
+	}
 	w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
 	_, _ = io.WriteString(w, webBridgeJS)
 }
 
 func (s *Server) handleFrontend(w http.ResponseWriter, r *http.Request) {
+	if s.options.APIOnly {
+		writeError(w, http.StatusNotFound, errors.New("frontend UI is disabled in api-only mode"))
+		return
+	}
 	clean := path.Clean(strings.TrimPrefix(r.URL.Path, "/"))
 	if clean == "." || clean == "" {
 		s.serveIndex(w)
@@ -458,8 +500,12 @@ func (s *Server) serveIndex(w http.ResponseWriter) {
 
 func (s *Server) requireSessionAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if s.unsafeNoPasswordCheck {
+		if s.options.UnsafeNoPasswordCheck {
 			next.ServeHTTP(w, r)
+			return
+		}
+		if s.options.APIOnly {
+			writeError(w, http.StatusForbidden, errors.New("browser session auth is disabled in api-only mode"))
 			return
 		}
 		if !s.isSessionAuthenticated(r) {
@@ -472,7 +518,7 @@ func (s *Server) requireSessionAuth(next http.Handler) http.Handler {
 
 func (s *Server) requireAPIAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if s.unsafeNoPasswordCheck {
+		if s.options.UnsafeNoPasswordCheck {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -490,7 +536,7 @@ func (s *Server) requireAPIAuth(next http.Handler) http.Handler {
 }
 
 func (s *Server) isSessionAuthenticated(r *http.Request) bool {
-	if s.unsafeNoPasswordCheck {
+	if s.options.UnsafeNoPasswordCheck {
 		return true
 	}
 	cookie, err := r.Cookie(sessionCookieName)
@@ -512,7 +558,7 @@ func (s *Server) isSessionAuthenticated(r *http.Request) bool {
 }
 
 func (s *Server) isAPIAuthenticated(r *http.Request) (bool, error) {
-	if s.unsafeNoPasswordCheck {
+	if s.options.UnsafeNoPasswordCheck {
 		return true, nil
 	}
 	if token := bearerToken(r.Header.Get("Authorization")); token != "" {
@@ -523,6 +569,9 @@ func (s *Server) isAPIAuthenticated(r *http.Request) (bool, error) {
 		if ok {
 			return true, nil
 		}
+	}
+	if s.options.APIOnly {
+		return false, nil
 	}
 	return s.isSessionAuthenticated(r), nil
 }

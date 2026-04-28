@@ -72,7 +72,7 @@ Useful flags:
 2. Open `Settings`.
 3. Configure the provider host, port, HTTPS setting, API key if required, and model.
 4. Optionally fetch available models from `/v1/models`.
-5. If you are using the web UI, the first launch prompts for the web password in the terminal before the server starts listening. Use `Settings` to change it later.
+5. If you are using the web UI, the first launch prompts for the web password in the terminal before the server starts listening. Use `Settings` to change it later. For headless MCP/operator usage, start `irecall-web` with `--api-only` instead of configuring the frontend password.
 6. Save the settings and start adding quotes.
 
 ## Provider Compatibility
@@ -204,6 +204,7 @@ MCP token provisioning uses the web binary:
 
 ```bash
 make build-web
+./bin/irecall-web --api-only -host 127.0.0.1 -port 9527
 ./bin/irecall-web auth issue-token --write-token-file ~/.config/irecall/mcp-api-token
 ```
 
@@ -228,12 +229,25 @@ make frontend-build
 - [docs/MCP_OPENCLAW.md](docs/MCP_OPENCLAW.md): MCP bridge scaffold and operator notes
 - [tools/redmine_export/README.md](tools/redmine_export/README.md): Redmine export tool usage
 
-## Testing: disable web password check
+## Headless API mode for MCP/OpenClaw
 
-For automated testing or local debugging you can disable the interactive web password setup by starting the web server with the `--unsafe-no-password-check` flag. This will skip the requirement to create a web password on first run.
-
-WARNING: This flag disables an important security control. Only use it in trusted test environments and never in production.
+For production-safe operator or MCP usage, start the web server with `--api-only`. This skips the frontend password bootstrap, does not serve the frontend UI, and keeps `/api/app/*` protected by bearer-token auth.
 
 Example:
 
-    go run ./web --port 9527 --unsafe-no-password-check
+```bash
+go run ./web --host 127.0.0.1 --port 9527 --api-only
+./bin/irecall-web auth issue-token --write-token-file ~/.config/irecall/mcp-api-token
+```
+
+## Testing-only password bypass
+
+For automated testing or local debugging you can still disable the interactive web password setup with `--unsafe-no-password-check`.
+
+WARNING: This flag disables important auth checks. Only use it in trusted test environments and never for production, operator, or MCP deployments.
+
+Example:
+
+```bash
+go run ./web --port 9527 --unsafe-no-password-check
+```

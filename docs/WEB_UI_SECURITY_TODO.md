@@ -4,7 +4,8 @@ This note tracks the remaining security work for the networked web UI after the 
 
 ## Already done
 
-- First-time web password setup now happens in the terminal before the HTTP listener starts.
+- First-time web password setup now happens in the terminal before the HTTP listener starts in normal web mode.
+- `irecall-web --api-only` is the production-safe exception for headless bearer-token clients; it does not serve the frontend UI or browser-session auth.
 - The remote `/api/auth/setup` path is removed from the web API.
 - Web password setup and password changes now enforce a minimum password policy.
 
