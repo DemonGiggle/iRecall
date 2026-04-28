@@ -13,22 +13,27 @@ Use the web server address you started, for example:
 
 ## Current authentication model
 
-Today, the shipped web server uses two auth paths:
+The shipped web server has two startup modes:
 
-1. browser login with `POST /api/auth/login`, which returns an `HttpOnly` session cookie for the web UI
-2. bearer-token auth for `/api/app/*` routes with `Authorization: Bearer <token>`
+1. normal web mode, which serves the frontend UI and requires a configured web password before the listener starts
+2. `--api-only` mode, which skips the frontend password bootstrap and serves only the REST API for bearer-token clients such as `irecall-mcp`
 
-Token management is still session-protected:
+In normal web mode:
 
-1. sign into the web UI
-2. call `GET /api/app/get-api-token-status`
-3. call `POST /api/app/create-api-token` to create or renew the token
+1. browser login uses `POST /api/auth/login` and returns an `HttpOnly` session cookie for the web UI
+2. `/api/app/*` routes accept either a valid browser session or a valid bearer token
+3. `GET /api/app/get-api-token-status` and `POST /api/app/create-api-token` remain session-protected
+
+In `--api-only` mode:
+
+1. the frontend UI and browser-session login routes are disabled
+2. `/api/app/*` routes require `Authorization: Bearer <token>` and do not fall back to browser sessions
+3. token management should use the local `irecall-web auth issue-token|rotate-token|revoke-token|token-status` CLI
 
 Notes:
 
-- `/api/auth/*` routes remain browser-session oriented
-- `/api/app/get-api-token-status` and `/api/app/create-api-token` require a browser session, not a bearer token
-- the rest of `/api/app/*` accepts either a valid session cookie or a valid bearer token
+- `/api/auth/*` routes are browser-session oriented and are not usable in `--api-only` mode
+- `--unsafe-no-password-check` is still testing-only because it bypasses auth enforcement
 
 ## Conventions
 
@@ -158,6 +163,7 @@ Notes:
 
 - success sets the `irecall_session` cookie
 - invalid password returns `401`
+- `--api-only` mode returns `403` because browser login is disabled there
 
 ### `POST /api/auth/logout`
 
@@ -199,11 +205,15 @@ Response:
 }
 ```
 
+`--api-only` mode returns `403` because browser-session auth is disabled there.
+
 ### `GET /api/app/get-api-token-status`
 
 Returns whether an API token exists and the short prefix shown in Settings.
 
 Authentication: session required.
+
+`--api-only` mode returns `403`; use the local `irecall-web auth token-status` CLI instead.
 
 Parameters: none.
 
@@ -231,6 +241,8 @@ Creates a new API token and returns the plaintext token exactly once. If a token
 
 Authentication: session required.
 
+`--api-only` mode returns `403`; use the local `irecall-web auth issue-token` or `rotate-token` CLI instead.
+
 Parameters: none.
 
 Response:
@@ -246,7 +258,7 @@ Response:
 
 Returns the initial application state used to render the frontend shell.
 
-Authentication: session or bearer token required.
+Authentication: session or bearer token required in normal web mode; bearer token required in `--api-only` mode.
 
 Parameters: none.
 
@@ -303,7 +315,7 @@ Response:
 
 Lists stored quotes, newest first.
 
-Authentication: session or bearer token required.
+Authentication: session or bearer token required in normal web mode; bearer token required in `--api-only` mode.
 
 Query parameters:
 

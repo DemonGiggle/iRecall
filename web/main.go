@@ -24,11 +24,21 @@ func main() {
 	dataPathFlag := flag.String("data-path", "", "store database, config, and logs under this root path")
 	hostFlag := flag.String("host", "0.0.0.0", "host/interface to bind the web server to")
 	portFlag := flag.Int("port", 0, "port to listen on (overrides saved web port)")
+	apiOnlyFlag := flag.Bool("api-only", false, "run a headless API server without serving the frontend UI or requiring a web password at startup")
 	resetPasswordFlag := flag.Bool("reset-passwd", false, "clear the configured web password and prompt for a new one before startup")
 	// WARNING: This flag disables the interactive web password check. For testing only.
 	// Do NOT enable this in production environments.
 	unsafeNoPasswordCheckFlag := flag.Bool("unsafe-no-password-check", false, "DISABLE web password check (testing only). Do NOT use in production.")
 	flag.Parse()
+
+	serverOptions := ServerOptions{
+		APIOnly:               *apiOnlyFlag,
+		UnsafeNoPasswordCheck: *unsafeNoPasswordCheckFlag,
+	}
+	if err := serverOptions.Validate(); err != nil {
+		fmt.Fprintf(os.Stderr, "irecall-web: %v\n", err)
+		os.Exit(1)
+	}
 
 	if *dataPathFlag != "" {
 		config.SetRootPath(*dataPathFlag)
@@ -66,13 +76,15 @@ func main() {
 		}
 		fmt.Println("Existing web password cleared.")
 	}
-	if !*unsafeNoPasswordCheckFlag {
+	if serverOptions.requiresWebPasswordBootstrap() {
 		if err := ensureWebPasswordConfigured(runtimeApp); err != nil {
 			fmt.Fprintf(os.Stderr, "irecall-web: %v\n", err)
 			os.Exit(1)
 		}
-	} else {
+	} else if serverOptions.UnsafeNoPasswordCheck {
 		fmt.Fprintln(os.Stderr, "WARNING: running with --unsafe-no-password-check; web password check is disabled (testing only). Do NOT use in production.")
+	} else if serverOptions.APIOnly {
+		fmt.Fprintln(os.Stderr, "Running in --api-only mode; frontend UI and browser-session auth are disabled.")
 	}
 
 	port := *portFlag
@@ -83,14 +95,14 @@ func main() {
 		port = 9527
 	}
 
-	server, err := NewServer(runtimeApp, frontendassets.Assets, port, *unsafeNoPasswordCheckFlag)
+	server, err := NewServer(runtimeApp, frontendassets.Assets, port, serverOptions)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "irecall-web: %v\n", err)
 		os.Exit(1)
 	}
 
 	addr := net.JoinHostPort(strings.TrimSpace(*hostFlag), fmt.Sprintf("%d", port))
-	fmt.Printf("iRecall web UI listening on http://%s\n", addr)
+	fmt.Printf("%s listening on http://%s\n", serverOptions.listenerLabel(), addr)
 	if err := http.ListenAndServe(addr, server.Handler()); err != nil {
 		fmt.Fprintf(os.Stderr, "irecall-web: %v\n", err)
 		os.Exit(1)
