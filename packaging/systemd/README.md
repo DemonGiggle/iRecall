@@ -19,6 +19,23 @@ This unit is intended for a headless local iRecall web API that MCP clients can 
 
    IRECALL_DATA_PATH=/var/lib/irecall
    IRECALL_WEB_HOST=127.0.0.1
+   IRECALL_PROVIDER_HOST=localhost
+   IRECALL_PROVIDER_PORT=11434
+   IRECALL_PROVIDER_HTTPS=false
+   IRECALL_PROVIDER_API_KEY_PATH=/etc/irecall/provider-api-key
+   IRECALL_PROVIDER_MODEL=
+
+   For OpenAI, use:
+
+   IRECALL_PROVIDER_HOST=api.openai.com
+   IRECALL_PROVIDER_PORT=443
+   IRECALL_PROVIDER_HTTPS=true
+   IRECALL_PROVIDER_API_KEY_PATH=/etc/irecall/openai-api-key
+   IRECALL_PROVIDER_MODEL=gpt-4.1-mini
+
+   Store the provider API key in the referenced file and make it readable by the irecall service user:
+
+   sudo install -m 0640 -o root -g irecall /path/to/openai-api-key /etc/irecall/openai-api-key
 
    The packaged unit binds to 127.0.0.1 by default. Only set IRECALL_WEB_HOST=0.0.0.0 if you intentionally expose the API on the network and have an external access-control plan such as a firewall, VPN, or authenticated reverse proxy.
 
@@ -33,6 +50,11 @@ This unit is intended for a headless local iRecall web API that MCP clients can 
    sudo systemctl daemon-reload
    sudo systemctl enable --now irecall-web.service
    sudo systemctl status irecall-web.service --no-pager
+
+   After changing /etc/irecall/irecall-web.env or the provider API key file, restart the service:
+
+   sudo systemctl restart irecall-web.service
+   sudo journalctl -u irecall-web.service -n 50 --no-pager
 
 5. Issue an API token for MCP or other API clients and store it at the path used by the smoke tests:
 
