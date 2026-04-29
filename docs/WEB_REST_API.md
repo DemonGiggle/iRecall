@@ -34,6 +34,23 @@ Notes:
 
 - `/api/auth/*` routes are browser-session oriented and are not usable in `--api-only` mode
 - `--unsafe-no-password-check` is still testing-only because it bypasses auth enforcement
+- In `--api-only` mode you can also pass provider startup overrides such as `--provider-host`, `--provider-port`, `--provider-https`, `--provider-api-key-path`, and `--provider-model` so LLM-backed API routes work before any frontend-driven settings save.
+
+Example startup for an operator/API-only deployment:
+
+```bash
+./bin/irecall-web \
+  --api-only \
+  --host 127.0.0.1 \
+  --port 9527 \
+  --provider-host api.openai.example/v1 \
+  --provider-port 443 \
+  --provider-https \
+  --provider-api-key-path ~/.config/irecall/provider-api-key \
+  --provider-model gpt-4.1-mini
+```
+
+The provider API key is read from the referenced file at startup and the server exits with an error if that file is missing, unreadable, or empty.
 
 ## Conventions
 

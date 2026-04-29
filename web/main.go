@@ -25,6 +25,7 @@ func main() {
 	hostFlag := flag.String("host", "0.0.0.0", "host/interface to bind the web server to")
 	portFlag := flag.Int("port", 0, "port to listen on (overrides saved web port)")
 	apiOnlyFlag := flag.Bool("api-only", false, "run a headless API server without serving the frontend UI or requiring a web password at startup")
+	providerOptions := bindProviderStartupFlags(flag.CommandLine)
 	resetPasswordFlag := flag.Bool("reset-passwd", false, "clear the configured web password and prompt for a new one before startup")
 	// WARNING: This flag disables the interactive web password check. For testing only.
 	// Do NOT enable this in production environments.
@@ -36,6 +37,10 @@ func main() {
 		UnsafeNoPasswordCheck: *unsafeNoPasswordCheckFlag,
 	}
 	if err := serverOptions.Validate(); err != nil {
+		fmt.Fprintf(os.Stderr, "irecall-web: %v\n", err)
+		os.Exit(1)
+	}
+	if err := providerOptions.Validate(serverOptions); err != nil {
 		fmt.Fprintf(os.Stderr, "irecall-web: %v\n", err)
 		os.Exit(1)
 	}
@@ -69,6 +74,10 @@ func main() {
 		os.Exit(1)
 	}
 	defer runtimeApp.Shutdown(nil)
+	if err := applyAPIOnlyProviderStartupConfig(runtimeApp, serverOptions, *providerOptions); err != nil {
+		fmt.Fprintf(os.Stderr, "irecall-web: %v\n", err)
+		os.Exit(1)
+	}
 	if *resetPasswordFlag {
 		if err := runtimeApp.ResetPassword(); err != nil {
 			fmt.Fprintf(os.Stderr, "irecall-web: %v\n", err)

@@ -198,6 +198,19 @@ func (a *App) GetSettings() *core.Settings {
 	return a.settings
 }
 
+func (a *App) ApplyRuntimeProvider(provider core.ProviderConfig) error {
+	if a == nil || a.engine == nil {
+		return errors.New("app is not initialized")
+	}
+	if a.settings == nil {
+		a.settings = core.DefaultSettings()
+		a.settings.RootDir = a.paths.RootDir
+	}
+	a.settings.Provider = provider
+	a.engine.UpdateSettings(a.settings)
+	return nil
+}
+
 func (a *App) SaveSettings(settings core.Settings) (*core.Settings, error) {
 	nextRuntime, err := SwitchRuntime(&RuntimeState{
 		Engine:   a.engine,

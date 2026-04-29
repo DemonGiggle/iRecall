@@ -319,3 +319,36 @@ func TestDesktopBackendSaveSettingsSwitchesStorageRoot(t *testing.T) {
 		t.Fatalf("preferred root = %q, want %q", preferredRoot, absTarget)
 	}
 }
+
+func TestApplyRuntimeProviderInitializesMissingSettings(t *testing.T) {
+	t.Parallel()
+
+	root := filepath.Join(t.TempDir(), "runtime-provider")
+	app, err := NewApp(root)
+	if err != nil {
+		t.Fatalf("NewApp() error = %v", err)
+	}
+	t.Cleanup(func() { app.Shutdown(context.Background()) })
+
+	app.settings = nil
+	provider := core.ProviderConfig{
+		Host:   "provider.example/api",
+		Port:   443,
+		HTTPS:  true,
+		APIKey: "runtime-secret",
+		Model:  "runtime-model",
+	}
+
+	if err := app.ApplyRuntimeProvider(provider); err != nil {
+		t.Fatalf("ApplyRuntimeProvider() error = %v", err)
+	}
+	if app.settings == nil {
+		t.Fatal("settings = nil, want initialized settings")
+	}
+	if app.settings.RootDir != app.paths.RootDir {
+		t.Fatalf("settings.RootDir = %q, want %q", app.settings.RootDir, app.paths.RootDir)
+	}
+	if app.settings.Provider != provider {
+		t.Fatalf("settings.Provider = %+v, want %+v", app.settings.Provider, provider)
+	}
+}

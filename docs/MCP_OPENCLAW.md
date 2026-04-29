@@ -226,10 +226,28 @@ The token file is written with mode `0600`. Command output prints only the desti
 Start the local REST server in production-safe API mode:
 
 ```bash
-./bin/irecall-web --api-only --host 127.0.0.1 --port 9527
+./bin/irecall-web \
+  --api-only \
+  --host 127.0.0.1 \
+  --port 9527 \
+  --provider-host api.openai.example/v1 \
+  --provider-port 443 \
+  --provider-https \
+  --provider-api-key-path ~/.config/irecall/provider-api-key \
+  --provider-model gpt-4.1-mini
 ```
 
 `--api-only` skips the frontend password bootstrap, does not serve the browser UI, does not create browser sessions, and keeps `/api/app/*` protected by bearer-token auth.
+
+The provider startup flags let an operator supply the LLM endpoint without going through the frontend UI:
+
+- `--provider-host` — provider host or host/path, matching the existing saved provider `Host` field
+- `--provider-port` — provider TCP port
+- `--provider-https` — use HTTPS for the provider connection
+- `--provider-api-key-path` — read the bearer key from a protected local file instead of putting it on the command line
+- `--provider-model` — default model used by recall/refine/tagging requests
+
+These overrides are applied in memory before the API starts serving LLM-backed routes. If the API key file is missing, unreadable, or empty, startup fails fast with an error.
 
 Then:
 
