@@ -138,14 +138,21 @@ func usageText(fs *flag.FlagSet, program string) string {
 	fmt.Fprintf(&buf, "       %s auth <subcommand> [flags]\n\n", program)
 	buf.WriteString("iRecall web serves the local HTTP UI and API.\n\n")
 	buf.WriteString("Flags:\n")
-	fs.VisitAll(func(f *flag.Flag) {
-		fmt.Fprintf(&buf, "  -%s\n    \t%s\n", f.Name, f.Usage)
-	})
+	buf.WriteString(flagDefaultsText(fs))
 	buf.WriteString("\nExamples:\n")
 	fmt.Fprintf(&buf, "  %s --version\n", program)
 	fmt.Fprintf(&buf, "  %s -host 127.0.0.1 -port 9527\n", program)
 	fmt.Fprintf(&buf, "  %s --api-only --provider-host api.openai.example/v1 --provider-port 443 --provider-https --provider-model gpt-4.1-mini\n", program)
 	fmt.Fprintf(&buf, "  %s auth issue-token --write-token-file ~/.config/irecall/mcp-api-token\n", program)
+	return buf.String()
+}
+
+func flagDefaultsText(fs *flag.FlagSet) string {
+	var buf bytes.Buffer
+	originalOutput := fs.Output()
+	fs.SetOutput(&buf)
+	defer fs.SetOutput(originalOutput)
+	fs.PrintDefaults()
 	return buf.String()
 }
 
