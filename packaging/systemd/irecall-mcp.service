@@ -1,0 +1,20 @@
+[Unit]
+Description=iRecall MCP server (stdio-based MCP wrapper)
+After=network.target irecall-web.service
+Requires=irecall-web.service
+
+[Service]
+Type=simple
+User=irecall
+Group=irecall
+# Optional environment file; create /etc/irecall/irecall.env with IRECALL_BASE_URL and IRECALL_API_TOKEN
+EnvironmentFile=-/etc/irecall/irecall.env
+ExecStart=/usr/local/bin/irecall-mcp
+Restart=on-failure
+RestartSec=5
+WorkingDirectory=${IRECALL_DATA_PATH:-/var/lib/irecall}
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
