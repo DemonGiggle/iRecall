@@ -8,11 +8,12 @@ This unit is intended for a headless local iRecall web API that MCP clients can 
    sudo cp bin/irecall-web /usr/local/bin/irecall-web
    sudo cp bin/irecall-mcp /usr/local/bin/irecall-mcp
 
-2. Create a system user and data directory:
+2. Create a system user, data directory, and local configuration directory:
 
    sudo useradd --system --no-create-home --shell /usr/sbin/nologin irecall
-   sudo mkdir -p /var/lib/irecall
+   sudo mkdir -p /var/lib/irecall /etc/irecall
    sudo chown irecall:irecall /var/lib/irecall
+   sudo chmod 0750 /var/lib/irecall
 
 3. (Optional) Create an environment file at /etc/irecall/irecall-web.env to override defaults:
 
@@ -33,16 +34,15 @@ This unit is intended for a headless local iRecall web API that MCP clients can 
    sudo systemctl enable --now irecall-web.service
    sudo systemctl status irecall-web.service --no-pager
 
-5. Issue an API token for MCP or other API clients:
+5. Issue an API token for MCP or other API clients and store it at the path used by the smoke tests:
 
-   sudo mkdir -p /etc/irecall
    sudo /usr/local/bin/irecall-web auth issue-token \
      --data-path /var/lib/irecall \
      --write-token-file /etc/irecall/api-token
    sudo chown root:irecall /etc/irecall/api-token
    sudo chmod 0640 /etc/irecall/api-token
 
-   Use the generated token as IRECALL_API_TOKEN in the MCP client or other API client environment.
+   The command writes the full token to /etc/irecall/api-token and prints only the token prefix. Use the file contents as IRECALL_API_TOKEN in the MCP client or other API client environment.
 
 End-to-end smoke test
 
@@ -86,13 +86,15 @@ End-to-end smoke test
 
 Counting quotes
 
-The REST API does not currently expose a dedicated count endpoint. To count all stored quotes, list quotes with limit=0 and count the returned JSON array:
+The REST API does not currently expose a dedicated count endpoint. For small local instances, omit the limit parameter and count the returned JSON array:
 
    TOKEN=$(sudo cat /etc/irecall/api-token)
    curl -fsS \
      -H "Authorization: Bearer $TOKEN" \
-     'http://127.0.0.1:9527/api/app/list-quotes?limit=0' \
+     'http://127.0.0.1:9527/api/app/list-quotes' \
      | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))'
+
+This relies on the current API behavior where an omitted limit returns all quotes. For large datasets, prefer adding a dedicated count endpoint rather than using list output as a long-term counting mechanism.
 
 Notes
 
