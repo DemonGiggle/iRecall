@@ -12,10 +12,12 @@ PrivateTmp=true
 NoNewPrivileges=true
 # Default data path; can be overridden in the environment file.
 Environment=IRECALL_DATA_PATH=/var/lib/irecall
+# Default bind address; keep local-only unless you intentionally expose the API.
+Environment=IRECALL_WEB_HOST=127.0.0.1
 # Optional environment file; create /etc/irecall/irecall-web.env to override values
 EnvironmentFile=-/etc/irecall/irecall-web.env
 # Run headless API-only (perform initial interactive setup manually if needed)
-ExecStart=/usr/local/bin/irecall-web --api-only --data-path ${IRECALL_DATA_PATH}
+ExecStart=/usr/local/bin/irecall-web --api-only --host ${IRECALL_WEB_HOST} --data-path ${IRECALL_DATA_PATH}
 Restart=on-failure
 RestartSec=5
 WorkingDirectory=/var/lib/irecall
