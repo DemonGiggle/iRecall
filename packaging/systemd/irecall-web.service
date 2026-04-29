@@ -1,0 +1,26 @@
+[Unit]
+Description=iRecall web API server
+After=network.target
+
+[Service]
+Type=simple
+User=irecall
+Group=irecall
+ProtectSystem=full
+ProtectHome=true
+PrivateTmp=true
+NoNewPrivileges=true
+# Default data path; can be overridden in the environment file.
+Environment=IRECALL_DATA_PATH=/var/lib/irecall
+# Optional environment file; create /etc/irecall/irecall-web.env to override values
+EnvironmentFile=-/etc/irecall/irecall-web.env
+# Run headless API-only (perform initial interactive setup manually if needed)
+ExecStart=/usr/local/bin/irecall-web --api-only --data-path ${IRECALL_DATA_PATH}
+Restart=on-failure
+RestartSec=5
+WorkingDirectory=/var/lib/irecall
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
