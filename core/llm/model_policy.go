@@ -30,8 +30,8 @@ func policyForModel(model string) modelPolicy {
 		policy.TokenLimitParameter = tokenLimitMaxCompletionTokens
 		policy.SupportsTemperature = false
 		policy.SupportsReasoningEffort = false
-		policy.MinOutputTokens = 1024
-		policy.DefaultOutputTokens = 1024
+		policy.MinOutputTokens = 4096
+		policy.DefaultOutputTokens = 4096
 	}
 
 	return policy

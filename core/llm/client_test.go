@@ -77,8 +77,8 @@ func TestChatUsesMaxCompletionTokensForGPT5(t *testing.T) {
 	if got.MaxTokens != nil {
 		t.Fatalf("max_tokens = %v, want nil", *got.MaxTokens)
 	}
-	if got.MaxCompletionTokens == nil || *got.MaxCompletionTokens != 1024 {
-		t.Fatalf("max_completion_tokens = %v, want %d", got.MaxCompletionTokens, 1024)
+	if got.MaxCompletionTokens == nil || *got.MaxCompletionTokens != 4096 {
+		t.Fatalf("max_completion_tokens = %v, want %d", got.MaxCompletionTokens, 4096)
 	}
 	if got.Temperature != nil {
 		t.Fatalf("temperature = %v, want nil", *got.Temperature)
@@ -112,7 +112,7 @@ func TestChatUsesDefaultOutputTokensForGPT5NonStreaming(t *testing.T) {
 	if _, err := client.Chat(context.Background(), []Message{{Role: "user", Content: "hi"}}, nil); err != nil {
 		t.Fatalf("Chat() error = %v", err)
 	}
-	if got.MaxCompletionTokens == nil || *got.MaxCompletionTokens != 1024 {
-		t.Fatalf("max_completion_tokens = %v, want %d", got.MaxCompletionTokens, 1024)
+	if got.MaxCompletionTokens == nil || *got.MaxCompletionTokens != 4096 {
+		t.Fatalf("max_completion_tokens = %v, want %d", got.MaxCompletionTokens, 4096)
 	}
 }

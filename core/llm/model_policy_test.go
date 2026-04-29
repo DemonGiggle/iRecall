@@ -29,8 +29,8 @@ func TestPolicyForModel(t *testing.T) {
 			model:                 "gpt-5-nano",
 			wantTokenLimitParam:   tokenLimitMaxCompletionTokens,
 			wantTemperaturePolicy: false,
-			wantMinOutputTokens:   1024,
-			wantDefaultTokens:     1024,
+			wantMinOutputTokens:   4096,
+			wantDefaultTokens:     4096,
 			wantReasoningEffort:   false,
 		},
 	}
