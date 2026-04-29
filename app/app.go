@@ -205,10 +205,9 @@ func (a *App) ApplyRuntimeProvider(provider core.ProviderConfig) error {
 	if a.settings == nil {
 		a.settings = core.DefaultSettings()
 		a.settings.RootDir = a.paths.RootDir
-		a.engine.UpdateSettings(a.settings)
 	}
 	a.settings.Provider = provider
-	a.engine.UpdateProvider(provider)
+	a.engine.UpdateSettings(a.settings)
 	return nil
 }
 

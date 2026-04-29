@@ -95,6 +95,10 @@ func TestProviderStartupOptionsResolveRejectsBadAPIKeyFiles(t *testing.T) {
 	if err := os.WriteFile(emptyPath, []byte(" \n"), 0o600); err != nil {
 		t.Fatalf("WriteFile(emptyPath) error = %v", err)
 	}
+	tooLargePath := filepath.Join(t.TempDir(), "too-large-key")
+	if err := os.WriteFile(tooLargePath, []byte(strings.Repeat("a", maxSecretFileBytes+1)), 0o600); err != nil {
+		t.Fatalf("WriteFile(tooLargePath) error = %v", err)
+	}
 
 	tests := []struct {
 		name    string
@@ -104,12 +108,17 @@ func TestProviderStartupOptionsResolveRejectsBadAPIKeyFiles(t *testing.T) {
 		{
 			name:    "missing file",
 			path:    filepath.Join(t.TempDir(), "missing-key"),
-			wantErr: "read provider API key file",
+			wantErr: "open provider API key file",
 		},
 		{
 			name:    "empty file",
 			path:    emptyPath,
 			wantErr: "is empty",
+		},
+		{
+			name:    "too large file",
+			path:    tooLargePath,
+			wantErr: "exceeds",
 		},
 	}
 

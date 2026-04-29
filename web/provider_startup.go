@@ -4,6 +4,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"strconv"
 	"strings"
@@ -11,6 +12,8 @@ import (
 	"github.com/gigol/irecall/app"
 	"github.com/gigol/irecall/core"
 )
+
+const maxSecretFileBytes = 4096
 
 type optionalBoolFlag struct {
 	set   bool
@@ -121,9 +124,18 @@ func applyAPIOnlyProviderStartupConfig(runtimeApp *app.App, serverOptions Server
 }
 
 func readSecretFile(path string, label string) (string, error) {
-	data, err := os.ReadFile(path)
+	file, err := os.Open(path)
+	if err != nil {
+		return "", fmt.Errorf("open %s file %q: %w", label, path, err)
+	}
+	defer file.Close()
+
+	data, err := io.ReadAll(io.LimitReader(file, maxSecretFileBytes+1))
 	if err != nil {
 		return "", fmt.Errorf("read %s file %q: %w", label, path, err)
+	}
+	if len(data) > maxSecretFileBytes {
+		return "", fmt.Errorf("%s file %q exceeds %d bytes", label, path, maxSecretFileBytes)
 	}
 	value := strings.TrimSpace(string(data))
 	if value == "" {
