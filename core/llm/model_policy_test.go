@@ -10,22 +10,28 @@ func TestPolicyForModel(t *testing.T) {
 		wantTokenLimitParam   tokenLimitParameter
 		wantTemperaturePolicy bool
 		wantMinOutputTokens   int
+		wantDefaultTokens     int
+		wantReasoningEffort   bool
 	}{
 		{
 			model:                 "llama3.1",
 			wantTokenLimitParam:   tokenLimitMaxTokens,
 			wantTemperaturePolicy: true,
+			wantReasoningEffort:   true,
 		},
 		{
 			model:                 "gpt-4.1-mini",
 			wantTokenLimitParam:   tokenLimitMaxTokens,
 			wantTemperaturePolicy: true,
+			wantReasoningEffort:   true,
 		},
 		{
 			model:                 "gpt-5-nano",
 			wantTokenLimitParam:   tokenLimitMaxCompletionTokens,
 			wantTemperaturePolicy: false,
 			wantMinOutputTokens:   1024,
+			wantDefaultTokens:     1024,
+			wantReasoningEffort:   false,
 		},
 	}
 

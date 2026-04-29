@@ -15,6 +15,7 @@ func TestChatUsesMaxTokensByDefault(t *testing.T) {
 		MaxTokens           *int     `json:"max_tokens"`
 		MaxCompletionTokens *int     `json:"max_completion_tokens"`
 		Temperature         *float64 `json:"temperature"`
+		ReasoningEffort     *string  `json:"reasoning_effort"`
 	}
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -50,6 +51,7 @@ func TestChatUsesMaxCompletionTokensForGPT5(t *testing.T) {
 		MaxTokens           *int     `json:"max_tokens"`
 		MaxCompletionTokens *int     `json:"max_completion_tokens"`
 		Temperature         *float64 `json:"temperature"`
+		ReasoningEffort     *string  `json:"reasoning_effort"`
 	}
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -67,8 +69,9 @@ func TestChatUsesMaxCompletionTokensForGPT5(t *testing.T) {
 
 	maxTokens := 42
 	temperature := 0.0
+	reasoningEffort := "none"
 	client := NewClient(ProviderConfig{Host: srv.Listener.Addr().String(), Model: "gpt-5-nano"})
-	if _, err := client.Chat(context.Background(), []Message{{Role: "user", Content: "hi"}}, nil, ChatOptions{Temperature: &temperature, MaxTokens: &maxTokens}); err != nil {
+	if _, err := client.Chat(context.Background(), []Message{{Role: "user", Content: "hi"}}, nil, ChatOptions{Temperature: &temperature, MaxTokens: &maxTokens, ReasoningEffort: &reasoningEffort}); err != nil {
 		t.Fatalf("Chat() error = %v", err)
 	}
 	if got.MaxTokens != nil {
@@ -79,5 +82,37 @@ func TestChatUsesMaxCompletionTokensForGPT5(t *testing.T) {
 	}
 	if got.Temperature != nil {
 		t.Fatalf("temperature = %v, want nil", *got.Temperature)
+	}
+	if got.ReasoningEffort != nil {
+		t.Fatalf("reasoning_effort = %v, want nil", *got.ReasoningEffort)
+	}
+}
+
+func TestChatUsesDefaultOutputTokensForGPT5NonStreaming(t *testing.T) {
+	t.Parallel()
+
+	var got struct {
+		MaxCompletionTokens *int `json:"max_completion_tokens"`
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"choices": []map[string]any{{
+				"message": map[string]string{"content": "ok"},
+			}},
+		})
+	}))
+	defer srv.Close()
+
+	client := NewClient(ProviderConfig{Host: srv.Listener.Addr().String(), Model: "gpt-5-nano"})
+	if _, err := client.Chat(context.Background(), []Message{{Role: "user", Content: "hi"}}, nil); err != nil {
+		t.Fatalf("Chat() error = %v", err)
+	}
+	if got.MaxCompletionTokens == nil || *got.MaxCompletionTokens != 1024 {
+		t.Fatalf("max_completion_tokens = %v, want %d", got.MaxCompletionTokens, 1024)
 	}
 }

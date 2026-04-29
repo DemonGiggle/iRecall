@@ -10,23 +10,28 @@ const (
 )
 
 type modelPolicy struct {
-	TokenLimitParameter tokenLimitParameter
-	SupportsTemperature bool
-	MinOutputTokens     int
+	TokenLimitParameter     tokenLimitParameter
+	SupportsTemperature     bool
+	SupportsReasoningEffort bool
+	MinOutputTokens         int
+	DefaultOutputTokens     int
 }
 
 func policyForModel(model string) modelPolicy {
 	family := modelFamily(model)
 	policy := modelPolicy{
-		TokenLimitParameter: tokenLimitMaxTokens,
-		SupportsTemperature: true,
+		TokenLimitParameter:     tokenLimitMaxTokens,
+		SupportsTemperature:     true,
+		SupportsReasoningEffort: true,
 	}
 
 	switch family {
 	case "gpt-5":
 		policy.TokenLimitParameter = tokenLimitMaxCompletionTokens
 		policy.SupportsTemperature = false
+		policy.SupportsReasoningEffort = false
 		policy.MinOutputTokens = 1024
+		policy.DefaultOutputTokens = 1024
 	}
 
 	return policy

@@ -67,8 +67,13 @@ func (c *Client) Chat(ctx context.Context, msgs []Message, tokenCh chan<- string
 		if o.MaxTokens != nil {
 			body[string(policy.TokenLimitParameter)] = policy.outputTokenLimit(*o.MaxTokens)
 		}
-		if o.ReasoningEffort != nil {
+		if o.ReasoningEffort != nil && policy.SupportsReasoningEffort {
 			body["reasoning_effort"] = *o.ReasoningEffort
+		}
+	}
+	if !stream && policy.DefaultOutputTokens > 0 {
+		if _, ok := body[string(policy.TokenLimitParameter)]; !ok {
+			body[string(policy.TokenLimitParameter)] = policy.DefaultOutputTokens
 		}
 	}
 	data, err := json.Marshal(body)
