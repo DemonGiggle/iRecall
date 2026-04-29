@@ -50,6 +50,7 @@ make build-web
 Useful flags:
 
 ```bash
+./bin/irecall-web --version
 ./bin/irecall-web --debug
 ./bin/irecall-web -host 0.0.0.0
 ./bin/irecall-web -port 9527
