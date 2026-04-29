@@ -53,6 +53,7 @@ func (c *Client) Chat(ctx context.Context, msgs []Message, tokenCh chan<- string
 		slog.Debug("llm: chat message", "index", i, "role", m.Role, "content_len", len(m.Content))
 	}
 
+	policy := policyForModel(c.cfg.Model)
 	body := map[string]any{
 		"model":    c.cfg.Model,
 		"messages": msgs,
@@ -60,15 +61,11 @@ func (c *Client) Chat(ctx context.Context, msgs []Message, tokenCh chan<- string
 	}
 	if len(opts) > 0 {
 		o := opts[0]
-		if o.Temperature != nil {
+		if o.Temperature != nil && policy.SupportsTemperature {
 			body["temperature"] = *o.Temperature
 		}
 		if o.MaxTokens != nil {
-			if usesMaxCompletionTokens(c.cfg.Model) {
-				body["max_completion_tokens"] = *o.MaxTokens
-			} else {
-				body["max_tokens"] = *o.MaxTokens
-			}
+			body[string(policy.TokenLimitParameter)] = *o.MaxTokens
 		}
 		if o.ReasoningEffort != nil {
 			body["reasoning_effort"] = *o.ReasoningEffort
@@ -152,10 +149,6 @@ func (c *Client) Chat(ctx context.Context, msgs []Message, tokenCh chan<- string
 	slog.Info("llm: chat completed", "response_len", len(content))
 	slog.Debug("llm: chat response content", "content", content)
 	return content, nil
-}
-
-func usesMaxCompletionTokens(model string) bool {
-	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(model)), "gpt-5")
 }
 
 // FetchModels calls GET /v1/models and returns sorted model IDs.

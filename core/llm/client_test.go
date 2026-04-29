@@ -12,8 +12,9 @@ func TestChatUsesMaxTokensByDefault(t *testing.T) {
 	t.Parallel()
 
 	var got struct {
-		MaxTokens           *int `json:"max_tokens"`
-		MaxCompletionTokens *int `json:"max_completion_tokens"`
+		MaxTokens           *int     `json:"max_tokens"`
+		MaxCompletionTokens *int     `json:"max_completion_tokens"`
+		Temperature         *float64 `json:"temperature"`
 	}
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -46,8 +47,9 @@ func TestChatUsesMaxCompletionTokensForGPT5(t *testing.T) {
 	t.Parallel()
 
 	var got struct {
-		MaxTokens           *int `json:"max_tokens"`
-		MaxCompletionTokens *int `json:"max_completion_tokens"`
+		MaxTokens           *int     `json:"max_tokens"`
+		MaxCompletionTokens *int     `json:"max_completion_tokens"`
+		Temperature         *float64 `json:"temperature"`
 	}
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -64,8 +66,9 @@ func TestChatUsesMaxCompletionTokensForGPT5(t *testing.T) {
 	defer srv.Close()
 
 	maxTokens := 42
+	temperature := 0.0
 	client := NewClient(ProviderConfig{Host: srv.Listener.Addr().String(), Model: "gpt-5-nano"})
-	if _, err := client.Chat(context.Background(), []Message{{Role: "user", Content: "hi"}}, nil, ChatOptions{MaxTokens: &maxTokens}); err != nil {
+	if _, err := client.Chat(context.Background(), []Message{{Role: "user", Content: "hi"}}, nil, ChatOptions{Temperature: &temperature, MaxTokens: &maxTokens}); err != nil {
 		t.Fatalf("Chat() error = %v", err)
 	}
 	if got.MaxTokens != nil {
@@ -73,5 +76,8 @@ func TestChatUsesMaxCompletionTokensForGPT5(t *testing.T) {
 	}
 	if got.MaxCompletionTokens == nil || *got.MaxCompletionTokens != maxTokens {
 		t.Fatalf("max_completion_tokens = %v, want %d", got.MaxCompletionTokens, maxTokens)
+	}
+	if got.Temperature != nil {
+		t.Fatalf("temperature = %v, want nil", *got.Temperature)
 	}
 }
