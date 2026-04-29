@@ -213,23 +213,26 @@ func TestAPIOnlyProviderStartupConfigEnablesLLMRoutes(t *testing.T) {
 	t.Parallel()
 
 	type observedRequest struct {
-		Path  string
-		Auth  string
-		Model string
+		Path            string
+		Auth            string
+		Model           string
+		ReasoningEffort string
 	}
 	observedCh := make(chan observedRequest, 1)
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
-			Model string `json:"model"`
+			Model           string `json:"model"`
+			ReasoningEffort string `json:"reasoning_effort"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 		observedCh <- observedRequest{
-			Path:  r.URL.Path,
-			Auth:  r.Header.Get("Authorization"),
-			Model: req.Model,
+			Path:            r.URL.Path,
+			Auth:            r.Header.Get("Authorization"),
+			Model:           req.Model,
+			ReasoningEffort: req.ReasoningEffort,
 		}
 		writeJSON(w, http.StatusOK, map[string]any{
 			"choices": []map[string]any{
@@ -292,6 +295,9 @@ func TestAPIOnlyProviderStartupConfigEnablesLLMRoutes(t *testing.T) {
 	}
 	if observed.Model != "runtime-model" {
 		t.Fatalf("provider model = %q, want runtime-model", observed.Model)
+	}
+	if observed.ReasoningEffort != "none" {
+		t.Fatalf("provider reasoning_effort = %q, want none", observed.ReasoningEffort)
 	}
 }
 
