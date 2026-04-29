@@ -4,11 +4,50 @@ package main
 
 import (
 	"context"
+	"flag"
 	"os"
+	"strings"
 	"testing"
 
 	irecallapp "github.com/gigol/irecall/app"
 )
+
+func TestUsageTextIncludesVersionFlagAndExamples(t *testing.T) {
+	t.Parallel()
+
+	fs := flag.NewFlagSet("irecall-web", flag.ContinueOnError)
+	fs.Bool("api-only", false, "run a headless API server without serving the frontend UI or requiring a web password at startup")
+	fs.String("host", "0.0.0.0", "host/interface to bind the web server to")
+	fs.Int("port", 0, "port to listen on (overrides saved web port)")
+	fs.Bool("version", false, "print version and exit")
+
+	text := usageText(fs, "irecall-web")
+
+	for _, want := range []string{
+		"Usage:",
+		"irecall-web auth <subcommand> [flags]",
+		"-api-only",
+		"-host",
+		"-port",
+		"-version",
+		"--version",
+		"auth issue-token",
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("usage text missing %q:\n%s", want, text)
+		}
+	}
+}
+
+func TestBinaryVersionPrefersInjectedValue(t *testing.T) {
+	original := version
+	version = "v1.2.3"
+	t.Cleanup(func() { version = original })
+
+	if got := binaryVersion(); got != "v1.2.3" {
+		t.Fatalf("binaryVersion() = %q, want %q", got, "v1.2.3")
+	}
+}
 
 func TestServerOptionsValidateRejectsConflictingFlags(t *testing.T) {
 	t.Parallel()

@@ -3,6 +3,7 @@
 package main
 
 import (
+	"bytes"
 	"errors"
 	"flag"
 	"fmt"
@@ -10,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"runtime/debug"
 	"strings"
 
 	charmterm "github.com/charmbracelet/x/term"
@@ -17,6 +19,9 @@ import (
 	"github.com/gigol/irecall/config"
 	frontendassets "github.com/gigol/irecall/frontend"
 )
+
+// Injected at link time: go build -ldflags "-X main.version=v0.1.0"
+var version = "dev"
 
 func main() {
 	maybeHandleAuthCommand(os.Args[1:])
@@ -27,10 +32,19 @@ func main() {
 	apiOnlyFlag := flag.Bool("api-only", false, "run a headless API server without serving the frontend UI or requiring a web password at startup")
 	providerOptions := bindProviderStartupFlags(flag.CommandLine)
 	resetPasswordFlag := flag.Bool("reset-passwd", false, "clear the configured web password and prompt for a new one before startup")
+	versionFlag := flag.Bool("version", false, "print version and exit")
 	// WARNING: This flag disables the interactive web password check. For testing only.
 	// Do NOT enable this in production environments.
 	unsafeNoPasswordCheckFlag := flag.Bool("unsafe-no-password-check", false, "DISABLE web password check (testing only). Do NOT use in production.")
+	flag.Usage = func() {
+		fmt.Fprint(flag.CommandLine.Output(), usageText(flag.CommandLine, os.Args[0]))
+	}
 	flag.Parse()
+
+	if *versionFlag {
+		fmt.Println("iRecall web", binaryVersion())
+		return
+	}
 
 	serverOptions := ServerOptions{
 		APIOnly:               *apiOnlyFlag,
@@ -116,6 +130,67 @@ func main() {
 		fmt.Fprintf(os.Stderr, "irecall-web: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+func usageText(fs *flag.FlagSet, program string) string {
+	var buf bytes.Buffer
+	fmt.Fprintf(&buf, "Usage: %s [flags]\n", program)
+	fmt.Fprintf(&buf, "       %s auth <subcommand> [flags]\n\n", program)
+	buf.WriteString("iRecall web serves the local HTTP UI and API.\n\n")
+	buf.WriteString("Flags:\n")
+	fs.VisitAll(func(f *flag.Flag) {
+		fmt.Fprintf(&buf, "  -%s\n    \t%s\n", f.Name, f.Usage)
+	})
+	buf.WriteString("\nExamples:\n")
+	fmt.Fprintf(&buf, "  %s --version\n", program)
+	fmt.Fprintf(&buf, "  %s -host 127.0.0.1 -port 9527\n", program)
+	fmt.Fprintf(&buf, "  %s --api-only --provider-host api.openai.example/v1 --provider-port 443 --provider-https --provider-model gpt-4.1-mini\n", program)
+	fmt.Fprintf(&buf, "  %s auth issue-token --write-token-file ~/.config/irecall/mcp-api-token\n", program)
+	return buf.String()
+}
+
+func binaryVersion() string {
+	if v := strings.TrimSpace(version); v != "" && v != "dev" {
+		return v
+	}
+
+	info, ok := debug.ReadBuildInfo()
+	if !ok {
+		return "dev"
+	}
+
+	var tag string
+	var revision string
+	var modified string
+	for _, setting := range info.Settings {
+		switch setting.Key {
+		case "vcs.tag":
+			tag = strings.TrimSpace(setting.Value)
+		case "vcs.revision":
+			revision = strings.TrimSpace(setting.Value)
+		case "vcs.modified":
+			modified = strings.TrimSpace(setting.Value)
+		}
+	}
+
+	if tag != "" {
+		if modified == "true" {
+			return tag + "-dirty"
+		}
+		return tag
+	}
+
+	if revision != "" {
+		if len(revision) > 12 {
+			revision = revision[:12]
+		}
+		if modified == "true" {
+			return revision + "-dirty"
+		}
+		return revision
+	}
+
+	return "dev"
 }
 
 func ensureWebPasswordConfigured(app *app.App) error {
