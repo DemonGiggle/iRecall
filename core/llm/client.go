@@ -36,8 +36,9 @@ type Message struct {
 
 // ChatOptions controls optional per-request parameters.
 type ChatOptions struct {
-	Temperature *float64 // nil = provider default
-	MaxTokens   *int     // nil = provider default
+	Temperature     *float64 // nil = provider default
+	MaxTokens       *int     // nil = provider default
+	ReasoningEffort *string  // nil = provider default
 }
 
 // Chat sends a chat completion request.
@@ -64,6 +65,9 @@ func (c *Client) Chat(ctx context.Context, msgs []Message, tokenCh chan<- string
 		}
 		if o.MaxTokens != nil {
 			body["max_tokens"] = *o.MaxTokens
+		}
+		if o.ReasoningEffort != nil {
+			body["reasoning_effort"] = *o.ReasoningEffort
 		}
 	}
 	data, err := json.Marshal(body)

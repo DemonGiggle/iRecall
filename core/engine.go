@@ -259,7 +259,12 @@ func (e *Engine) RefineQuoteDraft(ctx context.Context, content string) (string, 
 
 	zero := 0.0
 	maxTok := 400
-	refined, err := e.llm.Chat(ctx, msgs, nil, llm.ChatOptions{Temperature: &zero, MaxTokens: &maxTok})
+	noReasoning := "none"
+	refined, err := e.llm.Chat(ctx, msgs, nil, llm.ChatOptions{
+		Temperature:     &zero,
+		MaxTokens:       &maxTok,
+		ReasoningEffort: &noReasoning,
+	})
 	if err != nil {
 		slog.Error("engine: refine quote draft LLM call failed", "error", err)
 		return "", err

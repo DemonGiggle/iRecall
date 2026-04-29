@@ -77,8 +77,9 @@ func TestRefineQuoteDraft(t *testing.T) {
 	t.Parallel()
 
 	var gotRequest struct {
-		Model    string `json:"model"`
-		Messages []struct {
+		Model           string `json:"model"`
+		ReasoningEffort string `json:"reasoning_effort"`
+		Messages        []struct {
 			Role    string `json:"role"`
 			Content string `json:"content"`
 		} `json:"messages"`
@@ -116,6 +117,9 @@ func TestRefineQuoteDraft(t *testing.T) {
 	}
 	if gotRequest.Model != "test-model" {
 		t.Fatalf("model = %q, want test-model", gotRequest.Model)
+	}
+	if gotRequest.ReasoningEffort != "none" {
+		t.Fatalf("reasoning_effort = %q, want none", gotRequest.ReasoningEffort)
 	}
 	if gotRequest.Stream {
 		t.Fatal("stream = true, want false")
