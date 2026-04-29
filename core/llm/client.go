@@ -65,7 +65,7 @@ func (c *Client) Chat(ctx context.Context, msgs []Message, tokenCh chan<- string
 			body["temperature"] = *o.Temperature
 		}
 		if o.MaxTokens != nil {
-			body[string(policy.TokenLimitParameter)] = *o.MaxTokens
+			body[string(policy.TokenLimitParameter)] = policy.outputTokenLimit(*o.MaxTokens)
 		}
 		if o.ReasoningEffort != nil {
 			body["reasoning_effort"] = *o.ReasoningEffort

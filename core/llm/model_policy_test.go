@@ -9,6 +9,7 @@ func TestPolicyForModel(t *testing.T) {
 		model                 string
 		wantTokenLimitParam   tokenLimitParameter
 		wantTemperaturePolicy bool
+		wantMinOutputTokens   int
 	}{
 		{
 			model:                 "llama3.1",
@@ -24,6 +25,7 @@ func TestPolicyForModel(t *testing.T) {
 			model:                 "gpt-5-nano",
 			wantTokenLimitParam:   tokenLimitMaxCompletionTokens,
 			wantTemperaturePolicy: false,
+			wantMinOutputTokens:   1024,
 		},
 	}
 

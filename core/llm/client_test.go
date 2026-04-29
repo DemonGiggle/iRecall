@@ -74,8 +74,8 @@ func TestChatUsesMaxCompletionTokensForGPT5(t *testing.T) {
 	if got.MaxTokens != nil {
 		t.Fatalf("max_tokens = %v, want nil", *got.MaxTokens)
 	}
-	if got.MaxCompletionTokens == nil || *got.MaxCompletionTokens != maxTokens {
-		t.Fatalf("max_completion_tokens = %v, want %d", got.MaxCompletionTokens, maxTokens)
+	if got.MaxCompletionTokens == nil || *got.MaxCompletionTokens != 1024 {
+		t.Fatalf("max_completion_tokens = %v, want %d", got.MaxCompletionTokens, 1024)
 	}
 	if got.Temperature != nil {
 		t.Fatalf("temperature = %v, want nil", *got.Temperature)

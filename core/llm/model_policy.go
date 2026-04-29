@@ -12,6 +12,7 @@ const (
 type modelPolicy struct {
 	TokenLimitParameter tokenLimitParameter
 	SupportsTemperature bool
+	MinOutputTokens     int
 }
 
 func policyForModel(model string) modelPolicy {
@@ -25,6 +26,7 @@ func policyForModel(model string) modelPolicy {
 	case "gpt-5":
 		policy.TokenLimitParameter = tokenLimitMaxCompletionTokens
 		policy.SupportsTemperature = false
+		policy.MinOutputTokens = 1024
 	}
 
 	return policy
@@ -38,4 +40,11 @@ func modelFamily(model string) string {
 	default:
 		return ""
 	}
+}
+
+func (p modelPolicy) outputTokenLimit(requested int) int {
+	if requested < p.MinOutputTokens {
+		return p.MinOutputTokens
+	}
+	return requested
 }
