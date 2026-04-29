@@ -64,7 +64,11 @@ func (c *Client) Chat(ctx context.Context, msgs []Message, tokenCh chan<- string
 			body["temperature"] = *o.Temperature
 		}
 		if o.MaxTokens != nil {
-			body["max_tokens"] = *o.MaxTokens
+			if usesMaxCompletionTokens(c.cfg.Model) {
+				body["max_completion_tokens"] = *o.MaxTokens
+			} else {
+				body["max_tokens"] = *o.MaxTokens
+			}
 		}
 		if o.ReasoningEffort != nil {
 			body["reasoning_effort"] = *o.ReasoningEffort
@@ -148,6 +152,10 @@ func (c *Client) Chat(ctx context.Context, msgs []Message, tokenCh chan<- string
 	slog.Info("llm: chat completed", "response_len", len(content))
 	slog.Debug("llm: chat response content", "content", content)
 	return content, nil
+}
+
+func usesMaxCompletionTokens(model string) bool {
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(model)), "gpt-5")
 }
 
 // FetchModels calls GET /v1/models and returns sorted model IDs.
