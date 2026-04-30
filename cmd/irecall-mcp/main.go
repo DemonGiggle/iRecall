@@ -18,6 +18,7 @@ var version = "dev"
 
 func main() {
 	baseURLFlag := flag.String("base-url", "", "override the iRecall web API base URL (default: IRECALL_BASE_URL or http://127.0.0.1:9527)")
+	tokenFileFlag := flag.String("token-file", "", "read the API token from this file (preferred over IRECALL_API_TOKEN)")
 	timeoutFlag := flag.Duration("timeout", 15*time.Second, "HTTP timeout for calls to the iRecall web API")
 	versionFlag := flag.Bool("version", false, "print version and exit")
 	flag.Usage = func() {
@@ -30,7 +31,7 @@ func main() {
 		return
 	}
 
-	cfg, err := irecallmcp.LoadConfig(*baseURLFlag, *timeoutFlag)
+	cfg, err := irecallmcp.LoadConfig(*baseURLFlag, *tokenFileFlag, *timeoutFlag)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "irecall-mcp: %v\n", err)
 		os.Exit(1)
@@ -54,14 +55,16 @@ func usageText(fs *flag.FlagSet, program string) string {
 	buf.WriteString("irecall-mcp exposes the local iRecall web API as MCP tools over stdio.\n\n")
 	buf.WriteString("Environment:\n")
 	buf.WriteString("  IRECALL_BASE_URL   Base URL for the iRecall web server (default: http://127.0.0.1:9527)\n")
-	buf.WriteString("  IRECALL_API_TOKEN  Bearer token used for authenticated REST requests\n\n")
+	buf.WriteString("  IRECALL_API_TOKEN_FILE  Path to a protected file containing the bearer token\n")
+	buf.WriteString("  IRECALL_API_TOKEN       Bearer token used for authenticated REST requests\n\n")
 	buf.WriteString("Flags:\n")
 	fs.VisitAll(func(f *flag.Flag) {
 		fmt.Fprintf(&buf, "  -%s\n    \t%s\n", f.Name, f.Usage)
 	})
 	buf.WriteString("\nExamples:\n")
+	fmt.Fprintf(&buf, "  %s --token-file ~/.config/irecall/mcp-api-token\n", program)
 	fmt.Fprintf(&buf, "  IRECALL_API_TOKEN=... %s\n", program)
-	fmt.Fprintf(&buf, "  IRECALL_BASE_URL=http://127.0.0.1:9527 IRECALL_API_TOKEN=... %s\n", program)
+	fmt.Fprintf(&buf, "  IRECALL_BASE_URL=http://127.0.0.1:9527 IRECALL_API_TOKEN_FILE=~/.config/irecall/mcp-api-token %s\n", program)
 	return buf.String()
 }
 
