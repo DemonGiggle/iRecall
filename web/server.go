@@ -212,7 +212,7 @@ func (s *Server) handleBootstrapState(w http.ResponseWriter, r *http.Request) {
 		writeMethodNotAllowed(w)
 		return
 	}
-	writeJSON(w, http.StatusOK, s.app.BootstrapState())
+	writeJSON(w, http.StatusOK, sanitizeBootstrapState(s.app.BootstrapState()))
 }
 
 func (s *Server) handleCountQuotes(w http.ResponseWriter, r *http.Request) {
@@ -370,11 +370,13 @@ func (s *Server) handleSaveSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	var settings struct {
 		Provider struct {
-			Host   string `json:"Host"`
-			Port   int    `json:"Port"`
-			HTTPS  bool   `json:"HTTPS"`
-			APIKey string `json:"APIKey"`
-			Model  string `json:"Model"`
+			Host           string `json:"Host"`
+			Port           int    `json:"Port"`
+			HTTPS          bool   `json:"HTTPS"`
+			APIKey         string `json:"APIKey"`
+			PreserveAPIKey bool   `json:"PreserveAPIKey"`
+			ClearAPIKey    bool   `json:"ClearAPIKey"`
+			Model          string `json:"Model"`
 		} `json:"Provider"`
 		Search struct {
 			MaxResults   int     `json:"MaxResults"`
@@ -393,6 +395,10 @@ func (s *Server) handleSaveSettings(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
+	if err := s.resolveProviderSecretIntent(&settings); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
 	if settings.RootDir == nil && s.app.GetSettings() != nil {
 		rootDir := s.app.GetSettings().RootDir
 		settings.RootDir = &rootDir
@@ -402,16 +408,19 @@ func (s *Server) handleSaveSettings(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, result)
+	writeJSON(w, http.StatusOK, sanitizeSettings(result))
 }
 
 func (s *Server) handleFetchModels(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Host   string `json:"Host"`
-		Port   int    `json:"Port"`
-		HTTPS  bool   `json:"HTTPS"`
-		APIKey string `json:"APIKey"`
-		Model  string `json:"Model"`
+		Host           string `json:"Host"`
+		Port           int    `json:"Port"`
+		HTTPS          bool   `json:"HTTPS"`
+		APIKey         string `json:"APIKey"`
+		HasAPIKey      bool   `json:"HasAPIKey"`
+		PreserveAPIKey bool   `json:"PreserveAPIKey"`
+		ClearAPIKey    bool   `json:"ClearAPIKey"`
+		Model          string `json:"Model"`
 	}
 	if !requirePostJSON(w, r, &req) {
 		return
@@ -685,11 +694,14 @@ func bearerToken(header string) string {
 }
 
 func backendToCoreProvider(v struct {
-	Host   string `json:"Host"`
-	Port   int    `json:"Port"`
-	HTTPS  bool   `json:"HTTPS"`
-	APIKey string `json:"APIKey"`
-	Model  string `json:"Model"`
+	Host           string `json:"Host"`
+	Port           int    `json:"Port"`
+	HTTPS          bool   `json:"HTTPS"`
+	APIKey         string `json:"APIKey"`
+	HasAPIKey      bool   `json:"HasAPIKey"`
+	PreserveAPIKey bool   `json:"PreserveAPIKey"`
+	ClearAPIKey    bool   `json:"ClearAPIKey"`
+	Model          string `json:"Model"`
 }) core.ProviderConfig {
 	return core.ProviderConfig{
 		Host:   v.Host,
@@ -702,11 +714,13 @@ func backendToCoreProvider(v struct {
 
 func backendToCoreSettings(v struct {
 	Provider struct {
-		Host   string `json:"Host"`
-		Port   int    `json:"Port"`
-		HTTPS  bool   `json:"HTTPS"`
-		APIKey string `json:"APIKey"`
-		Model  string `json:"Model"`
+		Host           string `json:"Host"`
+		Port           int    `json:"Port"`
+		HTTPS          bool   `json:"HTTPS"`
+		APIKey         string `json:"APIKey"`
+		PreserveAPIKey bool   `json:"PreserveAPIKey"`
+		ClearAPIKey    bool   `json:"ClearAPIKey"`
+		Model          string `json:"Model"`
 	} `json:"Provider"`
 	Search struct {
 		MaxResults   int     `json:"MaxResults"`
@@ -745,4 +759,129 @@ func backendToCoreSettings(v struct {
 		settings.RootDir = *v.RootDir
 	}
 	return settings
+}
+
+type apiProviderConfig struct {
+	Host      string `json:"Host"`
+	Port      int    `json:"Port"`
+	HTTPS     bool   `json:"HTTPS"`
+	APIKey    string `json:"APIKey"`
+	HasAPIKey bool   `json:"HasAPIKey"`
+	Model     string `json:"Model"`
+}
+
+type apiSettings struct {
+	Provider apiProviderConfig `json:"Provider"`
+	Search   struct {
+		MaxResults   int     `json:"MaxResults"`
+		MinRelevance float64 `json:"MinRelevance"`
+	} `json:"Search"`
+	Debug struct {
+		MockLLM bool `json:"MockLLM"`
+	} `json:"Debug"`
+	Theme string `json:"Theme"`
+	Web   struct {
+		Port int `json:"Port"`
+	} `json:"Web"`
+	RootDir string `json:"RootDir"`
+}
+
+type apiBootstrapState struct {
+	ProductName string            `json:"productName"`
+	Greeting    string            `json:"greeting"`
+	Profile     *core.UserProfile `json:"profile"`
+	Settings    *apiSettings      `json:"settings,omitempty"`
+	Paths       app.AppPaths      `json:"paths"`
+	Pages       []string          `json:"pages"`
+	Docs        map[string]string `json:"docs"`
+}
+
+func sanitizeBootstrapState(state app.BootstrapState) apiBootstrapState {
+	return apiBootstrapState{
+		ProductName: state.ProductName,
+		Greeting:    state.Greeting,
+		Profile:     state.Profile,
+		Settings:    sanitizeSettings(state.Settings),
+		Paths:       state.Paths,
+		Pages:       state.Pages,
+		Docs:        state.Docs,
+	}
+}
+
+func sanitizeSettings(settings *core.Settings) *apiSettings {
+	if settings == nil {
+		return nil
+	}
+	sanitized := &apiSettings{
+		Provider: sanitizeProviderConfig(settings.Provider),
+		Theme:    settings.Theme,
+		RootDir:  settings.RootDir,
+	}
+	sanitized.Search.MaxResults = settings.Search.MaxResults
+	sanitized.Search.MinRelevance = settings.Search.MinRelevance
+	sanitized.Debug.MockLLM = settings.Debug.MockLLM
+	sanitized.Web.Port = settings.Web.Port
+	return sanitized
+}
+
+func sanitizeProviderConfig(provider core.ProviderConfig) apiProviderConfig {
+	return apiProviderConfig{
+		Host:      provider.Host,
+		Port:      provider.Port,
+		HTTPS:     provider.HTTPS,
+		APIKey:    "",
+		HasAPIKey: strings.TrimSpace(provider.APIKey) != "",
+		Model:     provider.Model,
+	}
+}
+
+func (s *Server) resolveProviderSecretIntent(settings *struct {
+	Provider struct {
+		Host           string `json:"Host"`
+		Port           int    `json:"Port"`
+		HTTPS          bool   `json:"HTTPS"`
+		APIKey         string `json:"APIKey"`
+		PreserveAPIKey bool   `json:"PreserveAPIKey"`
+		ClearAPIKey    bool   `json:"ClearAPIKey"`
+		Model          string `json:"Model"`
+	} `json:"Provider"`
+	Search struct {
+		MaxResults   int     `json:"MaxResults"`
+		MinRelevance float64 `json:"MinRelevance"`
+	} `json:"Search"`
+	Debug struct {
+		MockLLM bool `json:"MockLLM"`
+	} `json:"Debug"`
+	Theme string `json:"Theme"`
+	Web   struct {
+		Port int `json:"Port"`
+	} `json:"Web"`
+	RootDir *string `json:"RootDir"`
+}) error {
+	if settings == nil {
+		return errors.New("settings payload is required")
+	}
+	apiKey := strings.TrimSpace(settings.Provider.APIKey)
+	if settings.Provider.PreserveAPIKey && settings.Provider.ClearAPIKey {
+		return errors.New("provider API key cannot be preserved and cleared in the same request")
+	}
+	if settings.Provider.ClearAPIKey && apiKey != "" {
+		return errors.New("provider API key cannot be provided when ClearAPIKey is true")
+	}
+	if settings.Provider.PreserveAPIKey && apiKey != "" {
+		return errors.New("provider API key cannot be provided when PreserveAPIKey is true")
+	}
+	if settings.Provider.ClearAPIKey {
+		settings.Provider.APIKey = ""
+		return nil
+	}
+	if !settings.Provider.PreserveAPIKey {
+		return nil
+	}
+	current := s.app.GetSettings()
+	if current == nil {
+		return errors.New("cannot preserve provider API key before settings are initialized")
+	}
+	settings.Provider.APIKey = current.Provider.APIKey
+	return nil
 }

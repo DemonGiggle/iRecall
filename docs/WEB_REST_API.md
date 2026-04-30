@@ -116,6 +116,7 @@ The provider API key is read from the referenced file at startup and the server 
     "Port": 11434,
     "HTTPS": false,
     "APIKey": "",
+    "HasAPIKey": false,
     "Model": "llama3"
   },
   "Search": {
@@ -297,6 +298,7 @@ Response:
       "Port": 11434,
       "HTTPS": false,
       "APIKey": "",
+      "HasAPIKey": false,
       "Model": ""
     },
     "Search": {
@@ -528,6 +530,8 @@ Request body:
     "Port": 11434,
     "HTTPS": false,
     "APIKey": "",
+    "PreserveAPIKey": false,
+    "ClearAPIKey": false,
     "Model": "llama3"
   },
   "Search": {
@@ -545,9 +549,16 @@ Request body:
 }
 ```
 
+Notes:
+
+- Responses redact the provider secret: `Provider.APIKey` is always returned as `""`.
+- `Provider.HasAPIKey` in the response tells the client whether a key is currently stored.
+- Send `Provider.PreserveAPIKey=true` with a blank `Provider.APIKey` to keep the existing stored key.
+- Send `Provider.ClearAPIKey=true` with a blank `Provider.APIKey` to remove the stored key.
+
 Response:
 
-- `200 OK` with `Settings`
+- `200 OK` with redacted `Settings`
 
 ### `POST /api/app/fetch-models`
 

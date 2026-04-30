@@ -36,6 +36,9 @@ interface ProviderConfig {
   Port: number;
   HTTPS: boolean;
   APIKey: string;
+  HasAPIKey?: boolean;
+  PreserveAPIKey?: boolean;
+  ClearAPIKey?: boolean;
   Model: string;
 }
 
@@ -220,6 +223,8 @@ interface SettingsFormState {
   https: boolean;
   mockLLM: boolean;
   apiKey: string;
+  hasStoredAPIKey: boolean;
+  clearStoredAPIKey: boolean;
   modelFilter: string;
   model: string;
   maxResults: string;
@@ -808,6 +813,9 @@ function handleInput(event: Event): void {
       return;
     case "settings-api-key":
       state.settings.apiKey = target.value;
+      if (target.value.trim() !== "") {
+        state.settings.clearStoredAPIKey = false;
+      }
       return;
     case "settings-model-filter":
       state.settings.modelFilter = target.value;
@@ -880,6 +888,11 @@ function handleChange(event: Event): void {
     case "settings-mock-llm":
       if (target instanceof HTMLInputElement) {
         state.settings.mockLLM = target.checked;
+      }
+      return;
+    case "settings-clear-api-key":
+      if (target instanceof HTMLInputElement) {
+        state.settings.clearStoredAPIKey = target.checked;
       }
       return;
     case "settings-model":
@@ -2501,6 +2514,21 @@ function renderSettingsPage(): string {
               <span>API Key</span>
               <input class="text-input" data-bind="settings-api-key" type="password" value="${escapeAttribute(state.settings.apiKey)}" />
             </label>
+            ${
+              state.settings.hasStoredAPIKey
+                ? `<label class="field checkbox-field settings-toggle">
+                    <input type="checkbox" data-bind="settings-clear-api-key"${state.settings.clearStoredAPIKey ? " checked" : ""} />
+                    <span>Clear the stored API key on save</span>
+                  </label>
+                  <div class="helper-text muted">${
+                    state.settings.apiKey.trim() !== ""
+                      ? "Saving will replace the stored API key."
+                      : state.settings.clearStoredAPIKey
+                        ? "Saving will remove the stored API key."
+                        : "A provider API key is already stored. Leave the field blank to keep it."
+                  }</div>`
+                : ""
+            }
             <label class="field">
               <span>Filter models</span>
               <input class="text-input" data-bind="settings-model-filter" value="${escapeAttribute(state.settings.modelFilter)}" placeholder="Type to narrow the model list" />
@@ -3090,12 +3118,15 @@ function settingsFormFromBootstrap(bootstrap: BootstrapState): SettingsFormState
 }
 
 function settingsFormFromPayload(payload: SettingsPayload | BootstrapState["settings"], models: string[]): SettingsFormState {
+  const hasStoredAPIKey = Boolean(payload.Provider.HasAPIKey || payload.Provider.APIKey);
   const form = {
     host: payload.Provider.Host,
     port: String(payload.Provider.Port),
     https: payload.Provider.HTTPS,
     mockLLM: payload.Debug?.MockLLM ?? false,
     apiKey: payload.Provider.APIKey,
+    hasStoredAPIKey,
+    clearStoredAPIKey: false,
     modelFilter: "",
     model: payload.Provider.Model,
     maxResults: String(payload.Search.MaxResults),
@@ -3116,6 +3147,8 @@ function emptySettingsForm(): SettingsFormState {
     https: false,
     mockLLM: false,
     apiKey: "",
+    hasStoredAPIKey: false,
+    clearStoredAPIKey: false,
     modelFilter: "",
     model: "",
     maxResults: "5",
@@ -3137,6 +3170,9 @@ function providerConfigFromForm(form: SettingsFormState): ProviderConfig {
     Port: port,
     HTTPS: form.https,
     APIKey: form.apiKey,
+    HasAPIKey: form.hasStoredAPIKey,
+    PreserveAPIKey: form.hasStoredAPIKey && !form.clearStoredAPIKey && form.apiKey.trim() === "",
+    ClearAPIKey: form.clearStoredAPIKey && form.apiKey.trim() === "",
     Model: form.model,
   };
 }

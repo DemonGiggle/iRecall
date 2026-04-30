@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	irecallapp "github.com/gigol/irecall/app"
@@ -233,14 +234,23 @@ func TestHandleSaveSettingsPreservesExistingRootWhenOmitted(t *testing.T) {
 	if current.RootDir == "" {
 		t.Fatal("GetSettings().RootDir = empty, want persisted root")
 	}
+	current.Provider.APIKey = "stored-provider-secret"
+	if _, err := runtimeApp.SaveSettings(*current); err != nil {
+		t.Fatalf("SaveSettings(seed provider key) error = %v", err)
+	}
+	current = runtimeApp.GetSettings()
+	if current == nil {
+		t.Fatal("GetSettings() after seed returned nil")
+	}
 
 	reqBody, err := json.Marshal(struct {
 		Provider struct {
-			Host   string `json:"Host"`
-			Port   int    `json:"Port"`
-			HTTPS  bool   `json:"HTTPS"`
-			APIKey string `json:"APIKey"`
-			Model  string `json:"Model"`
+			Host           string `json:"Host"`
+			Port           int    `json:"Port"`
+			HTTPS          bool   `json:"HTTPS"`
+			APIKey         string `json:"APIKey"`
+			PreserveAPIKey bool   `json:"PreserveAPIKey"`
+			Model          string `json:"Model"`
 		} `json:"Provider"`
 		Search struct {
 			MaxResults   int     `json:"MaxResults"`
@@ -255,17 +265,19 @@ func TestHandleSaveSettingsPreservesExistingRootWhenOmitted(t *testing.T) {
 		} `json:"Web"`
 	}{
 		Provider: struct {
-			Host   string `json:"Host"`
-			Port   int    `json:"Port"`
-			HTTPS  bool   `json:"HTTPS"`
-			APIKey string `json:"APIKey"`
-			Model  string `json:"Model"`
+			Host           string `json:"Host"`
+			Port           int    `json:"Port"`
+			HTTPS          bool   `json:"HTTPS"`
+			APIKey         string `json:"APIKey"`
+			PreserveAPIKey bool   `json:"PreserveAPIKey"`
+			Model          string `json:"Model"`
 		}{
-			Host:   current.Provider.Host,
-			Port:   current.Provider.Port,
-			HTTPS:  current.Provider.HTTPS,
-			APIKey: current.Provider.APIKey,
-			Model:  current.Provider.Model,
+			Host:           current.Provider.Host,
+			Port:           current.Provider.Port,
+			HTTPS:          current.Provider.HTTPS,
+			APIKey:         "",
+			PreserveAPIKey: true,
+			Model:          current.Provider.Model,
 		},
 		Search: struct {
 			MaxResults   int     `json:"MaxResults"`
@@ -303,6 +315,21 @@ func TestHandleSaveSettingsPreservesExistingRootWhenOmitted(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("handleSaveSettings() status = %d, body = %s", rec.Code, rec.Body.String())
 	}
+	var response struct {
+		Provider struct {
+			APIKey    string `json:"APIKey"`
+			HasAPIKey bool   `json:"HasAPIKey"`
+		} `json:"Provider"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode save-settings response: %v", err)
+	}
+	if response.Provider.APIKey != "" {
+		t.Fatalf("save-settings response APIKey = %q, want redacted empty string", response.Provider.APIKey)
+	}
+	if !response.Provider.HasAPIKey {
+		t.Fatal("save-settings response HasAPIKey = false, want true")
+	}
 
 	saved := runtimeApp.GetSettings()
 	if saved == nil {
@@ -314,6 +341,9 @@ func TestHandleSaveSettingsPreservesExistingRootWhenOmitted(t *testing.T) {
 	if saved.RootDir != current.RootDir {
 		t.Fatalf("saved root = %q, want %q", saved.RootDir, current.RootDir)
 	}
+	if saved.Provider.APIKey != "stored-provider-secret" {
+		t.Fatalf("saved provider APIKey = %q, want preserved secret", saved.Provider.APIKey)
+	}
 
 	preferredRoot, err := config.LoadPreferredRootPath()
 	if err != nil {
@@ -321,6 +351,86 @@ func TestHandleSaveSettingsPreservesExistingRootWhenOmitted(t *testing.T) {
 	}
 	if preferredRoot != current.RootDir {
 		t.Fatalf("preferred root = %q, want %q", preferredRoot, current.RootDir)
+	}
+}
+
+func TestBootstrapStateRedactsProviderAPIKey(t *testing.T) {
+	t.Parallel()
+
+	runtimeApp := newTestApp(t)
+	settings := *runtimeApp.GetSettings()
+	settings.Provider.APIKey = "bootstrap-secret"
+	if _, err := runtimeApp.SaveSettings(settings); err != nil {
+		t.Fatalf("SaveSettings() error = %v", err)
+	}
+	tokenResult, err := runtimeApp.CreateAPIToken()
+	if err != nil {
+		t.Fatalf("CreateAPIToken() error = %v", err)
+	}
+	server := newTestServer(t, runtimeApp)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/app/bootstrap-state", nil)
+	req.Header.Set("Authorization", "Bearer "+tokenResult.Token)
+	res := httptest.NewRecorder()
+	server.ServeHTTP(res, req)
+	if res.Code != http.StatusOK {
+		t.Fatalf("GET /api/app/bootstrap-state = %d, want %d", res.Code, http.StatusOK)
+	}
+	var payload struct {
+		Settings struct {
+			Provider struct {
+				APIKey    string `json:"APIKey"`
+				HasAPIKey bool   `json:"HasAPIKey"`
+			} `json:"Provider"`
+		} `json:"settings"`
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode bootstrap-state response: %v", err)
+	}
+	if payload.Settings.Provider.APIKey != "" {
+		t.Fatalf("bootstrap-state APIKey = %q, want redacted empty string", payload.Settings.Provider.APIKey)
+	}
+	if !payload.Settings.Provider.HasAPIKey {
+		t.Fatal("bootstrap-state HasAPIKey = false, want true")
+	}
+	if got := runtimeApp.GetSettings().Provider.APIKey; got != "bootstrap-secret" {
+		t.Fatalf("runtime settings APIKey = %q, want persisted secret", got)
+	}
+}
+
+func TestHandleSaveSettingsRejectsConflictingProviderAPIKeyIntents(t *testing.T) {
+	t.Parallel()
+
+	runtimeApp := newTestApp(t)
+	server, err := NewServer(runtimeApp, frontendassets.Assets, 9527, ServerOptions{})
+	if err != nil {
+		t.Fatalf("NewServer() error = %v", err)
+	}
+
+	reqBody := strings.NewReader(`{
+		"Provider": {
+			"Host": "localhost",
+			"Port": 11434,
+			"HTTPS": false,
+			"APIKey": "new-secret",
+			"PreserveAPIKey": true,
+			"Model": "llama3"
+		},
+		"Search": {"MaxResults": 5, "MinRelevance": 0},
+		"Debug": {"MockLLM": false},
+		"Theme": "violet",
+		"Web": {"Port": 9527},
+		"RootDir": ""
+	}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/app/save-settings", reqBody)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	server.handleSaveSettings(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("handleSaveSettings() conflicting provider intent status = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+	if !strings.Contains(rec.Body.String(), "PreserveAPIKey") {
+		t.Fatalf("handleSaveSettings() body = %q, want PreserveAPIKey guidance", rec.Body.String())
 	}
 }
 

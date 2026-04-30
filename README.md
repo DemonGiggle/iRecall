@@ -264,6 +264,7 @@ Notes:
 - The API key is read from the file path at startup. If the file is missing, unreadable, or empty, the server exits with a clear error instead of starting with partial configuration.
 - The startup-loaded API key is not persisted back into iRecall's saved settings unless you explicitly save settings through the app later.
 - `irecall-mcp` prefers `--token-file` or `IRECALL_API_TOKEN_FILE` so operator deployments do not need to inline the bearer token into shared config.
+- A packaged OpenClaw example lives at `packaging/openclaw/irecall-mcp-server.json`; the user that launches `irecall-mcp` must be able to read the configured token file.
 
 ## Testing-only password bypass
 
