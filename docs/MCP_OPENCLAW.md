@@ -162,17 +162,19 @@ Representative `irecall_get_history` response:
 
 `irecall_health` and the delete tools already return small lowerCamelCase objects such as `{"ok":true}` and are unchanged by this contract stabilization. Timestamps continue to use Go's standard RFC3339 JSON encoding for `time.Time`.
 
-## Required environment for `irecall-mcp`
+## Required configuration for `irecall-mcp`
 
-- `IRECALL_API_TOKEN` — required bearer token used for authenticated REST calls
+- `--token-file PATH` — preferred way to read the bearer token from a protected local file
+- `IRECALL_API_TOKEN_FILE` — environment alternative to `--token-file`
+- `IRECALL_API_TOKEN` — legacy direct-token fallback when a file-based secret source is not available
 - `IRECALL_BASE_URL` — optional base URL, defaults to `http://127.0.0.1:9527`
 
 Example:
 
 ```bash
 IRECALL_BASE_URL=http://127.0.0.1:9527 \
-IRECALL_API_TOKEN="$(cat ~/.config/irecall/mcp-api-token)" \
-./bin/irecall-mcp
+./bin/irecall-mcp \
+  --token-file ~/.config/irecall/mcp-api-token
 ```
 
 ## Local token provisioning
@@ -252,7 +254,7 @@ These overrides are applied in memory before the API starts serving LLM-backed r
 Then:
 
 1. Use `irecall-web auth issue-token --write-token-file ...` to create the MCP bearer token.
-2. Configure the MCP launcher to run `irecall-mcp` with `IRECALL_BASE_URL` and `IRECALL_API_TOKEN` loaded from the protected local credential file or systemd credential.
+2. Configure the MCP launcher to run `irecall-mcp` with `IRECALL_BASE_URL` plus `--token-file` (or `IRECALL_API_TOKEN_FILE`) pointing at the protected local credential file or systemd credential.
 3. Verify the connection by calling `irecall_health`.
 
 ## OpenClaw MCP configuration
@@ -273,9 +275,12 @@ Direct OpenClaw config patch example:
     "servers": {
       "irecall": {
         "command": "/home/YOUR_USER/path/to/iRecall/bin/irecall-mcp",
+        "args": [
+          "--token-file",
+          "/home/YOUR_USER/.config/irecall/mcp-api-token"
+        ],
         "env": {
-          "IRECALL_BASE_URL": "http://127.0.0.1:9527",
-          "IRECALL_API_TOKEN": "PASTE_TOKEN_CONTENTS_HERE"
+          "IRECALL_BASE_URL": "http://127.0.0.1:9527"
         }
       }
     }
@@ -290,27 +295,30 @@ Equivalent OpenClaw CLI patch shape:
 ```bash
 openclaw config patch '{
   "mcp": {
-    "servers": {
-      "irecall": {
-        "command": "/home/YOUR_USER/path/to/iRecall/bin/irecall-mcp",
-        "env": {
-          "IRECALL_BASE_URL": "http://127.0.0.1:9527",
-          "IRECALL_API_TOKEN": "'"$(cat ~/.config/irecall/mcp-api-token)"'"
+      "servers": {
+        "irecall": {
+          "command": "/home/YOUR_USER/path/to/iRecall/bin/irecall-mcp",
+          "args": [
+            "--token-file",
+            "/home/YOUR_USER/.config/irecall/mcp-api-token"
+          ],
+          "env": {
+            "IRECALL_BASE_URL": "http://127.0.0.1:9527"
+          }
         }
       }
-    }
   }
 }'
 ```
 
-Security note: OpenClaw's MCP server schema accepts literal `env` values. Avoid committing this config to a repository, and prefer a private machine-local config file. If your deployment supports service credentials or another secret injection layer, use that to provide `IRECALL_API_TOKEN` to the MCP process.
+Security note: OpenClaw's MCP server schema accepts literal `env` values, but `irecall-mcp --token-file ...` avoids putting the plaintext token into the config itself. Avoid committing machine-local MCP config to a repository. If your deployment supports service credentials or another secret injection layer, point `--token-file` or `IRECALL_API_TOKEN_FILE` at that protected local file.
 
 ## Current limitations
 
 - stdio is the only bridge transport in this implementation
 - tool responses are currently returned as JSON text payloads
 - health intentionally omits bootstrap details such as UI pages, local paths, settings, and docs
-- `IRECALL_API_TOKEN` is configured as a process env var; keep the OpenClaw config private if it contains the literal token
+- token-file support still relies on a local readable secret file; keep that file private and permission-restricted
 - the bridge assumes the iRecall web server is already running
 
 ## Validation

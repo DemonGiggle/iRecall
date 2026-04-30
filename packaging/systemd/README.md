@@ -64,7 +64,7 @@ This unit is intended for a headless local iRecall web API that MCP clients can 
    sudo chown root:irecall /etc/irecall/api-token
    sudo chmod 0640 /etc/irecall/api-token
 
-   The command writes the full token to /etc/irecall/api-token and prints only the token prefix. Use the file contents as IRECALL_API_TOKEN in the MCP client or other API client environment.
+   The command writes the full token to /etc/irecall/api-token and prints only the token prefix. Prefer pointing `irecall-mcp --token-file` at this path instead of copying the plaintext token into client config.
 
 End-to-end smoke test
 
@@ -97,12 +97,11 @@ End-to-end smoke test
 
    Command:
 
-   /usr/local/bin/irecall-mcp
+   /usr/local/bin/irecall-mcp --token-file /etc/irecall/api-token
 
    Environment:
 
    IRECALL_BASE_URL=http://127.0.0.1:9527
-   IRECALL_API_TOKEN=<contents of /etc/irecall/api-token>
 
    Then call the irecall_health MCP tool. It should report ok=true.
 
@@ -121,4 +120,4 @@ This relies on the current API behavior where an omitted limit returns all quote
 Notes
 
 - The web service runs with --api-only by default to avoid interactive password prompts on startup. Run the CLI interactively once to configure the web password if desired.
-- The irecall-mcp binary is a stdio MCP server that should be launched by an MCP client, not by systemd. Configure IRECALL_BASE_URL and IRECALL_API_TOKEN in the client environment or client config.
+- The irecall-mcp binary is a stdio MCP server that should be launched by an MCP client, not by systemd. Configure IRECALL_BASE_URL plus `--token-file` (or `IRECALL_API_TOKEN_FILE`) in the client launch config.
