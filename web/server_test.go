@@ -38,6 +38,23 @@ func TestBearerTokenAuthenticatesAppRoutes(t *testing.T) {
 	if res.Code != http.StatusOK {
 		t.Fatalf("GET /api/app/list-quotes with bearer token = %d, want %d", res.Code, http.StatusOK)
 	}
+
+	req = httptest.NewRequest(http.MethodGet, "/api/app/count-quotes", nil)
+	req.Header.Set("Authorization", "Bearer "+tokenResult.Token)
+	res = httptest.NewRecorder()
+	server.ServeHTTP(res, req)
+	if res.Code != http.StatusOK {
+		t.Fatalf("GET /api/app/count-quotes with bearer token = %d, want %d", res.Code, http.StatusOK)
+	}
+	var count struct {
+		Count int64 `json:"count"`
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &count); err != nil {
+		t.Fatalf("decode count response: %v", err)
+	}
+	if count.Count != 0 {
+		t.Fatalf("count response = %d, want 0", count.Count)
+	}
 }
 
 func TestAPIOnlyModeStartsWithoutWebPasswordAndRequiresBearerToken(t *testing.T) {
@@ -83,6 +100,13 @@ func TestAPIOnlyModeStartsWithoutWebPasswordAndRequiresBearerToken(t *testing.T)
 	server.ServeHTTP(res, req)
 	if res.Code != http.StatusOK {
 		t.Fatalf("GET /api/app/list-quotes with bearer token = %d, want %d", res.Code, http.StatusOK)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/api/app/count-quotes", nil)
+	res = httptest.NewRecorder()
+	server.ServeHTTP(res, req)
+	if res.Code != http.StatusUnauthorized {
+		t.Fatalf("GET /api/app/count-quotes without auth = %d, want %d", res.Code, http.StatusUnauthorized)
 	}
 }
 

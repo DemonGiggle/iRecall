@@ -102,6 +102,36 @@ func TestDesktopBackendBootstrapState(t *testing.T) {
 	}
 }
 
+func TestDesktopBackendCountQuotes(t *testing.T) {
+	t.Parallel()
+
+	app, err := NewApp(filepath.Join(t.TempDir(), "desktop-count"))
+	if err != nil {
+		t.Fatalf("NewApp() error = %v", err)
+	}
+	t.Cleanup(func() { app.Shutdown(context.Background()) })
+
+	count, err := app.CountQuotes()
+	if err != nil {
+		t.Fatalf("CountQuotes() before insert error = %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("CountQuotes() before insert = %d, want 0", count)
+	}
+
+	if _, err := app.AddQuote("count me"); err != nil {
+		t.Fatalf("AddQuote() error = %v", err)
+	}
+
+	count, err = app.CountQuotes()
+	if err != nil {
+		t.Fatalf("CountQuotes() after insert error = %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("CountQuotes() after insert = %d, want 1", count)
+	}
+}
+
 func TestDesktopBackendRecallHistoryLifecycle(t *testing.T) {
 	t.Parallel()
 

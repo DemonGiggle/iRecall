@@ -40,6 +40,12 @@ func TestMCPToolsCallAuthenticatedRESTAPI(t *testing.T) {
 				return
 			}
 			_, _ = w.Write([]byte(`{"productName":"iRecall","greeting":"Hi! Test","pages":["Recall"],"paths":{"rootDir":"/tmp/irecall"},"profile":{"displayName":"Tester"},"docs":{"mcp":"docs/MCP_OPENCLAW.md"}}`))
+		case "/api/app/count-quotes":
+			if r.Method != http.MethodGet {
+				http.NotFound(w, r)
+				return
+			}
+			_, _ = w.Write([]byte(`{"count":1}`))
 		case "/api/app/list-quotes":
 			if r.Method != http.MethodGet {
 				http.NotFound(w, r)
@@ -156,6 +162,7 @@ func TestMCPToolsCallAuthenticatedRESTAPI(t *testing.T) {
 	assertToolNames(t, tools, []string{
 		"irecall_health",
 		"irecall_recall",
+		"irecall_count_quotes",
 		"irecall_list_quotes",
 		"irecall_add_quote",
 		"irecall_save_recall_as_quote",
@@ -170,6 +177,8 @@ func TestMCPToolsCallAuthenticatedRESTAPI(t *testing.T) {
 	assertToolTextContains(t, healthResult, `"ok": true`)
 	assertToolTextNotContains(t, healthResult, `"pages"`)
 	assertToolTextNotContains(t, healthResult, `"paths"`)
+	countQuotesResult := callTool(t, client, "irecall_count_quotes", nil)
+	assertToolTextContains(t, countQuotesResult, `"count": 1`)
 	listQuotesResult := callTool(t, client, "irecall_list_quotes", map[string]any{"limit": 10, "offset": 20})
 	assertToolTextContains(t, listQuotesResult, `"quotes": [`)
 	assertToolTextContains(t, listQuotesResult, `"id": 7`)
@@ -213,6 +222,7 @@ func TestMCPToolsCallAuthenticatedRESTAPI(t *testing.T) {
 
 	want := []restCall{
 		{Method: http.MethodGet, Path: "/api/app/bootstrap-state"},
+		{Method: http.MethodGet, Path: "/api/app/count-quotes"},
 		{Method: http.MethodGet, Path: "/api/app/list-quotes", Query: "limit=10&offset=20"},
 		{Method: http.MethodPost, Path: "/api/app/add-quote", Body: "new note"},
 		{Method: http.MethodPost, Path: "/api/app/run-recall", Body: "what did I save?"},

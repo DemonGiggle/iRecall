@@ -40,6 +40,9 @@ const webBridgeJS = `
     BootstrapState() {
       return request("GET", "/api/app/bootstrap-state");
     },
+    CountQuotes() {
+      return request("GET", "/api/app/count-quotes");
+    },
     ListQuotes() {
       return request("GET", "/api/app/list-quotes");
     },

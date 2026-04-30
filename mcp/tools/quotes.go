@@ -34,6 +34,18 @@ type deleteQuotesArgs struct {
 }
 
 func RegisterQuoteTools(srv *mcpserver.MCPServer, client *irecallapi.Client) {
+	countTool := mcpproto.NewTool(
+		"irecall_count_quotes",
+		mcpproto.WithDescription("Return the total number of quotes stored in iRecall."),
+	)
+	srv.AddTool(countTool, mcpproto.NewTypedToolHandler(func(ctx context.Context, request mcpproto.CallToolRequest, args struct{}) (*mcpproto.CallToolResult, error) {
+		count, err := client.CountQuotes(ctx)
+		if err != nil {
+			return mcpproto.NewToolResultErrorFromErr("Failed to count quotes in iRecall.", err), nil
+		}
+		return jsonResult(count)
+	}))
+
 	listTool := mcpproto.NewTool(
 		"irecall_list_quotes",
 		mcpproto.WithDescription("List stored quotes from iRecall using limit/offset pagination."),

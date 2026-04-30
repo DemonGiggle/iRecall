@@ -70,6 +70,14 @@ func TestStoreQuoteLifecycleAndSearch(t *testing.T) {
 		t.Fatalf("listed tags = %q, want concurrency and golang", listed[0].Tags)
 	}
 
+	count, err := store.CountQuotes()
+	if err != nil {
+		t.Fatalf("count quotes: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("quote count = %d, want 1", count)
+	}
+
 	if err := store.DeleteQuote(quoteID); err != nil {
 		t.Fatalf("delete quote: %v", err)
 	}
@@ -80,6 +88,14 @@ func TestStoreQuoteLifecycleAndSearch(t *testing.T) {
 	}
 	if len(results) != 0 {
 		t.Fatalf("search result count after delete = %d, want 0", len(results))
+	}
+
+	count, err = store.CountQuotes()
+	if err != nil {
+		t.Fatalf("count quotes after delete: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("quote count after delete = %d, want 0", count)
 	}
 }
 

@@ -107,15 +107,12 @@ End-to-end smoke test
 
 Counting quotes
 
-The REST API does not currently expose a dedicated count endpoint. For small local instances, omit the limit parameter and count the returned JSON array:
+Use the dedicated count endpoint:
 
-   TOKEN=$(sudo cat /etc/irecall/api-token)
-   curl -fsS \
-     -H "Authorization: Bearer $TOKEN" \
-     'http://127.0.0.1:9527/api/app/list-quotes' \
-     | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))'
-
-This relies on the current API behavior where an omitted limit returns all quotes. For large datasets, prefer adding a dedicated count endpoint rather than using list output as a long-term counting mechanism.
+    TOKEN=$(sudo cat /etc/irecall/api-token)
+    curl -fsS \
+      -H "Authorization: Bearer $TOKEN" \
+      http://127.0.0.1:9527/api/app/count-quotes
 
 Notes
 

@@ -73,6 +73,9 @@ func TestOperatorBootstrapIssuesTokenAndMCPHealthChecksRealWebServer(t *testing.
 	assertOperatorBootstrapToolTextNotContains(t, health, `"paths"`)
 	assertOperatorBootstrapToolTextNotContains(t, health, `"pages"`)
 
+	count := operatorBootstrapCallTool(t, mcpClient, "irecall_count_quotes", nil)
+	assertOperatorBootstrapToolTextContains(t, count, `"count": 1`)
+
 	quotes := operatorBootstrapCallTool(t, mcpClient, "irecall_list_quotes", map[string]any{"limit": 10})
 	assertOperatorBootstrapToolTextContains(t, quotes, "operator bootstrap quote")
 }

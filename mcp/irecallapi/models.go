@@ -8,6 +8,9 @@ import (
 type BootstrapState = appbackend.BootstrapState
 type RecallResult = appbackend.RecallResult
 type Quote = core.Quote
+type QuoteCountResponse struct {
+	Count int64 `json:"count"`
+}
 type RecallHistorySummary = core.RecallHistorySummary
 type RecallHistoryEntry = core.RecallHistoryEntry
 
