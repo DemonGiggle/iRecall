@@ -267,6 +267,8 @@ For this stdio bridge, the relevant fields are:
 - `env` — environment variables passed to the MCP process
 - `cwd` / `workingDirectory` — optional working directory
 
+Use the binary directly with `args`. Do not wrap `irecall-mcp` in `bash -lc`, `sh -c`, command substitution, or inline `cat /path/to/token` snippets. Shell launchers can fail before `irecall-mcp` starts when the MCP host runs with a restricted shell, non-searchable working directory, or locked-down service user. They also risk leaking bearer tokens into process metadata or logs. Prefer `--token-file` or `IRECALL_API_TOKEN_FILE`; the bridge reads the token itself.
+
 Direct OpenClaw config patch example:
 
 ```json
@@ -278,6 +280,27 @@ Direct OpenClaw config patch example:
         "args": [
           "--token-file",
           "/home/YOUR_USER/.config/irecall/mcp-api-token"
+        ],
+        "env": {
+          "IRECALL_BASE_URL": "http://127.0.0.1:9527"
+        }
+      }
+    }
+  }
+}
+```
+
+System install example:
+
+```json
+{
+  "mcp": {
+    "servers": {
+      "irecall": {
+        "command": "/usr/local/bin/irecall-mcp",
+        "args": [
+          "--token-file",
+          "/etc/irecall/api-token"
         ],
         "env": {
           "IRECALL_BASE_URL": "http://127.0.0.1:9527"
@@ -312,6 +335,8 @@ openclaw config patch '{
 ```
 
 Security note: OpenClaw's MCP server schema accepts literal `env` values, but `irecall-mcp --token-file ...` avoids putting the plaintext token into the config itself. Avoid committing machine-local MCP config to a repository. If your deployment supports service credentials or another secret injection layer, point `--token-file` or `IRECALL_API_TOKEN_FILE` at that protected local file.
+
+Troubleshooting note: an error such as `failed to start server "irecall" (bash -lc ... cat /etc/irecall/api-token) ... Error: spawn /bin/sh EACCES` means the MCP host could not start the shell wrapper. Replace the wrapper with direct `command` + `args` as shown above. The token file only needs to be readable by the user that launches `irecall-mcp`; no shell is required.
 
 ## Current limitations
 
