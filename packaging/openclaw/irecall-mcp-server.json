@@ -1,0 +1,16 @@
+{
+  "mcp": {
+    "servers": {
+      "irecall": {
+        "command": "/usr/local/bin/irecall-mcp",
+        "args": [
+          "--token-file",
+          "/etc/irecall/api-token"
+        ],
+        "env": {
+          "IRECALL_BASE_URL": "http://127.0.0.1:9527"
+        }
+      }
+    }
+  }
+}

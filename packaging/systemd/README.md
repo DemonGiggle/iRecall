@@ -93,15 +93,21 @@ End-to-end smoke test
      -H "Authorization: Bearer $TOKEN" \
      'http://127.0.0.1:9527/api/app/list-quotes?limit=20&offset=0'
 
-4. Configure an MCP client to launch the stdio server:
+4. Configure an MCP client to launch the stdio server without a shell wrapper:
 
    Command:
 
-   /usr/local/bin/irecall-mcp --token-file /etc/irecall/api-token
+   /usr/local/bin/irecall-mcp
+
+   Args:
+
+   --token-file /etc/irecall/api-token
 
    Environment:
 
    IRECALL_BASE_URL=http://127.0.0.1:9527
+
+   Do not use `bash -lc`, `sh -c`, or inline `cat /etc/irecall/api-token` snippets to inject `IRECALL_API_TOKEN`. Shell wrappers can fail before the bridge starts under restricted MCP hosts, for example with `spawn /bin/sh EACCES`, and can expose tokens in process metadata or logs. Let `irecall-mcp` read the protected token file directly.
 
    Then call the irecall_health MCP tool. It should report ok=true.
 
