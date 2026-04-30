@@ -110,5 +110,8 @@ func writeTokenFileForTest(t *testing.T, contents string, mode os.FileMode) stri
 	if err := os.WriteFile(path, []byte(contents), mode); err != nil {
 		t.Fatalf("WriteFile(%q) error = %v", path, err)
 	}
+	if err := os.Chmod(path, mode); err != nil {
+		t.Fatalf("Chmod(%q) error = %v", path, err)
+	}
 	return path
 }
