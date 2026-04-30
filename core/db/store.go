@@ -198,6 +198,18 @@ func (s *Store) ListQuotes() ([]QuoteRow, error) {
 	return s.ListQuotesPage(0, 0)
 }
 
+// CountQuotes returns the total number of stored quotes.
+func (s *Store) CountQuotes() (int64, error) {
+	slog.Debug("db: counting quotes")
+	var count int64
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM quotes`).Scan(&count); err != nil {
+		slog.Error("db: count quotes failed", "error", err)
+		return 0, fmt.Errorf("count quotes: %w", err)
+	}
+	slog.Debug("db: counted quotes", "count", count)
+	return count, nil
+}
+
 // ListQuotesPage returns quotes with their tags, newest first.
 // limit <= 0 returns all quotes. offset < 0 is treated as 0.
 func (s *Store) ListQuotesPage(limit, offset int) ([]QuoteRow, error) {

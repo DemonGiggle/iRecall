@@ -82,6 +82,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("/api/app/get-api-token-status", s.requireSessionAuth(http.HandlerFunc(s.handleGetAPITokenStatus)))
 	mux.Handle("/api/app/create-api-token", s.requireSessionAuth(http.HandlerFunc(s.handleCreateAPIToken)))
 	mux.Handle("/api/app/bootstrap-state", s.requireAPIAuth(http.HandlerFunc(s.handleBootstrapState)))
+	mux.Handle("/api/app/count-quotes", s.requireAPIAuth(http.HandlerFunc(s.handleCountQuotes)))
 	mux.Handle("/api/app/list-quotes", s.requireAPIAuth(http.HandlerFunc(s.handleListQuotes)))
 	mux.Handle("/api/app/add-quote", s.requireAPIAuth(http.HandlerFunc(s.handleAddQuote)))
 	mux.Handle("/api/app/save-recall-as-quote", s.requireAPIAuth(http.HandlerFunc(s.handleSaveRecallAsQuote)))
@@ -212,6 +213,19 @@ func (s *Server) handleBootstrapState(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, s.app.BootstrapState())
+}
+
+func (s *Server) handleCountQuotes(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeMethodNotAllowed(w)
+		return
+	}
+	count, err := s.app.CountQuotes()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]int64{"count": count})
 }
 
 func (s *Server) handleListQuotes(w http.ResponseWriter, r *http.Request) {

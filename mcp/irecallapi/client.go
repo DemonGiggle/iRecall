@@ -59,6 +59,14 @@ func (c *Client) BootstrapState(ctx context.Context) (*BootstrapState, error) {
 	return &value, nil
 }
 
+func (c *Client) CountQuotes(ctx context.Context) (*QuoteCountResponse, error) {
+	var value QuoteCountResponse
+	if err := c.doJSON(ctx, http.MethodGet, "/api/app/count-quotes", nil, &value); err != nil {
+		return nil, err
+	}
+	return &value, nil
+}
+
 func (c *Client) ListQuotes(ctx context.Context, limit, offset int) ([]Quote, error) {
 	var value []Quote
 	path := "/api/app/list-quotes"

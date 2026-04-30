@@ -114,6 +114,10 @@ func (a *App) ListQuotesPage(limit, offset int) ([]core.Quote, error) {
 	return a.engine.ListQuotesPage(a.context(), limit, offset)
 }
 
+func (a *App) CountQuotes() (int64, error) {
+	return a.engine.CountQuotes(a.context())
+}
+
 func (a *App) AddQuote(content string) (*core.Quote, error) {
 	return a.engine.AddQuote(a.context(), content)
 }

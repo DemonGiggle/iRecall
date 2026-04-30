@@ -163,6 +163,18 @@ func (e *Engine) ListQuotes(ctx context.Context) ([]Quote, error) {
 	return e.ListQuotesPage(ctx, 0, 0)
 }
 
+// CountQuotes returns the total number of stored quotes.
+func (e *Engine) CountQuotes(ctx context.Context) (int64, error) {
+	slog.Debug("engine: counting quotes")
+	count, err := e.store.CountQuotes()
+	if err != nil {
+		slog.Error("engine: count quotes failed", "error", err)
+		return 0, err
+	}
+	slog.Debug("engine: counted quotes", "count", count)
+	return count, nil
+}
+
 // ListQuotesPage returns quotes newest first using limit/offset pagination.
 // limit <= 0 returns all quotes. offset < 0 is treated as 0.
 func (e *Engine) ListQuotesPage(ctx context.Context, limit, offset int) ([]Quote, error) {
