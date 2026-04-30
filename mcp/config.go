@@ -89,8 +89,8 @@ func readSecretFile(path string, label string) (string, error) {
 		return "", fmt.Errorf("%s file %q must be a regular file", label, path)
 	}
 	if runtime.GOOS != "windows" {
-		if perm := info.Mode().Perm(); perm&0o077 != 0 {
-			return "", fmt.Errorf("%s file %q must not be readable by group or others (mode %03o)", label, path, perm)
+		if perm := info.Mode().Perm(); perm&0o037 != 0 {
+			return "", fmt.Errorf("%s file %q must be owner-only or owner+group-read only (mode %03o)", label, path, perm)
 		}
 	}
 

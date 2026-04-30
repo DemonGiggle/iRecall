@@ -84,12 +84,21 @@ func TestLoadConfigRejectsInsecureTokenFilePermissions(t *testing.T) {
 		t.Skip("permission bits are not enforced on Windows")
 	}
 
-	insecurePath := writeTokenFileForTest(t, "flag-token\n", 0o644)
-	_, err := LoadConfig("", insecurePath, 5*time.Second)
+	allowedPath := writeTokenFileForTest(t, "flag-token\n", 0o640)
+	cfg, err := LoadConfig("", allowedPath, 5*time.Second)
+	if err != nil {
+		t.Fatalf("LoadConfig() with 0640 token file error = %v, want success", err)
+	}
+	if cfg.APIToken != "flag-token" {
+		t.Fatalf("APIToken = %q, want trimmed token from 0640 file", cfg.APIToken)
+	}
+
+	insecurePath := writeTokenFileForTest(t, "flag-token\n", 0o660)
+	_, err = LoadConfig("", insecurePath, 5*time.Second)
 	if err == nil {
 		t.Fatal("LoadConfig() error = nil, want insecure permissions failure")
 	}
-	if !strings.Contains(err.Error(), "must not be readable by group or others") {
+	if !strings.Contains(err.Error(), "owner+group-read only") {
 		t.Fatalf("LoadConfig() error = %q, want permission guidance", err)
 	}
 }
