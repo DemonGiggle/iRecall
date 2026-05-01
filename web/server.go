@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"log/slog"
 	"net/http"
 	"path"
 	"strconv"
@@ -421,13 +422,22 @@ func (s *Server) handleFetchModels(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleRunRecall(w http.ResponseWriter, r *http.Request) {
+	startedAt := time.Now()
 	var req struct {
 		Question string `json:"question"`
 	}
 	if !requirePostJSON(w, r, &req) {
 		return
 	}
+	question := strings.TrimSpace(req.Question)
+	slog.Info("web: run recall request received", "question", question, "remote_addr", r.RemoteAddr)
 	value, err := s.app.RunRecall(req.Question)
+	duration := time.Since(startedAt)
+	if err != nil {
+		slog.Error("web: run recall request failed", "question", question, "duration_ms", duration.Milliseconds(), "error", err)
+	} else {
+		slog.Info("web: run recall request complete", "question", question, "duration_ms", duration.Milliseconds())
+	}
 	writeAppJSON(w, value, err)
 }
 

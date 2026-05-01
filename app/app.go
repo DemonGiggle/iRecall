@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/gigol/irecall/config"
 	"github.com/gigol/irecall/core"
@@ -350,17 +352,30 @@ func (a *App) RunRecall(question string) (*RecallResult, error) {
 		return nil, errors.New("question is empty")
 	}
 
+	startedAt := time.Now()
+	slog.Info("app: run recall started", "question", question)
+
+	keywordsStartedAt := time.Now()
 	keywords, err := a.engine.ExtractKeywords(a.context(), question)
+	keywordsDuration := time.Since(keywordsStartedAt)
 	if err != nil {
+		slog.Error("app: run recall keyword extraction failed", "question", question, "duration_ms", keywordsDuration.Milliseconds(), "error", err)
 		return nil, err
 	}
+	slog.Info("app: run recall keyword extraction complete", "question", question, "duration_ms", keywordsDuration.Milliseconds(), "keyword_count", len(keywords), "keywords", keywords)
+
+	searchStartedAt := time.Now()
 	quotes, err := a.engine.SearchQuotes(a.context(), keywords)
+	searchDuration := time.Since(searchStartedAt)
 	if err != nil {
+		slog.Error("app: run recall quote search failed", "question", question, "duration_ms", searchDuration.Milliseconds(), "error", err)
 		return nil, err
 	}
+	slog.Info("app: run recall quote search complete", "question", question, "duration_ms", searchDuration.Milliseconds(), "quote_count", len(quotes))
 
 	tokenCh := make(chan string, 64)
 	errCh := make(chan error, 1)
+	responseStartedAt := time.Now()
 	go func() {
 		errCh <- a.engine.GenerateResponse(a.context(), question, quotes, tokenCh)
 	}()
@@ -369,12 +384,22 @@ func (a *App) RunRecall(question string) (*RecallResult, error) {
 	for token := range tokenCh {
 		sb.WriteString(token)
 	}
+	responseDuration := time.Since(responseStartedAt)
 	if err := <-errCh; err != nil {
+		slog.Error("app: run recall response generation failed", "question", question, "duration_ms", responseDuration.Milliseconds(), "error", err)
 		return nil, err
 	}
+	slog.Info("app: run recall response generation complete", "question", question, "duration_ms", responseDuration.Milliseconds(), "response_len", sb.Len())
+
+	historyStartedAt := time.Now()
 	if _, err := a.engine.SaveRecallHistory(a.context(), question, sb.String(), quotes); err != nil {
+		historyDuration := time.Since(historyStartedAt)
+		slog.Error("app: run recall history save failed", "question", question, "duration_ms", historyDuration.Milliseconds(), "error", err)
 		return nil, err
 	}
+	historyDuration := time.Since(historyStartedAt)
+	totalDuration := time.Since(startedAt)
+	slog.Info("app: run recall finished", "question", question, "duration_ms", totalDuration.Milliseconds(), "keywords_ms", keywordsDuration.Milliseconds(), "db_search_ms", searchDuration.Milliseconds(), "llm_response_ms", responseDuration.Milliseconds(), "history_save_ms", historyDuration.Milliseconds(), "quote_count", len(quotes), "keyword_count", len(keywords))
 
 	return &RecallResult{
 		Question: question,
