@@ -176,6 +176,23 @@ func (s *Store) UpdateQuoteContent(id int64, content string) error {
 	return nil
 }
 
+// TouchQuote bumps the quote version and updated_at without rewriting content.
+func (s *Store) TouchQuote(id int64) error {
+	slog.Info("db: touching quote metadata", "id", id)
+	res, err := s.db.Exec(
+		`UPDATE quotes SET version = version + 1, updated_at = ? WHERE id = ?`,
+		time.Now().Unix(), id,
+	)
+	if err != nil {
+		slog.Error("db: touch quote failed", "id", id, "error", err)
+		return fmt.Errorf("touch quote: %w", err)
+	}
+	if rows, err := res.RowsAffected(); err == nil && rows == 0 {
+		return fmt.Errorf("quote %d not found", id)
+	}
+	return nil
+}
+
 func (s *Store) UpdateImportedQuote(id int64, content string, identity QuoteIdentity, createdAt, updatedAt int64) error {
 	_, err := s.db.Exec(
 		`UPDATE quotes

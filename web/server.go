@@ -89,6 +89,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("/api/app/save-recall-as-quote", s.requireAPIAuth(http.HandlerFunc(s.handleSaveRecallAsQuote)))
 	mux.Handle("/api/app/refine-quote-draft", s.requireAPIAuth(http.HandlerFunc(s.handleRefineQuoteDraft)))
 	mux.Handle("/api/app/update-quote", s.requireAPIAuth(http.HandlerFunc(s.handleUpdateQuote)))
+	mux.Handle("/api/app/regenerate-quote-keywords", s.requireAPIAuth(http.HandlerFunc(s.handleRegenerateQuoteKeywords)))
 	mux.Handle("/api/app/delete-quotes", s.requireAPIAuth(http.HandlerFunc(s.handleDeleteQuotes)))
 	mux.Handle("/api/app/preview-quote-export", s.requireAPIAuth(http.HandlerFunc(s.handlePreviewQuoteExport)))
 	mux.Handle("/api/app/import-quotes-payload", s.requireAPIAuth(http.HandlerFunc(s.handleImportQuotesPayload)))
@@ -309,6 +310,18 @@ func (s *Server) handleUpdateQuote(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	value, err := s.app.UpdateQuote(req.ID, req.Content)
+	writeAppJSON(w, value, err)
+}
+
+func (s *Server) handleRegenerateQuoteKeywords(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		ID       int64  `json:"id"`
+		GlobalID string `json:"globalId"`
+	}
+	if !requirePostJSON(w, r, &req) {
+		return
+	}
+	value, err := s.app.RegenerateQuoteKeywords(req.ID, req.GlobalID)
 	writeAppJSON(w, value, err)
 }
 
