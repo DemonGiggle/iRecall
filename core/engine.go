@@ -261,11 +261,8 @@ func (e *Engine) RegenerateQuoteKeywords(ctx context.Context, id int64, globalID
 
 	changed := !sameStringSet(oldKeywords, newKeywords)
 	if changed {
-		if err := e.applyQuoteTags(quote.ID, newKeywords); err != nil {
+		if err := e.store.ApplyQuoteTagUpdate(quote.ID, newKeywords, true); err != nil {
 			return nil, err
-		}
-		if err := e.store.TouchQuote(quote.ID); err != nil {
-			return nil, fmt.Errorf("touch quote metadata: %w", err)
 		}
 		quote, err = e.loadQuote(quote.ID)
 		if err != nil {
@@ -871,26 +868,6 @@ func (e *Engine) loadQuoteByIdentifier(id int64, globalID string) (*Quote, error
 	default:
 		return nil, fmt.Errorf("quote id or global id is required")
 	}
-}
-
-func (e *Engine) applyQuoteTags(id int64, tags []string) error {
-	var (
-		tagIDs []int64
-		err    error
-	)
-	if len(tags) > 0 {
-		tagIDs, err = e.store.UpsertTags(tags)
-		if err != nil {
-			return fmt.Errorf("upsert quote tags: %w", err)
-		}
-	}
-	if err := e.store.ReplaceQuoteTags(id, tagIDs); err != nil {
-		return fmt.Errorf("replace quote tags: %w", err)
-	}
-	if err := e.store.UpdateQuoteFTS(id, tags); err != nil {
-		return fmt.Errorf("update quote fts: %w", err)
-	}
-	return nil
 }
 
 func (e *Engine) localUserID() string {

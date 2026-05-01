@@ -406,6 +406,9 @@ func TestRegenerateQuoteKeywordsReplacesStoredTags(t *testing.T) {
 	if !slices.Equal(gotTags, wantTags) {
 		t.Fatalf("Quote.Tags = %#v, want %#v", result.Quote.Tags, responseTags)
 	}
+	if result.Quote.Version != 2 {
+		t.Fatalf("Quote.Version = %d, want 2", result.Quote.Version)
+	}
 
 	matches, err := engine.SearchQuotes(context.Background(), []string{"concurrency"})
 	if err != nil {
