@@ -18,10 +18,11 @@ import (
 // Engine is the central orchestrator. It owns the DB store and LLM client
 // and exposes the full recall workflow. No UI types are referenced here.
 type Engine struct {
-	store   *db.Store
-	llm     *llm.Client
-	cfg     *Settings
-	profile *UserProfile
+	store      *db.Store
+	llm        *llm.Client
+	keywordLLM *llm.Client
+	cfg        *Settings
+	profile    *UserProfile
 }
 
 const maxExtractedTags = 30
@@ -47,11 +48,18 @@ var genericTagBlacklist = map[string]struct{}{
 
 // New creates an Engine from an open DB store and current settings.
 func New(store *db.Store, cfg *Settings) *Engine {
-	slog.Info("engine: creating engine", "provider_host", cfg.Provider.Host, "provider_port", cfg.Provider.Port, "model", cfg.Provider.Model)
+	slog.Info(
+		"engine: creating engine",
+		"provider_host", cfg.Provider.Host,
+		"provider_port", cfg.Provider.Port,
+		"response_model", cfg.Provider.ResponseModel(),
+		"keyword_model", cfg.Provider.RecallKeywordModel(),
+	)
 	return &Engine{
-		store: store,
-		llm:   llm.NewClient(cfg.Provider),
-		cfg:   cfg,
+		store:      store,
+		llm:        llm.NewClient(cfg.Provider.ResponseProviderConfig()),
+		keywordLLM: llm.NewClient(cfg.Provider.RecallKeywordProviderConfig()),
+		cfg:        cfg,
 	}
 }
 
@@ -62,16 +70,31 @@ func (e *Engine) Close() error {
 
 // UpdateProvider rebuilds the LLM client after settings change.
 func (e *Engine) UpdateProvider(cfg ProviderConfig) {
-	slog.Info("engine: updating provider", "host", cfg.Host, "port", cfg.Port, "model", cfg.Model)
+	slog.Info(
+		"engine: updating provider",
+		"host", cfg.Host,
+		"port", cfg.Port,
+		"response_model", cfg.ResponseModel(),
+		"keyword_model", cfg.RecallKeywordModel(),
+	)
 	e.cfg.Provider = cfg
-	e.llm = llm.NewClient(cfg)
+	e.llm = llm.NewClient(cfg.ResponseProviderConfig())
+	e.keywordLLM = llm.NewClient(cfg.RecallKeywordProviderConfig())
 }
 
 // UpdateSettings replaces the engine's in-memory settings.
 func (e *Engine) UpdateSettings(s *Settings) {
-	slog.Info("engine: updating settings", "host", s.Provider.Host, "port", s.Provider.Port, "model", s.Provider.Model, "max_results", s.Search.MaxResults)
+	slog.Info(
+		"engine: updating settings",
+		"host", s.Provider.Host,
+		"port", s.Provider.Port,
+		"response_model", s.Provider.ResponseModel(),
+		"keyword_model", s.Provider.RecallKeywordModel(),
+		"max_results", s.Search.MaxResults,
+	)
 	e.cfg = s
-	e.llm = llm.NewClient(s.Provider)
+	e.llm = llm.NewClient(s.Provider.ResponseProviderConfig())
+	e.keywordLLM = llm.NewClient(s.Provider.RecallKeywordProviderConfig())
 }
 
 func (e *Engine) UpdateUserProfile(profile *UserProfile) {
@@ -396,7 +419,7 @@ func (e *Engine) ExtractKeywords(ctx context.Context, question string) ([]string
 	}
 	zero := 0.0
 	maxTok := 100
-	raw, err := e.llm.Chat(ctx, msgs, nil, llm.ChatOptions{Temperature: &zero, MaxTokens: &maxTok})
+	raw, err := e.keywordLLM.Chat(ctx, msgs, nil, llm.ChatOptions{Temperature: &zero, MaxTokens: &maxTok})
 	if err != nil {
 		slog.Error("engine: extract keywords LLM call failed", "error", err)
 		return nil, err
@@ -570,7 +593,13 @@ func (e *Engine) LoadSettings(ctx context.Context) (*Settings, error) {
 	if s.Web.Port < 1 || s.Web.Port > 65535 {
 		s.Web.Port = defaults.Web.Port
 	}
-	slog.Info("engine: settings loaded", "host", s.Provider.Host, "port", s.Provider.Port, "model", s.Provider.Model)
+	slog.Info(
+		"engine: settings loaded",
+		"host", s.Provider.Host,
+		"port", s.Provider.Port,
+		"response_model", s.Provider.ResponseModel(),
+		"keyword_model", s.Provider.RecallKeywordModel(),
+	)
 	return &s, nil
 }
 
@@ -583,7 +612,13 @@ func (e *Engine) SaveSettings(ctx context.Context, s *Settings) error {
 	if s.Web.Port < 1 || s.Web.Port > 65535 {
 		return fmt.Errorf("web port must be a number between 1 and 65535")
 	}
-	slog.Info("engine: saving settings", "host", s.Provider.Host, "port", s.Provider.Port, "model", s.Provider.Model)
+	slog.Info(
+		"engine: saving settings",
+		"host", s.Provider.Host,
+		"port", s.Provider.Port,
+		"response_model", s.Provider.ResponseModel(),
+		"keyword_model", s.Provider.RecallKeywordModel(),
+	)
 	data, err := json.Marshal(s)
 	if err != nil {
 		slog.Error("engine: marshal settings failed", "error", err)

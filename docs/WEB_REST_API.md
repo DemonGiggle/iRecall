@@ -34,7 +34,7 @@ Notes:
 
 - `/api/auth/*` routes are browser-session oriented and are not usable in `--api-only` mode
 - `--unsafe-no-password-check` is still testing-only because it bypasses auth enforcement
-- In `--api-only` mode you can also pass provider startup overrides such as `--provider-host`, `--provider-port`, `--provider-https`, `--provider-api-key-path`, and `--provider-model` so LLM-backed API routes work before any frontend-driven settings save.
+- In `--api-only` mode you can also pass provider startup overrides such as `--provider-host`, `--provider-port`, `--provider-https`, `--provider-api-key-path`, `--provider-model`, and `--provider-keyword-model` so LLM-backed API routes work before any frontend-driven settings save.
 
 Example startup for an operator/API-only deployment:
 
@@ -47,7 +47,8 @@ Example startup for an operator/API-only deployment:
   --provider-port 443 \
   --provider-https \
   --provider-api-key-path ~/.config/irecall/provider-api-key \
-  --provider-model gpt-4.1-mini
+  --provider-model gpt-4.1 \
+  --provider-keyword-model gpt-4.1-mini
 ```
 
 The provider API key is read from the referenced file at startup and the server exits with an error if that file is missing, unreadable, or empty.
@@ -116,7 +117,8 @@ The provider API key is read from the referenced file at startup and the server 
     "Port": 11434,
     "HTTPS": false,
     "APIKey": "",
-    "Model": "llama3"
+    "Model": "llama3",
+    "KeywordModel": "llama3.2"
   },
   "Search": {
     "MaxResults": 5,
@@ -132,6 +134,8 @@ The provider API key is read from the referenced file at startup and the server 
   "RootDir": ""
 }
 ```
+
+`Provider.Model` is the response/default model. `Provider.KeywordModel` is optional and, when empty, recall keyword extraction falls back to `Provider.Model`.
 
 ## Endpoints
 
@@ -297,7 +301,8 @@ Response:
       "Port": 11434,
       "HTTPS": false,
       "APIKey": "",
-      "Model": ""
+      "Model": "",
+      "KeywordModel": ""
     },
     "Search": {
       "MaxResults": 5,
@@ -528,7 +533,8 @@ Request body:
     "Port": 11434,
     "HTTPS": false,
     "APIKey": "",
-    "Model": "llama3"
+    "Model": "llama3",
+    "KeywordModel": "llama3.2"
   },
   "Search": {
     "MaxResults": 5,
@@ -563,7 +569,8 @@ Request body:
   "Port": 11434,
   "HTTPS": false,
   "APIKey": "",
-  "Model": ""
+  "Model": "",
+  "KeywordModel": ""
 }
 ```
 

@@ -37,6 +37,7 @@ interface ProviderConfig {
   HTTPS: boolean;
   APIKey: string;
   Model: string;
+  KeywordModel: string;
 }
 
 interface SearchConfig {
@@ -221,7 +222,8 @@ interface SettingsFormState {
   mockLLM: boolean;
   apiKey: string;
   modelFilter: string;
-  model: string;
+  responseModel: string;
+  keywordModel: string;
   maxResults: string;
   minRelevance: string;
   theme: string;
@@ -811,7 +813,8 @@ function handleInput(event: Event): void {
       return;
     case "settings-model-filter":
       state.settings.modelFilter = target.value;
-      syncSelectedModel(state.settings);
+      syncSelectedResponseModel(state.settings);
+      syncSelectedKeywordModel(state.settings);
       render();
       return;
     case "settings-max-results":
@@ -882,8 +885,11 @@ function handleChange(event: Event): void {
         state.settings.mockLLM = target.checked;
       }
       return;
-    case "settings-model":
-      state.settings.model = target.value;
+    case "settings-response-model":
+      state.settings.responseModel = target.value;
+      return;
+    case "settings-keyword-model":
+      state.settings.keywordModel = target.value;
       return;
     case "settings-theme":
       state.settings.theme = target.value;
@@ -1622,7 +1628,8 @@ async function fetchModels(): Promise<void> {
   try {
     const models = await backend().FetchModels(provider);
     state.settings.models = models;
-    syncSelectedModel(state.settings);
+    syncSelectedResponseModel(state.settings);
+    syncSelectedKeywordModel(state.settings);
     state.settingsStatus = models.length > 0 ? `Fetched ${models.length} models.` : "No models returned.";
     state.settingsIsError = false;
   } catch (error) {
@@ -2443,25 +2450,38 @@ function renderSettingsPage(): string {
     : state.apiToken.hasToken
       ? `Active token prefix: ${state.apiToken.tokenPrefix || "(unavailable)"}`
       : "No API token has been created yet.";
-  const modelSelect =
-    state.settings.models.length > 0 && filteredModels.length > 0
-      ? `
-        <select class="select-input" data-bind="settings-model">
+  const renderModelSelect = (selected: string, bind: string, allowEmpty: boolean, emptyLabel: string): string => {
+    if (state.settings.models.length > 0 && (filteredModels.length > 0 || allowEmpty)) {
+      return `
+        <select class="select-input" data-bind="${bind}">
+          ${allowEmpty ? `<option value=""${selected === "" ? " selected" : ""}>${escapeHtml(emptyLabel)}</option>` : ""}
           ${filteredModels
             .map(
               (model) => `
-                <option value="${escapeAttribute(model)}"${model === state.settings.model ? " selected" : ""}>${escapeHtml(model)}</option>
+                <option value="${escapeAttribute(model)}"${model === selected ? " selected" : ""}>${escapeHtml(model)}</option>
               `,
             )
             .join("")}
         </select>
-      `
-      : `
-        <div class="readonly-model">
-          <span>${escapeHtml(state.settings.model || "(none)")}</span>
-          <span class="muted">${state.settings.models.length === 0 ? "Fetch models first" : "No matches"}</span>
-        </div>
       `;
+    }
+    const display = selected || emptyLabel;
+    const hint = state.settings.models.length === 0 ? "Fetch models first" : "No matches";
+    return `
+      <div class="readonly-model">
+        <span>${escapeHtml(display)}</span>
+        <span class="muted">${hint}</span>
+      </div>
+    `;
+  };
+
+  const responseModelSelect = renderModelSelect(state.settings.responseModel, "settings-response-model", false, "(none)");
+  const keywordModelSelect = renderModelSelect(
+    state.settings.keywordModel,
+    "settings-keyword-model",
+    true,
+    "(use response model)",
+  );
 
   return `
     <section class="page page-settings">
@@ -2506,8 +2526,12 @@ function renderSettingsPage(): string {
               <input class="text-input" data-bind="settings-model-filter" value="${escapeAttribute(state.settings.modelFilter)}" placeholder="Type to narrow the model list" />
             </label>
             <label class="field">
-              <span>Model</span>
-              ${modelSelect}
+              <span>Response model</span>
+              ${responseModelSelect}
+            </label>
+            <label class="field">
+              <span>Keyword model</span>
+              ${keywordModelSelect}
             </label>
           </section>
 
@@ -3097,7 +3121,8 @@ function settingsFormFromPayload(payload: SettingsPayload | BootstrapState["sett
     mockLLM: payload.Debug?.MockLLM ?? false,
     apiKey: payload.Provider.APIKey,
     modelFilter: "",
-    model: payload.Provider.Model,
+    responseModel: payload.Provider.Model,
+    keywordModel: payload.Provider.KeywordModel ?? "",
     maxResults: String(payload.Search.MaxResults),
     minRelevance: String(payload.Search.MinRelevance),
     theme: payload.Theme || "violet",
@@ -3105,7 +3130,8 @@ function settingsFormFromPayload(payload: SettingsPayload | BootstrapState["sett
     rootDir: payload.RootDir ?? "",
     models,
   };
-  syncSelectedModel(form);
+  syncSelectedResponseModel(form);
+  syncSelectedKeywordModel(form);
   return form;
 }
 
@@ -3117,7 +3143,8 @@ function emptySettingsForm(): SettingsFormState {
     mockLLM: false,
     apiKey: "",
     modelFilter: "",
-    model: "",
+    responseModel: "",
+    keywordModel: "",
     maxResults: "5",
     minRelevance: "0",
     theme: "violet",
@@ -3137,7 +3164,8 @@ function providerConfigFromForm(form: SettingsFormState): ProviderConfig {
     Port: port,
     HTTPS: form.https,
     APIKey: form.apiKey,
-    Model: form.model,
+    Model: form.responseModel,
+    KeywordModel: form.keywordModel,
   };
 }
 
@@ -3183,7 +3211,7 @@ function getFilteredModels(form: SettingsFormState): string[] {
   return form.models.filter((model) => model.toLowerCase().includes(filter));
 }
 
-function syncSelectedModel(form: SettingsFormState): void {
+function syncSelectedResponseModel(form: SettingsFormState): void {
   if (form.models.length === 0) {
     return;
   }
@@ -3191,8 +3219,21 @@ function syncSelectedModel(form: SettingsFormState): void {
   if (filteredModels.length === 0) {
     return;
   }
-  if (!filteredModels.includes(form.model)) {
-    form.model = filteredModels[0];
+  if (!filteredModels.includes(form.responseModel)) {
+    form.responseModel = filteredModels[0];
+  }
+}
+
+function syncSelectedKeywordModel(form: SettingsFormState): void {
+  if (!form.keywordModel || form.models.length === 0) {
+    return;
+  }
+  const filteredModels = getFilteredModels(form);
+  if (filteredModels.length === 0) {
+    return;
+  }
+  if (!filteredModels.includes(form.keywordModel)) {
+    form.keywordModel = filteredModels[0];
   }
 }
 

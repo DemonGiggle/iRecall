@@ -107,10 +107,11 @@ type SearchConfig struct {
 func DefaultSettings() *Settings {
 	return &Settings{
 		Provider: ProviderConfig{
-			Host:  "localhost",
-			Port:  11434,
-			HTTPS: false,
-			Model: "",
+			Host:         "localhost",
+			Port:         11434,
+			HTTPS:        false,
+			Model:        "",
+			KeywordModel: "",
 		},
 		Search: SearchConfig{
 			MaxResults:   5,

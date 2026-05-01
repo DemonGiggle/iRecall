@@ -213,7 +213,8 @@ make build-web
   --provider-port 443 \
   --provider-https \
   --provider-api-key-path ~/.config/irecall/provider-api-key \
-  --provider-model gpt-4.1-mini
+  --provider-model gpt-4.1 \
+  --provider-keyword-model gpt-4.1-mini
 ./bin/irecall-web auth issue-token --write-token-file ~/.config/irecall/mcp-api-token
 ```
 
@@ -253,14 +254,16 @@ go run ./web \
   --provider-port 443 \
   --provider-https \
   --provider-api-key-path ~/.config/irecall/provider-api-key \
-  --provider-model gpt-4.1-mini
+  --provider-model gpt-4.1 \
+  --provider-keyword-model gpt-4.1-mini
 ./bin/irecall-web auth issue-token --write-token-file ~/.config/irecall/mcp-api-token
 ./bin/irecall-mcp --token-file ~/.config/irecall/mcp-api-token
 ```
 
 Notes:
 
-- `--provider-host`, `--provider-port`, `--provider-https`, `--provider-api-key-path`, and `--provider-model` apply the provider config in memory for that API-only process before recall/refine/tagging flows run.
+- `--provider-host`, `--provider-port`, `--provider-https`, `--provider-api-key-path`, `--provider-model`, and `--provider-keyword-model` apply the provider config in memory for that API-only process before LLM-backed routes run.
+- `--provider-model` sets the response/default model used by recall responses, quote refine, and tagging. `--provider-keyword-model` optionally overrides recall keyword extraction and falls back to `--provider-model` when omitted.
 - The API key is read from the file path at startup. If the file is missing, unreadable, or empty, the server exits with a clear error instead of starting with partial configuration.
 - The startup-loaded API key is not persisted back into iRecall's saved settings unless you explicitly save settings through the app later.
 - `irecall-mcp` prefers `--token-file` or `IRECALL_API_TOKEN_FILE` so operator deployments do not need to inline the bearer token into shared config.

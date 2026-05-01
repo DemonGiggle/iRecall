@@ -10,11 +10,12 @@ import (
 
 // ProviderConfig describes a single OpenAI-compatible API endpoint.
 type ProviderConfig struct {
-	Host   string // hostname or IP, no scheme
-	Port   int
-	HTTPS  bool
-	APIKey string // empty = no Authorization header
-	Model  string
+	Host         string // hostname or IP, no scheme
+	Port         int
+	HTTPS        bool
+	APIKey       string // empty = no Authorization header
+	Model        string // response/default model
+	KeywordModel string // optional override for recall keyword extraction
 }
 
 func (p ProviderConfig) BaseURL() string {
@@ -58,4 +59,25 @@ func (p ProviderConfig) BaseURL() string {
 	}
 	u.RawPath = ""
 	return u.String()
+}
+
+func (p ProviderConfig) ResponseModel() string {
+	return strings.TrimSpace(p.Model)
+}
+
+func (p ProviderConfig) RecallKeywordModel() string {
+	if model := strings.TrimSpace(p.KeywordModel); model != "" {
+		return model
+	}
+	return p.ResponseModel()
+}
+
+func (p ProviderConfig) ResponseProviderConfig() ProviderConfig {
+	p.Model = p.ResponseModel()
+	return p
+}
+
+func (p ProviderConfig) RecallKeywordProviderConfig() ProviderConfig {
+	p.Model = p.RecallKeywordModel()
+	return p
 }

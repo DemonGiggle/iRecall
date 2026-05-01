@@ -236,11 +236,12 @@ func TestHandleSaveSettingsPreservesExistingRootWhenOmitted(t *testing.T) {
 
 	reqBody, err := json.Marshal(struct {
 		Provider struct {
-			Host   string `json:"Host"`
-			Port   int    `json:"Port"`
-			HTTPS  bool   `json:"HTTPS"`
-			APIKey string `json:"APIKey"`
-			Model  string `json:"Model"`
+			Host         string `json:"Host"`
+			Port         int    `json:"Port"`
+			HTTPS        bool   `json:"HTTPS"`
+			APIKey       string `json:"APIKey"`
+			Model        string `json:"Model"`
+			KeywordModel string `json:"KeywordModel"`
 		} `json:"Provider"`
 		Search struct {
 			MaxResults   int     `json:"MaxResults"`
@@ -255,17 +256,19 @@ func TestHandleSaveSettingsPreservesExistingRootWhenOmitted(t *testing.T) {
 		} `json:"Web"`
 	}{
 		Provider: struct {
-			Host   string `json:"Host"`
-			Port   int    `json:"Port"`
-			HTTPS  bool   `json:"HTTPS"`
-			APIKey string `json:"APIKey"`
-			Model  string `json:"Model"`
+			Host         string `json:"Host"`
+			Port         int    `json:"Port"`
+			HTTPS        bool   `json:"HTTPS"`
+			APIKey       string `json:"APIKey"`
+			Model        string `json:"Model"`
+			KeywordModel string `json:"KeywordModel"`
 		}{
-			Host:   current.Provider.Host,
-			Port:   current.Provider.Port,
-			HTTPS:  current.Provider.HTTPS,
-			APIKey: current.Provider.APIKey,
-			Model:  current.Provider.Model,
+			Host:         current.Provider.Host,
+			Port:         current.Provider.Port,
+			HTTPS:        current.Provider.HTTPS,
+			APIKey:       current.Provider.APIKey,
+			Model:        current.Provider.Model,
+			KeywordModel: current.Provider.KeywordModel,
 		},
 		Search: struct {
 			MaxResults   int     `json:"MaxResults"`

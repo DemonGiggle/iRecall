@@ -13,15 +13,15 @@ import (
 func TestSettingsPageFilterNarrowsModelSelection(t *testing.T) {
 	page := NewSettingsPage(nil, 120, 40, core.DefaultSettings())
 	page.models = []string{"gpt-4o", "gpt-4.1-mini", "llama3.2"}
-	page.modelIdx = 0
+	page.responseModel = "gpt-4o"
 	page.focused = fieldModelFilter
 	page.inputs[fieldModelFilter].Focus()
 
 	model, _ := page.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("mini")})
 	page = model
 
-	if got := page.SelectedModel(); got != "gpt-4.1-mini" {
-		t.Fatalf("SelectedModel() = %q, want gpt-4.1-mini", got)
+	if got := page.SelectedResponseModel(); got != "gpt-4.1-mini" {
+		t.Fatalf("SelectedResponseModel() = %q, want gpt-4.1-mini", got)
 	}
 	if got := page.filteredModels(); len(got) != 1 || got[0] != "gpt-4.1-mini" {
 		t.Fatalf("filteredModels() = %v, want [gpt-4.1-mini]", got)
@@ -36,8 +36,8 @@ func TestSettingsPageFetchPreservesMatchingSelection(t *testing.T) {
 	model, _ := page.Update(ModelsFetchedMsg{Models: []string{"gpt-4o", "gpt-4.1-mini", "llama3.2"}})
 	page = model
 
-	if got := page.SelectedModel(); got != "gpt-4.1-mini" {
-		t.Fatalf("SelectedModel() after fetch = %q, want gpt-4.1-mini", got)
+	if got := page.SelectedResponseModel(); got != "gpt-4.1-mini" {
+		t.Fatalf("SelectedResponseModel() after fetch = %q, want gpt-4.1-mini", got)
 	}
 }
 
@@ -46,18 +46,35 @@ func TestSettingsPageFilterNoMatchesKeepsExistingSelection(t *testing.T) {
 	settings.Provider.Model = "gpt-4o"
 	page := NewSettingsPage(nil, 120, 40, settings)
 	page.models = []string{"gpt-4o", "gpt-4.1-mini"}
-	page.modelIdx = 0
+	page.responseModel = "gpt-4o"
 	page.focused = fieldModelFilter
 	page.inputs[fieldModelFilter].Focus()
 
 	model, _ := page.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("zzz")})
 	page = model
 
-	if got := page.SelectedModel(); got != "gpt-4o" {
-		t.Fatalf("SelectedModel() with no filter matches = %q, want gpt-4o", got)
+	if got := page.SelectedResponseModel(); got != "gpt-4o" {
+		t.Fatalf("SelectedResponseModel() with no filter matches = %q, want gpt-4o", got)
 	}
 	if got := len(page.filteredModels()); got != 0 {
 		t.Fatalf("len(filteredModels()) = %d, want 0", got)
+	}
+}
+
+func TestSettingsPageKeywordModelPreservesResponseFallback(t *testing.T) {
+	settings := core.DefaultSettings()
+	settings.Provider.Model = "gpt-4o"
+	settings.Provider.KeywordModel = ""
+	page := NewSettingsPage(nil, 120, 40, settings)
+	page.models = []string{"gpt-4o", "gpt-4.1-mini"}
+	page.focused = fieldModelFilter
+	page.inputs[fieldModelFilter].Focus()
+
+	model, _ := page.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("mini")})
+	page = model
+
+	if got := page.SelectedKeywordModel(); got != "" {
+		t.Fatalf("SelectedKeywordModel() = %q, want response-model fallback", got)
 	}
 }
 
@@ -113,6 +130,24 @@ func TestSettingsPageCurrentSettingsIncludesRootDir(t *testing.T) {
 	}
 	if current.RootDir != "/tmp/irecall-alt" {
 		t.Fatalf("CurrentSettings().RootDir = %q, want /tmp/irecall-alt", current.RootDir)
+	}
+}
+
+func TestSettingsPageCurrentSettingsIncludesKeywordModel(t *testing.T) {
+	settings := core.DefaultSettings()
+	settings.Provider.Model = "gpt-4.1"
+	settings.Provider.KeywordModel = "gpt-4.1-mini"
+	page := NewSettingsPage(nil, 120, 40, settings)
+
+	current, err := page.CurrentSettings()
+	if err != nil {
+		t.Fatalf("CurrentSettings() error = %v", err)
+	}
+	if current.Provider.Model != "gpt-4.1" {
+		t.Fatalf("CurrentSettings().Provider.Model = %q, want gpt-4.1", current.Provider.Model)
+	}
+	if current.Provider.KeywordModel != "gpt-4.1-mini" {
+		t.Fatalf("CurrentSettings().Provider.KeywordModel = %q, want gpt-4.1-mini", current.Provider.KeywordModel)
 	}
 }
 

@@ -142,7 +142,7 @@ func usageText(fs *flag.FlagSet, program string) string {
 	buf.WriteString("\nExamples:\n")
 	fmt.Fprintf(&buf, "  %s --version\n", program)
 	fmt.Fprintf(&buf, "  %s -host 127.0.0.1 -port 9527\n", program)
-	fmt.Fprintf(&buf, "  %s --api-only --provider-host api.openai.example/v1 --provider-port 443 --provider-https --provider-model gpt-4.1-mini\n", program)
+	fmt.Fprintf(&buf, "  %s --api-only --provider-host api.openai.example/v1 --provider-port 443 --provider-https --provider-model gpt-4.1 --provider-keyword-model gpt-4.1-mini\n", program)
 	fmt.Fprintf(&buf, "  %s auth issue-token --write-token-file ~/.config/irecall/mcp-api-token\n", program)
 	return buf.String()
 }

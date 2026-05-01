@@ -236,7 +236,8 @@ Start the local REST server in production-safe API mode:
   --provider-port 443 \
   --provider-https \
   --provider-api-key-path ~/.config/irecall/provider-api-key \
-  --provider-model gpt-4.1-mini
+  --provider-model gpt-4.1 \
+  --provider-keyword-model gpt-4.1-mini
 ```
 
 `--api-only` skips the frontend password bootstrap, does not serve the browser UI, does not create browser sessions, and keeps `/api/app/*` protected by bearer-token auth.
@@ -247,7 +248,8 @@ The provider startup flags let an operator supply the LLM endpoint without going
 - `--provider-port` — provider TCP port
 - `--provider-https` — use HTTPS for the provider connection
 - `--provider-api-key-path` — read the bearer key from a protected local file instead of putting it on the command line
-- `--provider-model` — default model used by recall/refine/tagging requests
+- `--provider-model` — response/default model used by recall/refine/tagging requests
+- `--provider-keyword-model` — optional override for recall keyword extraction; falls back to `--provider-model`
 
 These overrides are applied in memory before the API starts serving LLM-backed routes. If the API key file is missing, unreadable, or empty, startup fails fast with an error.
 

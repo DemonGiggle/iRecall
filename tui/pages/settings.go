@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -47,7 +48,8 @@ const (
 	fieldAPIKey
 	fieldFetchModels
 	fieldModelFilter
-	fieldModel
+	fieldResponseModel
+	fieldKeywordModel
 	fieldTheme
 	fieldRootDir
 	fieldMaxResults
@@ -65,11 +67,11 @@ type SettingsPage struct {
 	inputs  [fieldCount]textinput.Model
 	httpsOn bool
 
-	models       []string // available model IDs
-	modelIdx     int      // currently selected index (-1 = none)
-	initialModel string   // model name from settings (before fetch)
-	themes       []string
-	themeIdx     int
+	models        []string // available model IDs
+	responseModel string
+	keywordModel  string
+	themes        []string
+	themeIdx      int
 
 	focused   settingsField
 	spinner   spinner.Model
@@ -116,19 +118,19 @@ func NewSettingsPage(engine *core.Engine, width, height int, s *core.Settings) S
 	sp.Style = lipgloss.NewStyle().Foreground(styles.ColorAccent)
 
 	return SettingsPage{
-		engine:       engine,
-		inputs:       inputs,
-		httpsOn:      s.Provider.HTTPS,
-		initialModel: s.Provider.Model,
-		web:          s.Web,
-		debug:        s.Debug,
-		themes:       styles.ThemeNames(),
-		themeIdx:     themeIndex(styles.ThemeNames(), s.Theme),
-		modelIdx:     -1,
-		focused:      fieldHost,
-		spinner:      sp,
-		width:        width,
-		height:       height,
+		engine:        engine,
+		inputs:        inputs,
+		httpsOn:       s.Provider.HTTPS,
+		responseModel: s.Provider.Model,
+		keywordModel:  s.Provider.KeywordModel,
+		web:           s.Web,
+		debug:         s.Debug,
+		themes:        styles.ThemeNames(),
+		themeIdx:      themeIndex(styles.ThemeNames(), s.Theme),
+		focused:       fieldHost,
+		spinner:       sp,
+		width:         width,
+		height:        height,
 	}
 }
 
@@ -167,19 +169,11 @@ func (p SettingsPage) Update(msg tea.Msg) (SettingsPage, tea.Cmd) {
 			}
 
 		case "left":
-			filtered := p.filteredModels()
-			if p.focused == fieldModel && len(filtered) > 0 {
-				current := p.SelectedModel()
-				idx := p.filteredIndex(current)
-				if idx < 0 {
-					p.modelIdx = p.indexForModel(filtered[len(filtered)-1])
-					break
-				}
-				idx--
-				if idx < 0 {
-					idx = len(filtered) - 1
-				}
-				p.modelIdx = p.indexForModel(filtered[idx])
+			if p.focused == fieldResponseModel {
+				p.cycleSelectedModel(-1, false)
+			}
+			if p.focused == fieldKeywordModel {
+				p.cycleSelectedModel(-1, true)
 			}
 			if p.focused == fieldTheme && len(p.themes) > 0 {
 				p.themeIdx--
@@ -190,19 +184,11 @@ func (p SettingsPage) Update(msg tea.Msg) (SettingsPage, tea.Cmd) {
 			}
 
 		case "right":
-			filtered := p.filteredModels()
-			if p.focused == fieldModel && len(filtered) > 0 {
-				current := p.SelectedModel()
-				idx := p.filteredIndex(current)
-				if idx < 0 {
-					p.modelIdx = p.indexForModel(filtered[0])
-					break
-				}
-				idx++
-				if idx >= len(filtered) {
-					idx = 0
-				}
-				p.modelIdx = p.indexForModel(filtered[idx])
+			if p.focused == fieldResponseModel {
+				p.cycleSelectedModel(1, false)
+			}
+			if p.focused == fieldKeywordModel {
+				p.cycleSelectedModel(1, true)
 			}
 			if p.focused == fieldTheme && len(p.themes) > 0 {
 				p.themeIdx++
@@ -250,11 +236,8 @@ func (p SettingsPage) Update(msg tea.Msg) (SettingsPage, tea.Cmd) {
 			p.isErr = false
 		} else {
 			p.models = msg.Models
-			prev := p.SelectedModel()
-			if prev == "" {
-				prev = p.initialModel
-			}
-			p.syncModelSelection(prev)
+			p.syncSelectedModel(false)
+			p.syncSelectedModel(true)
 			p.statusMsg = fmt.Sprintf("Fetched %d models.", len(msg.Models))
 			p.isErr = false
 		}
@@ -273,7 +256,8 @@ func (p SettingsPage) Update(msg tea.Msg) (SettingsPage, tea.Cmd) {
 		prevFilter := p.inputs[fieldModelFilter].Value()
 		p.inputs[p.focused], cmd = p.inputs[p.focused].Update(msg)
 		if p.focused == fieldModelFilter && p.inputs[fieldModelFilter].Value() != prevFilter {
-			p.syncModelSelection(p.SelectedModel())
+			p.syncSelectedModel(false)
+			p.syncSelectedModel(true)
 		}
 		cmds = append(cmds, cmd)
 	}
@@ -305,7 +289,8 @@ func (p SettingsPage) View() string {
 		fetchBtn = p.spinner.View() + " Fetching..."
 	}
 
-	modelView := p.modelSelectorView()
+	responseModelView := p.modelSelectorView(p.SelectedResponseModel(), false, p.focused == fieldResponseModel)
+	keywordModelView := p.modelSelectorView(p.SelectedKeywordModel(), true, p.focused == fieldKeywordModel)
 
 	providerSection := lipgloss.JoinVertical(lipgloss.Left,
 		styles.SectionHeader.Render("LLM Provider"),
@@ -317,7 +302,8 @@ func (p SettingsPage) View() string {
 		row("", fetchBtn),
 		"",
 		row("Filter", p.inputView(fieldModelFilter)),
-		row("Model", modelView),
+		row("Response model", responseModelView),
+		row("Keyword model", keywordModelView),
 		row("Theme", p.themeSelectorView()),
 	)
 
@@ -378,13 +364,17 @@ func (p SettingsPage) View() string {
 	)
 }
 
-func (p *SettingsPage) modelSelectorView() string {
+func (p *SettingsPage) modelSelectorView(selected string, allowFallback bool, focused bool) string {
+	emptyLabel := "(none)"
+	if allowFallback {
+		emptyLabel = "(use response model)"
+	}
 	if len(p.models) == 0 {
-		name := p.initialModel
+		name := selected
 		if name == "" {
-			name = "(none)"
+			name = emptyLabel
 		}
-		if p.focused == fieldModel {
+		if focused {
 			return styles.Accent.Render(name) + styles.Muted.Render("  Fetch models first")
 		}
 		return styles.Muted.Render(name)
@@ -392,26 +382,46 @@ func (p *SettingsPage) modelSelectorView() string {
 
 	filtered := p.filteredModels()
 	if len(filtered) == 0 {
-		selected := p.SelectedModel()
+		if allowFallback && selected == "" {
+			if focused {
+				return styles.Accent.Render("< "+emptyLabel+" >") +
+					styles.Muted.Render(" (1/1)")
+			}
+			return emptyLabel + styles.Muted.Render(" (1/1)")
+		}
 		if selected == "" {
-			selected = "(none)"
+			selected = emptyLabel
 		}
 		msg := "  No matches"
-		if p.focused == fieldModel {
+		if focused {
 			return styles.Accent.Render(selected) + styles.Muted.Render(msg)
 		}
 		return selected + styles.Muted.Render(msg)
 	}
 
-	selected := p.SelectedModel()
-	filteredIdx := p.filteredIndex(selected)
-	if filteredIdx < 0 {
-		filteredIdx = 0
-		selected = filtered[0]
+	total := len(filtered)
+	position := 0
+	if allowFallback {
+		total++
+		if selected == "" {
+			position = 1
+			selected = emptyLabel
+		}
 	}
-	pos := fmt.Sprintf(" (%d/%d)", filteredIdx+1, len(filtered))
+	if selected != emptyLabel {
+		filteredIdx := p.filteredIndex(selected)
+		if filteredIdx < 0 {
+			filteredIdx = 0
+			selected = filtered[0]
+		}
+		position = filteredIdx + 1
+		if allowFallback {
+			position++
+		}
+	}
+	pos := fmt.Sprintf(" (%d/%d)", position, total)
 
-	if p.focused == fieldModel {
+	if focused {
 		return styles.Accent.Render("< "+selected+" >") +
 			styles.Muted.Render(pos+"  ← / → to change")
 	}
@@ -445,20 +455,22 @@ func (p *SettingsPage) LoadFrom(s *core.Settings) {
 	p.inputs[fieldMaxResults].SetValue(strconv.Itoa(s.Search.MaxResults))
 	p.inputs[fieldMinRelevance].SetValue(fmt.Sprintf("%.1f", s.Search.MinRelevance))
 	p.httpsOn = s.Provider.HTTPS
-	p.initialModel = s.Provider.Model
+	p.responseModel = s.Provider.Model
+	p.keywordModel = s.Provider.KeywordModel
 	p.web = s.Web
 	p.debug = s.Debug
 	p.themeIdx = themeIndex(p.themes, s.Theme)
 	styles.ApplyTheme(p.SelectedTheme())
-	p.syncModelSelection(s.Provider.Model)
+	p.syncSelectedModel(false)
+	p.syncSelectedModel(true)
 }
 
-// SelectedModel returns the currently selected model name (if any).
-func (p *SettingsPage) SelectedModel() string {
-	if len(p.models) > 0 && p.modelIdx >= 0 && p.modelIdx < len(p.models) {
-		return p.models[p.modelIdx]
-	}
-	return p.initialModel
+func (p *SettingsPage) SelectedResponseModel() string {
+	return p.responseModel
+}
+
+func (p *SettingsPage) SelectedKeywordModel() string {
+	return p.keywordModel
 }
 
 func (p *SettingsPage) SelectedTheme() string {
@@ -490,11 +502,12 @@ func (p *SettingsPage) CurrentSettings() (*core.Settings, error) {
 	}
 	return &core.Settings{
 		Provider: core.ProviderConfig{
-			Host:   strings.TrimSpace(p.inputs[fieldHost].Value()),
-			Port:   port,
-			HTTPS:  p.httpsOn,
-			APIKey: p.inputs[fieldAPIKey].Value(),
-			Model:  p.SelectedModel(),
+			Host:         strings.TrimSpace(p.inputs[fieldHost].Value()),
+			Port:         port,
+			HTTPS:        p.httpsOn,
+			APIKey:       p.inputs[fieldAPIKey].Value(),
+			Model:        p.SelectedResponseModel(),
+			KeywordModel: p.SelectedKeywordModel(),
 		},
 		Search: core.SearchConfig{
 			MaxResults:   maxResults,
@@ -516,10 +529,12 @@ func (p *SettingsPage) doFetchModels() tea.Cmd {
 	return func() tea.Msg {
 		port, _ := strconv.Atoi(portStr)
 		cfg := core.ProviderConfig{
-			Host:   host,
-			Port:   port,
-			HTTPS:  https,
-			APIKey: apiKey,
+			Host:         host,
+			Port:         port,
+			HTTPS:        https,
+			APIKey:       apiKey,
+			Model:        p.SelectedResponseModel(),
+			KeywordModel: p.SelectedKeywordModel(),
 		}
 		models, err := engine.FetchModels(context.Background(), cfg)
 		return ModelsFetchedMsg{Models: models, Err: err}
@@ -589,14 +604,14 @@ func (p *SettingsPage) indexForModel(model string) int {
 	return -1
 }
 
-func (p *SettingsPage) syncModelSelection(preferred string) {
+func (p *SettingsPage) syncSelectedModel(allowFallback bool) {
 	if len(p.models) == 0 {
-		p.modelIdx = -1
 		return
 	}
-	if preferred != "" {
-		if idx := p.indexForModel(preferred); idx >= 0 && p.filteredIndex(preferred) >= 0 {
-			p.modelIdx = idx
+	current := p.SelectedResponseModel()
+	if allowFallback {
+		current = p.SelectedKeywordModel()
+		if strings.TrimSpace(current) == "" {
 			return
 		}
 	}
@@ -604,7 +619,51 @@ func (p *SettingsPage) syncModelSelection(preferred string) {
 	if len(filtered) == 0 {
 		return
 	}
-	p.modelIdx = p.indexForModel(filtered[0])
+	if slices.Contains(filtered, current) {
+		return
+	}
+	if allowFallback {
+		p.keywordModel = filtered[0]
+		return
+	}
+	p.responseModel = filtered[0]
+}
+
+func (p *SettingsPage) cycleSelectedModel(dir int, allowFallback bool) {
+	options := slices.Clone(p.filteredModels())
+	if allowFallback {
+		options = append([]string{""}, options...)
+	}
+	if len(options) == 0 {
+		return
+	}
+
+	current := p.SelectedResponseModel()
+	if allowFallback {
+		current = p.SelectedKeywordModel()
+	}
+	idx := -1
+	for i, option := range options {
+		if option == current {
+			idx = i
+			break
+		}
+	}
+	if idx < 0 {
+		if dir < 0 {
+			idx = len(options) - 1
+		} else {
+			idx = 0
+		}
+	} else {
+		idx = (idx + dir + len(options)) % len(options)
+	}
+
+	if allowFallback {
+		p.keywordModel = options[idx]
+		return
+	}
+	p.responseModel = options[idx]
 }
 
 func requestSaveSettingsCmd(settings *core.Settings) tea.Cmd {
