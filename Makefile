@@ -1,5 +1,12 @@
 VERSION  := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 LDFLAGS  := -ldflags "-X main.version=$(VERSION) -s -w"
+RELEASE_VERSION ?= $(shell \
+	base=$$(git describe --tags --exact-match 2>/dev/null || git rev-parse --short HEAD 2>/dev/null || echo "dev"); \
+	if git diff-index --quiet HEAD -- 2>/dev/null; then \
+		printf '%s' "$$base"; \
+	else \
+		printf '%s-dirty' "$$base"; \
+	fi)
 BIN      := bin/irecall
 MCP_BIN  := bin/irecall-mcp
 WEB_BIN  := bin/irecall-web
@@ -8,8 +15,13 @@ DESKTOP_BIN := bin/irecall-desktop
 DESKTOP_WINDOWS_BIN := bin/irecall-desktop-windows-amd64.exe
 FRONTEND_DIR := frontend
 WAILS_BUILD_TAGS := wails,production,$(shell pkg-config --exists webkit2gtk-4.1 2>/dev/null && echo ,webkit2_41)
+RELEASE_DIR := dist/release
+RELEASE_TUI_TARGETS := linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64
+RELEASE_WEB_SERVER_TARGETS := $(RELEASE_TUI_TARGETS)
+# Wails desktop cross-builds are currently limited to the targets validated by this repo's toolchain.
+RELEASE_DESKTOP_TARGETS ?= linux/amd64 windows/amd64 windows/arm64
 
-.PHONY: build build-cli build-mcp build-web build-web-windows build-desktop build-desktop-windows build-local build-everything frontend-install frontend-build test test-mcp-bootstrap lint install clean run tidy
+.PHONY: build build-cli build-mcp build-web build-web-windows build-desktop build-desktop-windows build-local build-everything build-release clean-release frontend-install frontend-build test test-mcp-bootstrap lint install clean run tidy
 
 build: build-cli
 
@@ -47,6 +59,51 @@ build-local: build-cli build-web build-desktop
 
 build-everything: build-local build-all
 
+build-release: clean-release frontend-build
+	@mkdir -p $(RELEASE_DIR)
+	@set -eu; \
+	for target in $(RELEASE_TUI_TARGETS); do \
+		os=$${target%/*}; \
+		arch=$${target#*/}; \
+		ext=""; \
+		if [ "$$os" = "windows" ]; then ext=".exe"; fi; \
+		stage="$(RELEASE_DIR)/irecall-tui-$(RELEASE_VERSION)-$$os-$$arch"; \
+		mkdir -p "$$stage"; \
+		GOOS=$$os GOARCH=$$arch go build $(LDFLAGS) -o "$$stage/irecall$$ext" ./cmd/irecall; \
+		tar -C "$(RELEASE_DIR)" -czf "$(RELEASE_DIR)/irecall-tui-$(RELEASE_VERSION)-$$os-$$arch.tar.gz" "irecall-tui-$(RELEASE_VERSION)-$$os-$$arch"; \
+		rm -rf "$$stage"; \
+	done; \
+	for target in $(RELEASE_WEB_SERVER_TARGETS); do \
+		os=$${target%/*}; \
+		arch=$${target#*/}; \
+		ext=""; \
+		if [ "$$os" = "windows" ]; then ext=".exe"; fi; \
+		stage="$(RELEASE_DIR)/irecall-web-server-$(RELEASE_VERSION)-$$os-$$arch"; \
+		mkdir -p "$$stage"; \
+		GOOS=$$os GOARCH=$$arch go build $(LDFLAGS) -o "$$stage/irecall-web$$ext" ./web; \
+		tar -C "$(RELEASE_DIR)" -czf "$(RELEASE_DIR)/irecall-web-server-$(RELEASE_VERSION)-$$os-$$arch.tar.gz" "irecall-web-server-$(RELEASE_VERSION)-$$os-$$arch"; \
+		rm -rf "$$stage"; \
+	done; \
+	for target in $(RELEASE_DESKTOP_TARGETS); do \
+		os=$${target%/*}; \
+		arch=$${target#*/}; \
+		ext=""; \
+		if [ "$$os" = "windows" ]; then ext=".exe"; fi; \
+		stage="$(RELEASE_DIR)/irecall-desktop-$(RELEASE_VERSION)-$$os-$$arch"; \
+		mkdir -p "$$stage"; \
+		GOOS=$$os GOARCH=$$arch go build -tags "$(WAILS_BUILD_TAGS)" -o "$$stage/irecall-desktop$$ext" ./desktop; \
+		tar -C "$(RELEASE_DIR)" -czf "$(RELEASE_DIR)/irecall-desktop-$(RELEASE_VERSION)-$$os-$$arch.tar.gz" "irecall-desktop-$(RELEASE_VERSION)-$$os-$$arch"; \
+		rm -rf "$$stage"; \
+	done; \
+	stage="$(RELEASE_DIR)/irecall-web-$(RELEASE_VERSION)"; \
+	mkdir -p "$$stage"; \
+	cp -R "$(FRONTEND_DIR)/dist" "$$stage/"; \
+	tar -C "$(RELEASE_DIR)" -czf "$(RELEASE_DIR)/irecall-web-$(RELEASE_VERSION).tar.gz" "irecall-web-$(RELEASE_VERSION)"; \
+	rm -rf "$$stage"; \
+	checksum_cmd="shasum -a 256"; \
+	if command -v sha256sum >/dev/null 2>&1; then checksum_cmd="sha256sum"; fi; \
+	cd "$(RELEASE_DIR)" && $$checksum_cmd *.tar.gz > SHA256SUMS
+
 run: build
 	./$(BIN)
 
@@ -66,7 +123,12 @@ install:
 	go install $(LDFLAGS) ./cmd/irecall
 
 clean:
-	rm -rf bin/ $(FRONTEND_DIR)/dist
+	rm -rf bin/ $(FRONTEND_DIR)/dist $(RELEASE_DIR)
+	@rmdir --ignore-fail-on-non-empty dist 2>/dev/null || true
+
+clean-release:
+	rm -rf $(RELEASE_DIR)
+	@rmdir --ignore-fail-on-non-empty dist 2>/dev/null || true
 
 # Cross-compilation targets
 build-linux-amd64:
