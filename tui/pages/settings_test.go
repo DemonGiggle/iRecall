@@ -188,7 +188,7 @@ func TestSettingsPageShowsScrollbarWhenContentOverflows(t *testing.T) {
 	}
 
 	view := page.View()
-	if !strings.Contains(view, "#") || !strings.Contains(view, "|") {
+	if !strings.Contains(view, "█") || !strings.Contains(view, "│") {
 		t.Fatalf("settings view missing scrollbar markers:\n%s", view)
 	}
 }

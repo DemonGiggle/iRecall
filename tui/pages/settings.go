@@ -773,9 +773,11 @@ func (p SettingsPage) scrollbarView() string {
 		return ""
 	}
 
+	trackStyle := lipgloss.NewStyle().Foreground(styles.ColorBorder)
+	thumbStyle := lipgloss.NewStyle().Foreground(styles.ColorPrimary)
 	track := make([]string, visible)
 	for i := range track {
-		track[i] = styles.Muted.Render("|")
+		track[i] = trackStyle.Render("│")
 	}
 
 	thumbHeight := max(1, visible*visible/total)
@@ -785,7 +787,7 @@ func (p SettingsPage) scrollbarView() string {
 		thumbTop = p.viewport.YOffset * maxThumbTop / max(1, total-visible)
 	}
 	for i := thumbTop; i < thumbTop+thumbHeight && i < len(track); i++ {
-		track[i] = styles.Accent.Render("#")
+		track[i] = thumbStyle.Render("█")
 	}
 
 	return strings.Join(track, "\n")
