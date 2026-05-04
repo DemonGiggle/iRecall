@@ -179,3 +179,35 @@ func TestSettingsPageMockLLMToggleUpdatesCurrentSettings(t *testing.T) {
 		t.Fatalf("settings view missing debug control:\n%s", page.View())
 	}
 }
+
+func TestSettingsPageShowsScrollbarWhenContentOverflows(t *testing.T) {
+	page := NewSettingsPage(nil, 80, 12, core.DefaultSettings())
+
+	if page.viewport.TotalLineCount() <= page.viewport.VisibleLineCount() {
+		t.Fatalf("settings page should overflow at small height: total=%d visible=%d", page.viewport.TotalLineCount(), page.viewport.VisibleLineCount())
+	}
+
+	view := page.View()
+	if !strings.Contains(view, "#") || !strings.Contains(view, "|") {
+		t.Fatalf("settings view missing scrollbar markers:\n%s", view)
+	}
+}
+
+func TestSettingsPageKeepsFocusedFieldVisibleInViewport(t *testing.T) {
+	page := NewSettingsPage(nil, 80, 12, core.DefaultSettings())
+
+	for i := 0; i < int(fieldRootDir); i++ {
+		model, _ := page.Update(tea.KeyMsg{Type: tea.KeyDown})
+		page = model
+	}
+
+	if page.focused != fieldRootDir {
+		t.Fatalf("focused field = %v, want %v", page.focused, fieldRootDir)
+	}
+	if page.viewport.YOffset == 0 {
+		t.Fatalf("viewport y offset = %d, want > 0 after moving focus down", page.viewport.YOffset)
+	}
+	if !strings.Contains(page.View(), "Config root") {
+		t.Fatalf("settings view missing focused lower field:\n%s", page.View())
+	}
+}
