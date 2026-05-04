@@ -384,11 +384,12 @@ func (s *Server) handleSaveSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	var settings struct {
 		Provider struct {
-			Host   string `json:"Host"`
-			Port   int    `json:"Port"`
-			HTTPS  bool   `json:"HTTPS"`
-			APIKey string `json:"APIKey"`
-			Model  string `json:"Model"`
+			Host         string `json:"Host"`
+			Port         int    `json:"Port"`
+			HTTPS        bool   `json:"HTTPS"`
+			APIKey       string `json:"APIKey"`
+			Model        string `json:"Model"`
+			KeywordModel string `json:"KeywordModel"`
 		} `json:"Provider"`
 		Search struct {
 			MaxResults   int     `json:"MaxResults"`
@@ -421,11 +422,12 @@ func (s *Server) handleSaveSettings(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleFetchModels(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Host   string `json:"Host"`
-		Port   int    `json:"Port"`
-		HTTPS  bool   `json:"HTTPS"`
-		APIKey string `json:"APIKey"`
-		Model  string `json:"Model"`
+		Host         string `json:"Host"`
+		Port         int    `json:"Port"`
+		HTTPS        bool   `json:"HTTPS"`
+		APIKey       string `json:"APIKey"`
+		Model        string `json:"Model"`
+		KeywordModel string `json:"KeywordModel"`
 	}
 	if !requirePostJSON(w, r, &req) {
 		return
@@ -708,28 +710,31 @@ func bearerToken(header string) string {
 }
 
 func backendToCoreProvider(v struct {
-	Host   string `json:"Host"`
-	Port   int    `json:"Port"`
-	HTTPS  bool   `json:"HTTPS"`
-	APIKey string `json:"APIKey"`
-	Model  string `json:"Model"`
+	Host         string `json:"Host"`
+	Port         int    `json:"Port"`
+	HTTPS        bool   `json:"HTTPS"`
+	APIKey       string `json:"APIKey"`
+	Model        string `json:"Model"`
+	KeywordModel string `json:"KeywordModel"`
 }) core.ProviderConfig {
 	return core.ProviderConfig{
-		Host:   v.Host,
-		Port:   v.Port,
-		HTTPS:  v.HTTPS,
-		APIKey: v.APIKey,
-		Model:  v.Model,
+		Host:         v.Host,
+		Port:         v.Port,
+		HTTPS:        v.HTTPS,
+		APIKey:       v.APIKey,
+		Model:        v.Model,
+		KeywordModel: v.KeywordModel,
 	}
 }
 
 func backendToCoreSettings(v struct {
 	Provider struct {
-		Host   string `json:"Host"`
-		Port   int    `json:"Port"`
-		HTTPS  bool   `json:"HTTPS"`
-		APIKey string `json:"APIKey"`
-		Model  string `json:"Model"`
+		Host         string `json:"Host"`
+		Port         int    `json:"Port"`
+		HTTPS        bool   `json:"HTTPS"`
+		APIKey       string `json:"APIKey"`
+		Model        string `json:"Model"`
+		KeywordModel string `json:"KeywordModel"`
 	} `json:"Provider"`
 	Search struct {
 		MaxResults   int     `json:"MaxResults"`
@@ -746,11 +751,12 @@ func backendToCoreSettings(v struct {
 }) core.Settings {
 	settings := core.Settings{
 		Provider: core.ProviderConfig{
-			Host:   v.Provider.Host,
-			Port:   v.Provider.Port,
-			HTTPS:  v.Provider.HTTPS,
-			APIKey: v.Provider.APIKey,
-			Model:  v.Provider.Model,
+			Host:         v.Provider.Host,
+			Port:         v.Provider.Port,
+			HTTPS:        v.Provider.HTTPS,
+			APIKey:       v.Provider.APIKey,
+			Model:        v.Provider.Model,
+			KeywordModel: v.Provider.KeywordModel,
 		},
 		Search: core.SearchConfig{
 			MaxResults:   v.Search.MaxResults,

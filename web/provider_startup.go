@@ -42,11 +42,12 @@ func (f *optionalBoolFlag) IsBoolFlag() bool {
 }
 
 type ProviderStartupOptions struct {
-	Host       string
-	Port       int
-	HTTPS      optionalBoolFlag
-	APIKeyPath string
-	Model      string
+	Host         string
+	Port         int
+	HTTPS        optionalBoolFlag
+	APIKeyPath   string
+	Model        string
+	KeywordModel string
 }
 
 func bindProviderStartupFlags(fs *flag.FlagSet) *ProviderStartupOptions {
@@ -55,7 +56,8 @@ func bindProviderStartupFlags(fs *flag.FlagSet) *ProviderStartupOptions {
 	fs.IntVar(&opts.Port, "provider-port", 0, "override provider port for --api-only mode")
 	fs.Var(&opts.HTTPS, "provider-https", "override provider HTTPS setting for --api-only mode")
 	fs.StringVar(&opts.APIKeyPath, "provider-api-key-path", "", "read provider API key from this file for --api-only mode")
-	fs.StringVar(&opts.Model, "provider-model", "", "override provider model for --api-only mode")
+	fs.StringVar(&opts.Model, "provider-model", "", "override response/default provider model for --api-only mode")
+	fs.StringVar(&opts.KeywordModel, "provider-keyword-model", "", "override recall keyword extraction model for --api-only mode")
 	return opts
 }
 
@@ -64,7 +66,8 @@ func (o ProviderStartupOptions) HasOverrides() bool {
 		o.Port != 0 ||
 		o.HTTPS.set ||
 		strings.TrimSpace(o.APIKeyPath) != "" ||
-		strings.TrimSpace(o.Model) != ""
+		strings.TrimSpace(o.Model) != "" ||
+		strings.TrimSpace(o.KeywordModel) != ""
 }
 
 func (o ProviderStartupOptions) Validate(serverOptions ServerOptions) error {
@@ -90,6 +93,9 @@ func (o ProviderStartupOptions) Resolve(base core.ProviderConfig) (core.Provider
 	}
 	if model := strings.TrimSpace(o.Model); model != "" {
 		resolved.Model = model
+	}
+	if keywordModel := strings.TrimSpace(o.KeywordModel); keywordModel != "" {
+		resolved.KeywordModel = keywordModel
 	}
 	if apiKeyPath := strings.TrimSpace(o.APIKeyPath); apiKeyPath != "" {
 		apiKey, err := readSecretFile(apiKeyPath, "provider API key")

@@ -187,6 +187,11 @@ func TestExtractTagsRequestsBroaderTagSet(t *testing.T) {
 	defer srv.Close()
 
 	engine := newTestEngine(t, srv.Listener.Addr().String())
+	engine.UpdateProvider(ProviderConfig{
+		Host:         srv.Listener.Addr().String(),
+		Model:        "response-model",
+		KeywordModel: "keyword-model",
+	})
 
 	tags, err := engine.ExtractTags(context.Background(), "Raft relies on leader election, replication, and quorum to keep a distributed system consistent during failures.")
 	if err != nil {
@@ -195,8 +200,8 @@ func TestExtractTagsRequestsBroaderTagSet(t *testing.T) {
 	if len(tags) != 7 {
 		t.Fatalf("tag count = %d, want 7", len(tags))
 	}
-	if gotRequest.Model != "test-model" {
-		t.Fatalf("model = %q, want test-model", gotRequest.Model)
+	if gotRequest.Model != "keyword-model" {
+		t.Fatalf("model = %q, want keyword-model", gotRequest.Model)
 	}
 	if gotRequest.Stream {
 		t.Fatal("stream = true, want false")
@@ -217,6 +222,7 @@ func TestExtractTagsRepairsWeakGenericResults(t *testing.T) {
 
 	var requestCount int
 	var gotRequests []struct {
+		Model    string `json:"model"`
 		Messages []struct {
 			Role    string `json:"role"`
 			Content string `json:"content"`
@@ -227,6 +233,7 @@ func TestExtractTagsRepairsWeakGenericResults(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requestCount++
 		var req struct {
+			Model    string `json:"model"`
 			Messages []struct {
 				Role    string `json:"role"`
 				Content string `json:"content"`
@@ -256,6 +263,11 @@ func TestExtractTagsRepairsWeakGenericResults(t *testing.T) {
 	defer srv.Close()
 
 	engine := newTestEngine(t, srv.Listener.Addr().String())
+	engine.UpdateProvider(ProviderConfig{
+		Host:         srv.Listener.Addr().String(),
+		Model:        "response-model",
+		KeywordModel: "keyword-model",
+	})
 
 	tags, err := engine.ExtractTags(context.Background(), "Raft relies on leader election, replication, and quorum to keep a distributed system consistent during failures.")
 	if err != nil {
@@ -267,6 +279,12 @@ func TestExtractTagsRepairsWeakGenericResults(t *testing.T) {
 	}
 	if requestCount != 2 {
 		t.Fatalf("request count = %d, want 2", requestCount)
+	}
+	if gotRequests[0].Model != "keyword-model" {
+		t.Fatalf("first request model = %q, want keyword-model", gotRequests[0].Model)
+	}
+	if gotRequests[1].Model != "keyword-model" {
+		t.Fatalf("repair request model = %q, want keyword-model", gotRequests[1].Model)
 	}
 	if !strings.Contains(gotRequests[1].Messages[0].Content, "repairing a JSON keyword extractor result") {
 		t.Fatalf("repair prompt = %q, want repair instructions", gotRequests[1].Messages[0].Content)
@@ -444,6 +462,87 @@ func TestGenerateResponseMockLLMCombinesQuoteContents(t *testing.T) {
 	want := "first reference\n\nsecond reference"
 	if got.String() != want {
 		t.Fatalf("GenerateResponse() = %q, want %q", got.String(), want)
+	}
+}
+
+func TestRecallUsesDedicatedKeywordModelAndResponseModel(t *testing.T) {
+	t.Parallel()
+
+	type observedRequest struct {
+		Model  string `json:"model"`
+		Stream bool   `json:"stream"`
+	}
+	var observed []observedRequest
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req observedRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		observed = append(observed, req)
+
+		if req.Stream {
+			w.Header().Set("Content-Type", "text/event-stream")
+			_, _ = w.Write([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"answer\"}}]}\n\n"))
+			_, _ = w.Write([]byte("data: [DONE]\n\n"))
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"choices": []map[string]any{{
+				"message": map[string]string{"content": `["alpha","beta"]`},
+			}},
+		})
+	}))
+	defer srv.Close()
+
+	engine := newTestEngine(t, srv.Listener.Addr().String())
+	engine.UpdateProvider(ProviderConfig{
+		Host:         srv.Listener.Addr().String(),
+		Model:        "response-model",
+		KeywordModel: "keyword-model",
+	})
+
+	keywords, err := engine.ExtractKeywords(context.Background(), "alpha beta")
+	if err != nil {
+		t.Fatalf("ExtractKeywords() error = %v", err)
+	}
+	if want := []string{"alpha", "beta"}; !reflect.DeepEqual(keywords, want) {
+		t.Fatalf("ExtractKeywords() = %#v, want %#v", keywords, want)
+	}
+
+	tokenCh := make(chan string, 8)
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- engine.GenerateResponse(context.Background(), "question", []Quote{{Content: "reference"}}, tokenCh)
+	}()
+
+	var response strings.Builder
+	for token := range tokenCh {
+		response.WriteString(token)
+	}
+	if err := <-errCh; err != nil {
+		t.Fatalf("GenerateResponse() error = %v", err)
+	}
+	if response.String() != "answer" {
+		t.Fatalf("GenerateResponse() response = %q, want answer", response.String())
+	}
+
+	if len(observed) != 2 {
+		t.Fatalf("request count = %d, want 2", len(observed))
+	}
+	if observed[0].Model != "keyword-model" {
+		t.Fatalf("keyword request model = %q, want keyword-model", observed[0].Model)
+	}
+	if observed[0].Stream {
+		t.Fatal("keyword request stream = true, want false")
+	}
+	if observed[1].Model != "response-model" {
+		t.Fatalf("response request model = %q, want response-model", observed[1].Model)
+	}
+	if !observed[1].Stream {
+		t.Fatal("response request stream = false, want true")
 	}
 }
 

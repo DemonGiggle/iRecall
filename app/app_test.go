@@ -362,11 +362,12 @@ func TestApplyRuntimeProviderInitializesMissingSettings(t *testing.T) {
 
 	app.settings = nil
 	provider := core.ProviderConfig{
-		Host:   "provider.example/api",
-		Port:   443,
-		HTTPS:  true,
-		APIKey: "runtime-secret",
-		Model:  "runtime-model",
+		Host:         "provider.example/api",
+		Port:         443,
+		HTTPS:        true,
+		APIKey:       "runtime-secret",
+		Model:        "runtime-model",
+		KeywordModel: "runtime-keyword-model",
 	}
 
 	if err := app.ApplyRuntimeProvider(provider); err != nil {

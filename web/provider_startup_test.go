@@ -52,21 +52,23 @@ func TestProviderStartupOptionsResolveReadsAPIKeyFile(t *testing.T) {
 	}
 
 	opts := ProviderStartupOptions{
-		Host:       "provider.example/api",
-		Port:       443,
-		APIKeyPath: apiKeyPath,
-		Model:      "runtime-model",
+		Host:         "provider.example/api",
+		Port:         443,
+		APIKeyPath:   apiKeyPath,
+		Model:        "runtime-model",
+		KeywordModel: "runtime-keyword-model",
 	}
 	if err := opts.HTTPS.Set("true"); err != nil {
 		t.Fatalf("HTTPS.Set(true) error = %v", err)
 	}
 
 	resolved, err := opts.Resolve(core.ProviderConfig{
-		Host:   "saved-provider",
-		Port:   11434,
-		HTTPS:  false,
-		APIKey: "saved-secret",
-		Model:  "saved-model",
+		Host:         "saved-provider",
+		Port:         11434,
+		HTTPS:        false,
+		APIKey:       "saved-secret",
+		Model:        "saved-model",
+		KeywordModel: "saved-keyword-model",
 	})
 	if err != nil {
 		t.Fatalf("Resolve() error = %v", err)
@@ -85,6 +87,9 @@ func TestProviderStartupOptionsResolveReadsAPIKeyFile(t *testing.T) {
 	}
 	if resolved.Model != "runtime-model" {
 		t.Fatalf("resolved model = %q, want override", resolved.Model)
+	}
+	if resolved.KeywordModel != "runtime-keyword-model" {
+		t.Fatalf("resolved keyword model = %q, want override", resolved.KeywordModel)
 	}
 }
 
@@ -149,11 +154,12 @@ func TestApplyAPIOnlyProviderStartupConfigOverridesRuntimeWithoutPersisting(t *t
 
 	savedSettings := *runtimeApp.GetSettings()
 	savedSettings.Provider = core.ProviderConfig{
-		Host:   "saved-provider",
-		Port:   11434,
-		HTTPS:  false,
-		APIKey: "saved-secret",
-		Model:  "saved-model",
+		Host:         "saved-provider",
+		Port:         11434,
+		HTTPS:        false,
+		APIKey:       "saved-secret",
+		Model:        "saved-model",
+		KeywordModel: "saved-keyword-model",
 	}
 	if _, err := runtimeApp.SaveSettings(savedSettings); err != nil {
 		t.Fatalf("SaveSettings() error = %v", err)
@@ -164,10 +170,11 @@ func TestApplyAPIOnlyProviderStartupConfigOverridesRuntimeWithoutPersisting(t *t
 		t.Fatalf("WriteFile(apiKeyPath) error = %v", err)
 	}
 	opts := ProviderStartupOptions{
-		Host:       "runtime-provider",
-		Port:       8443,
-		APIKeyPath: apiKeyPath,
-		Model:      "runtime-model",
+		Host:         "runtime-provider",
+		Port:         8443,
+		APIKeyPath:   apiKeyPath,
+		Model:        "runtime-model",
+		KeywordModel: "runtime-keyword-model",
 	}
 	if err := opts.HTTPS.Set("true"); err != nil {
 		t.Fatalf("HTTPS.Set(true) error = %v", err)
@@ -184,7 +191,8 @@ func TestApplyAPIOnlyProviderStartupConfigOverridesRuntimeWithoutPersisting(t *t
 		current.Provider.Port != 8443 ||
 		!current.Provider.HTTPS ||
 		current.Provider.APIKey != "runtime-secret" ||
-		current.Provider.Model != "runtime-model" {
+		current.Provider.Model != "runtime-model" ||
+		current.Provider.KeywordModel != "runtime-keyword-model" {
 		t.Fatalf("runtime provider = %+v, want applied overrides", current.Provider)
 	}
 
@@ -204,7 +212,8 @@ func TestApplyAPIOnlyProviderStartupConfigOverridesRuntimeWithoutPersisting(t *t
 		reloaded.Provider.Port != 11434 ||
 		reloaded.Provider.HTTPS ||
 		reloaded.Provider.APIKey != "saved-secret" ||
-		reloaded.Provider.Model != "saved-model" {
+		reloaded.Provider.Model != "saved-model" ||
+		reloaded.Provider.KeywordModel != "saved-keyword-model" {
 		t.Fatalf("reloaded provider = %+v, want persisted settings without runtime override", reloaded.Provider)
 	}
 }

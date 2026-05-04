@@ -72,3 +72,34 @@ func TestProviderConfigBaseURL(t *testing.T) {
 		})
 	}
 }
+
+func TestProviderConfigRecallKeywordModelFallsBackToResponseModel(t *testing.T) {
+	t.Parallel()
+
+	cfg := ProviderConfig{
+		Model: "response-model",
+	}
+	if got := cfg.RecallKeywordModel(); got != "response-model" {
+		t.Fatalf("RecallKeywordModel() = %q, want response-model", got)
+	}
+}
+
+func TestProviderConfigRecallKeywordProviderConfigUsesOverride(t *testing.T) {
+	t.Parallel()
+
+	cfg := ProviderConfig{
+		Host:         "provider.example",
+		Port:         443,
+		HTTPS:        true,
+		APIKey:       "secret",
+		Model:        "response-model",
+		KeywordModel: "keyword-model",
+	}
+	got := cfg.RecallKeywordProviderConfig()
+	if got.Model != "keyword-model" {
+		t.Fatalf("RecallKeywordProviderConfig().Model = %q, want keyword-model", got.Model)
+	}
+	if got.Host != cfg.Host || got.Port != cfg.Port || got.HTTPS != cfg.HTTPS || got.APIKey != cfg.APIKey {
+		t.Fatalf("RecallKeywordProviderConfig() changed connection fields: %+v", got)
+	}
+}
