@@ -24,6 +24,16 @@ type Quote struct {
 	UpdatedAt        time.Time
 }
 
+// QuoteKeywordRegeneration captures one explicit keyword refresh for a stored quote.
+type QuoteKeywordRegeneration struct {
+	QuoteID     int64
+	GlobalID    string
+	OldKeywords []string
+	NewKeywords []string
+	Changed     bool
+	Quote       Quote
+}
+
 type UserProfile struct {
 	UserID      string
 	DisplayName string

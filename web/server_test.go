@@ -7,10 +7,12 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	irecallapp "github.com/gigol/irecall/app"
 	"github.com/gigol/irecall/config"
+	"github.com/gigol/irecall/core"
 	frontendassets "github.com/gigol/irecall/frontend"
 )
 
@@ -324,6 +326,111 @@ func TestHandleSaveSettingsPreservesExistingRootWhenOmitted(t *testing.T) {
 	}
 	if preferredRoot != current.RootDir {
 		t.Fatalf("preferred root = %q, want %q", preferredRoot, current.RootDir)
+	}
+}
+
+func TestHandleRegenerateQuoteKeywordsSupportsGlobalID(t *testing.T) {
+	t.Parallel()
+
+	callCount := 0
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/chat/completions" {
+			t.Fatalf("path = %q, want /v1/chat/completions", r.URL.Path)
+		}
+		callCount++
+		tags := []string{"legacy"}
+		if callCount > 1 {
+			tags = []string{"sqlite", "wal", "concurrency"}
+		}
+		content, err := json.Marshal(tags)
+		if err != nil {
+			t.Fatalf("json.Marshal(tags) error = %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"choices": []map[string]any{
+				{
+					"message": map[string]string{
+						"content": string(content),
+					},
+				},
+			},
+		})
+	}))
+	defer provider.Close()
+
+	app := newTestApp(t)
+	if _, err := app.SaveUserProfile("Test User"); err != nil {
+		t.Fatalf("SaveUserProfile() error = %v", err)
+	}
+	if err := app.ApplyRuntimeProvider(core.ProviderConfig{
+		Host:  provider.Listener.Addr().String(),
+		Port:  0,
+		HTTPS: false,
+		Model: "test-model",
+	}); err != nil {
+		t.Fatalf("ApplyRuntimeProvider() error = %v", err)
+	}
+
+	quote, err := app.AddQuote("SQLite WAL helps readers and writers overlap safely.")
+	if err != nil {
+		t.Fatalf("AddQuote() error = %v", err)
+	}
+
+	tokenResult, err := app.CreateAPIToken()
+	if err != nil {
+		t.Fatalf("CreateAPIToken() error = %v", err)
+	}
+	server := newTestServer(t, app)
+	wantNewKeywords := []string{"sqlite", "wal", "concurrency"}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/app/regenerate-quote-keywords", jsonBody(t, map[string]any{
+		"globalId": quote.GlobalID,
+	}))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+tokenResult.Token)
+	res := httptest.NewRecorder()
+	server.ServeHTTP(res, req)
+	if res.Code != http.StatusOK {
+		t.Fatalf("POST /api/app/regenerate-quote-keywords = %d, body = %s", res.Code, res.Body.String())
+	}
+
+	var payload struct {
+		QuoteID     int64      `json:"quoteId"`
+		GlobalID    string     `json:"globalId"`
+		OldKeywords []string   `json:"oldKeywords"`
+		NewKeywords []string   `json:"newKeywords"`
+		Changed     bool       `json:"changed"`
+		Status      string     `json:"status"`
+		Quote       core.Quote `json:"quote"`
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if payload.QuoteID != quote.ID {
+		t.Fatalf("quoteId = %d, want %d", payload.QuoteID, quote.ID)
+	}
+	if payload.GlobalID != quote.GlobalID {
+		t.Fatalf("globalId = %q, want %q", payload.GlobalID, quote.GlobalID)
+	}
+	if !slices.Equal(payload.OldKeywords, []string{"legacy"}) {
+		t.Fatalf("oldKeywords = %#v, want %#v", payload.OldKeywords, []string{"legacy"})
+	}
+	if !slices.Equal(payload.NewKeywords, wantNewKeywords) {
+		t.Fatalf("newKeywords = %#v, want %#v", payload.NewKeywords, wantNewKeywords)
+	}
+	if !payload.Changed {
+		t.Fatal("changed = false, want true")
+	}
+	if payload.Status != "updated" {
+		t.Fatalf("status = %q, want updated", payload.Status)
+	}
+	gotTags := slices.Clone(payload.Quote.Tags)
+	slices.Sort(gotTags)
+	wantTags := slices.Clone(wantNewKeywords)
+	slices.Sort(wantTags)
+	if !slices.Equal(gotTags, wantTags) {
+		t.Fatalf("quote tags = %#v, want %#v", payload.Quote.Tags, wantNewKeywords)
 	}
 }
 

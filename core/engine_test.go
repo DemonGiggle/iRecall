@@ -339,6 +339,86 @@ func TestExtractKeywordsMockLLMSplitsBySpaces(t *testing.T) {
 	}
 }
 
+func TestRegenerateQuoteKeywordsReplacesStoredTags(t *testing.T) {
+	t.Parallel()
+
+	var responseTags = []string{"sqlite", "wal", "concurrency"}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/chat/completions" {
+			t.Fatalf("path = %q, want /v1/chat/completions", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"choices": []map[string]any{
+				{
+					"message": map[string]string{
+						"content": mustMarshalJSONArray(responseTags),
+					},
+				},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	engine := newProfiledTestEngine(t, srv.Listener.Addr().String())
+	identity, err := engine.quoteIdentityForNewQuote()
+	if err != nil {
+		t.Fatalf("quoteIdentityForNewQuote() error = %v", err)
+	}
+	id, err := engine.store.InsertQuote("SQLite WAL helps readers and writers overlap safely.", identity)
+	if err != nil {
+		t.Fatalf("InsertQuote() error = %v", err)
+	}
+	oldTagIDs, err := engine.store.UpsertTags([]string{"legacy"})
+	if err != nil {
+		t.Fatalf("UpsertTags() error = %v", err)
+	}
+	if err := engine.store.InsertQuoteTags(id, oldTagIDs); err != nil {
+		t.Fatalf("InsertQuoteTags() error = %v", err)
+	}
+	if err := engine.store.UpdateQuoteFTS(id, []string{"legacy"}); err != nil {
+		t.Fatalf("UpdateQuoteFTS() error = %v", err)
+	}
+
+	result, err := engine.RegenerateQuoteKeywords(context.Background(), 0, identity.GlobalID)
+	if err != nil {
+		t.Fatalf("RegenerateQuoteKeywords() error = %v", err)
+	}
+	if result.QuoteID != id {
+		t.Fatalf("QuoteID = %d, want %d", result.QuoteID, id)
+	}
+	if result.GlobalID != identity.GlobalID {
+		t.Fatalf("GlobalID = %q, want %q", result.GlobalID, identity.GlobalID)
+	}
+	if !reflect.DeepEqual(result.OldKeywords, []string{"legacy"}) {
+		t.Fatalf("OldKeywords = %#v, want %#v", result.OldKeywords, []string{"legacy"})
+	}
+	if !reflect.DeepEqual(result.NewKeywords, responseTags) {
+		t.Fatalf("NewKeywords = %#v, want %#v", result.NewKeywords, responseTags)
+	}
+	if !result.Changed {
+		t.Fatal("Changed = false, want true")
+	}
+	gotTags := slices.Clone(result.Quote.Tags)
+	slices.Sort(gotTags)
+	wantTags := slices.Clone(responseTags)
+	slices.Sort(wantTags)
+	if !slices.Equal(gotTags, wantTags) {
+		t.Fatalf("Quote.Tags = %#v, want %#v", result.Quote.Tags, responseTags)
+	}
+	if result.Quote.Version != 2 {
+		t.Fatalf("Quote.Version = %d, want 2", result.Quote.Version)
+	}
+
+	matches, err := engine.SearchQuotes(context.Background(), []string{"concurrency"})
+	if err != nil {
+		t.Fatalf("SearchQuotes() error = %v", err)
+	}
+	if len(matches) != 1 || matches[0].ID != id {
+		t.Fatalf("SearchQuotes() = %#v, want quote id %d", matches, id)
+	}
+}
+
 func TestGenerateResponseMockLLMCombinesQuoteContents(t *testing.T) {
 	t.Parallel()
 

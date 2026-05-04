@@ -2,7 +2,9 @@ package core
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"math"
@@ -263,6 +265,42 @@ func (e *Engine) UpdateQuote(ctx context.Context, id int64, content string) (*Qu
 	}
 
 	return e.loadQuote(id)
+}
+
+// RegenerateQuoteKeywords re-runs tag extraction for one stored quote and persists the result.
+func (e *Engine) RegenerateQuoteKeywords(ctx context.Context, id int64, globalID string) (*QuoteKeywordRegeneration, error) {
+	quote, err := e.loadQuoteByIdentifier(id, globalID)
+	if err != nil {
+		return nil, err
+	}
+
+	oldKeywords := slices.Clone(quote.Tags)
+	slog.Info("engine: regenerating quote keywords", "id", quote.ID, "global_id", quote.GlobalID, "old_keywords", oldKeywords)
+
+	newKeywords, err := e.ExtractTags(ctx, quote.Content)
+	if err != nil {
+		return nil, fmt.Errorf("extract quote keywords: %w", err)
+	}
+
+	changed := !sameStringSet(oldKeywords, newKeywords)
+	if changed {
+		if err := e.store.ApplyQuoteTagUpdate(quote.ID, newKeywords, true); err != nil {
+			return nil, err
+		}
+		quote, err = e.loadQuote(quote.ID)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return &QuoteKeywordRegeneration{
+		QuoteID:     quote.ID,
+		GlobalID:    quote.GlobalID,
+		OldKeywords: oldKeywords,
+		NewKeywords: slices.Clone(newKeywords),
+		Changed:     changed,
+		Quote:       *quote,
+	}, nil
 }
 
 // RefineQuoteDraft asks the LLM to rewrite a draft quote for clarity while preserving intent.
@@ -836,6 +874,37 @@ func (e *Engine) loadQuote(id int64) (*Quote, error) {
 	return &quotes[0], nil
 }
 
+func (e *Engine) loadQuoteByGlobalID(globalID string) (*Quote, error) {
+	row, err := e.store.GetQuoteByGlobalID(globalID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, fmt.Errorf("quote %q not found", globalID)
+		}
+		return nil, err
+	}
+	quotes := rowsToQuotes([]db.QuoteRow{row}, e.localUserID())
+	return &quotes[0], nil
+}
+
+func (e *Engine) loadQuoteByIdentifier(id int64, globalID string) (*Quote, error) {
+	globalID = strings.TrimSpace(globalID)
+	switch {
+	case id > 0:
+		quote, err := e.loadQuote(id)
+		if err != nil {
+			return nil, err
+		}
+		if globalID != "" && quote.GlobalID != globalID {
+			return nil, fmt.Errorf("quote id %d does not match global id %q", id, globalID)
+		}
+		return quote, nil
+	case globalID != "":
+		return e.loadQuoteByGlobalID(globalID)
+	default:
+		return nil, fmt.Errorf("quote id or global id is required")
+	}
+}
+
 func (e *Engine) localUserID() string {
 	if e.profile == nil {
 		return ""
@@ -962,6 +1031,17 @@ func mustMarshalJSONArray(items []string) string {
 		return "[]"
 	}
 	return string(data)
+}
+
+func sameStringSet(left, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	left = slices.Clone(left)
+	right = slices.Clone(right)
+	slices.Sort(left)
+	slices.Sort(right)
+	return slices.Equal(left, right)
 }
 
 func stripMarkdownCodeFence(s string) string {

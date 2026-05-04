@@ -431,6 +431,44 @@ Response:
 
 - `200 OK` with one `Quote`
 
+### `POST /api/app/regenerate-quote-keywords`
+
+Re-runs keyword/tag extraction for one stored quote and persists the refreshed keywords.
+
+Authentication: session or bearer token required.
+
+Request body:
+
+Provide either `id` or `globalId`. If both are present, they must refer to the same quote.
+
+```json
+{
+  "id": 1,
+  "globalId": "5d4f63ef-4e92-4b36-a1d5-7ab0d210e0bc"
+}
+```
+
+Response:
+
+```json
+{
+  "quoteId": 1,
+  "globalId": "5d4f63ef-4e92-4b36-a1d5-7ab0d210e0bc",
+  "oldKeywords": ["legacy"],
+  "newKeywords": ["sqlite", "wal", "concurrency"],
+  "changed": true,
+  "status": "updated",
+  "quote": {
+    "ID": 1,
+    "GlobalID": "5d4f63ef-4e92-4b36-a1d5-7ab0d210e0bc",
+    "Content": "SQLite WAL helps readers and writers overlap safely.",
+    "Tags": ["sqlite", "wal", "concurrency"]
+  }
+}
+```
+
+`status` is `updated` when the persisted keywords changed, or `unchanged` when regeneration produced the same keyword set.
+
 ### `POST /api/app/delete-quotes`
 
 Deletes multiple quotes by ID.
