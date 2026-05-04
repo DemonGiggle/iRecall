@@ -10,6 +10,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
+	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/gigol/irecall/config"
@@ -78,6 +79,7 @@ type SettingsPage struct {
 	busy      bool
 	statusMsg string
 	isErr     bool
+	viewport  viewport.Model
 
 	width  int
 	height int
@@ -117,7 +119,7 @@ func NewSettingsPage(engine *core.Engine, width, height int, s *core.Settings) S
 	sp.Spinner = spinner.Dot
 	sp.Style = lipgloss.NewStyle().Foreground(styles.ColorAccent)
 
-	return SettingsPage{
+	page := SettingsPage{
 		engine:        engine,
 		inputs:        inputs,
 		httpsOn:       s.Provider.HTTPS,
@@ -132,6 +134,9 @@ func NewSettingsPage(engine *core.Engine, width, height int, s *core.Settings) S
 		width:         width,
 		height:        height,
 	}
+	page.recalcViewport()
+	page.refreshViewport()
+	return page
 }
 
 func (p SettingsPage) Init() tea.Cmd {
@@ -149,6 +154,18 @@ func (p SettingsPage) Update(msg tea.Msg) (SettingsPage, tea.Cmd) {
 
 		case "up":
 			p.cycleFocus(-1)
+
+		case "pgdown":
+			p.viewport.LineDown(max(1, p.viewport.Height-1))
+
+		case "pgup":
+			p.viewport.LineUp(max(1, p.viewport.Height-1))
+
+		case "home":
+			p.viewport.GotoTop()
+
+		case "end":
+			p.viewport.GotoBottom()
 
 		case " ":
 			if p.focused == fieldHTTPS {
@@ -262,81 +279,22 @@ func (p SettingsPage) Update(msg tea.Msg) (SettingsPage, tea.Cmd) {
 		cmds = append(cmds, cmd)
 	}
 
+	p.refreshViewport()
+
 	return p, tea.Batch(cmds...)
 }
 
 func (p SettingsPage) View() string {
-	row := func(label string, value string) string {
-		return lipgloss.JoinHorizontal(lipgloss.Top,
-			styles.FormLabel.Render(label),
-			value,
-		)
-	}
-
-	httpsLabel := "[ ] off"
-	if p.httpsOn {
-		httpsLabel = "[x] on"
-	}
-	if p.focused == fieldHTTPS {
-		httpsLabel = styles.Accent.Render(httpsLabel) + styles.Muted.Render("  Space to toggle")
-	}
-
-	fetchBtn := styles.ButtonNormal.Render("Fetch Models")
-	if p.focused == fieldFetchModels {
-		fetchBtn = styles.ButtonFocused.Render("Fetch Models")
-	}
-	if p.busy {
-		fetchBtn = p.spinner.View() + " Fetching..."
-	}
-
-	responseModelView := p.modelSelectorView(p.SelectedResponseModel(), false, p.focused == fieldResponseModel)
-	keywordModelView := p.modelSelectorView(p.SelectedKeywordModel(), true, p.focused == fieldKeywordModel)
-
-	providerSection := lipgloss.JoinVertical(lipgloss.Left,
-		styles.SectionHeader.Render("LLM Provider"),
-		row("Host / IP", p.inputView(fieldHost)),
-		row("Port", p.inputView(fieldPort)),
-		row("HTTPS", httpsLabel),
-		row("API Key", p.inputView(fieldAPIKey)),
-		"",
-		row("", fetchBtn),
-		"",
-		row("Filter", p.inputView(fieldModelFilter)),
-		row("Response model", responseModelView),
-		row("Keyword model", keywordModelView),
-		row("Theme", p.themeSelectorView()),
+	footer := p.footerView()
+	body := lipgloss.JoinVertical(lipgloss.Left,
+		p.settingsViewportView(),
+		footer,
 	)
 
-	searchSection := lipgloss.JoinVertical(lipgloss.Left,
-		styles.SectionHeader.Render("Search"),
-		row("Max ref quotes", p.inputView(fieldMaxResults)),
-		row("Min relevance", p.inputView(fieldMinRelevance)),
-		styles.Muted.Render("0.0 keeps broad matches. Try 0.3-0.7 for cleaner results; 1.0 is very strict."),
-	)
+	return styles.Panel.Width(max(24, p.width-4)).Render(body)
+}
 
-	mockLLMLabel := "[ ] off"
-	if p.debug.MockLLM {
-		mockLLMLabel = "[x] on"
-	}
-	if p.focused == fieldMockLLM {
-		mockLLMLabel = styles.Accent.Render(mockLLMLabel) + styles.Muted.Render("  Space to toggle")
-	}
-
-	debugSection := lipgloss.JoinVertical(lipgloss.Left,
-		styles.SectionHeader.Render("Debug"),
-		row("Mock LLM", mockLLMLabel),
-		styles.Muted.Render("Refine returns the original text, keywords split on spaces, and answers combine reference quotes."),
-	)
-
-	pathsSection := lipgloss.JoinVertical(lipgloss.Left,
-		styles.SectionHeader.Render("Local Storage"),
-		row("Config root", p.inputView(fieldRootDir)),
-		styles.Muted.Render("Leave blank for the default XDG/AppData locations. Saving switches iRecall to that root immediately."),
-		row("Data dir", styles.Muted.Render(p.previewDataDir())),
-		row("Config dir", styles.Muted.Render(p.previewConfigDir())),
-		row("State dir", styles.Muted.Render(p.previewStateDir())),
-	)
-
+func (p SettingsPage) footerView() string {
 	var statusLine string
 	if p.statusMsg != "" {
 		if p.isErr {
@@ -346,21 +304,12 @@ func (p SettingsPage) View() string {
 		}
 	}
 
-	helpLine := styles.HelpBar.Render("↑/↓: Move   type: Edit/filter   ←/→: Cycle Model/Theme   space: Toggle   enter: Fetch   ctrl+s: Save   tab/shift+tab: Switch Page")
-
-	return styles.Panel.Width(p.width - 4).Render(
-		lipgloss.JoinVertical(lipgloss.Left,
-			providerSection,
-			"",
-			searchSection,
-			"",
-			debugSection,
-			"",
-			pathsSection,
-			"",
-			statusLine,
-			helpLine,
-		),
+	helpLinePrimary := styles.HelpBar.Render("↑/↓ move   type edit/filter   ←/→ cycle model/theme   space toggle")
+	helpLineSecondary := styles.HelpBar.Render("enter fetch   ctrl+s save   pgup/pgdn/home/end scroll   tab/shift+tab page")
+	return lipgloss.JoinVertical(lipgloss.Left,
+		statusLine,
+		helpLinePrimary,
+		helpLineSecondary,
 	)
 }
 
@@ -444,6 +393,8 @@ func (p *SettingsPage) themeSelectorView() string {
 func (p *SettingsPage) SetSize(width, height int) {
 	p.width = width
 	p.height = height
+	p.recalcViewport()
+	p.refreshViewport()
 }
 
 func (p *SettingsPage) LoadFrom(s *core.Settings) {
@@ -463,6 +414,7 @@ func (p *SettingsPage) LoadFrom(s *core.Settings) {
 	styles.ApplyTheme(p.SelectedTheme())
 	p.syncSelectedModel(false)
 	p.syncSelectedModel(true)
+	p.refreshViewport()
 }
 
 func (p *SettingsPage) SelectedResponseModel() string {
@@ -694,4 +646,161 @@ func (p *SettingsPage) previewStateDir() string {
 		return config.DefaultStateDir()
 	}
 	return filepath.Join(root, "state")
+}
+
+func (p *SettingsPage) recalcViewport() {
+	panelWidth := max(24, p.width-4)
+	panelFrameWidth := styles.Panel.GetHorizontalFrameSize()
+	panelFrameHeight := styles.Panel.GetVerticalFrameSize()
+	footerHeight := lipgloss.Height(p.footerView())
+
+	p.viewport.Width = max(1, panelWidth-panelFrameWidth-2)
+	p.viewport.Height = max(5, p.height-panelFrameHeight-footerHeight)
+}
+
+func (p *SettingsPage) refreshViewport() {
+	content, focusStart, focusEnd := p.renderContent()
+	p.viewport.SetContent(content)
+	p.ensureVisible(focusStart, focusEnd)
+}
+
+func (p *SettingsPage) renderContent() (string, int, int) {
+	row := func(label string, value string) string {
+		return lipgloss.JoinHorizontal(lipgloss.Top,
+			styles.FormLabel.Render(label),
+			value,
+		)
+	}
+
+	httpsLabel := "[ ] off"
+	if p.httpsOn {
+		httpsLabel = "[x] on"
+	}
+	if p.focused == fieldHTTPS {
+		httpsLabel = styles.Accent.Render(httpsLabel) + styles.Muted.Render("  Space to toggle")
+	}
+
+	fetchBtn := styles.ButtonNormal.Render("Fetch Models")
+	if p.focused == fieldFetchModels {
+		fetchBtn = styles.ButtonFocused.Render("Fetch Models")
+	}
+	if p.busy {
+		fetchBtn = p.spinner.View() + " Fetching..."
+	}
+
+	mockLLMLabel := "[ ] off"
+	if p.debug.MockLLM {
+		mockLLMLabel = "[x] on"
+	}
+	if p.focused == fieldMockLLM {
+		mockLLMLabel = styles.Accent.Render(mockLLMLabel) + styles.Muted.Render("  Space to toggle")
+	}
+
+	type block struct {
+		field   settingsField
+		focused bool
+		content string
+	}
+
+	blocks := []block{
+		{content: styles.SectionHeader.Render("LLM Provider")},
+		{field: fieldHost, focused: p.focused == fieldHost, content: row("Host / IP", p.inputView(fieldHost))},
+		{field: fieldPort, focused: p.focused == fieldPort, content: row("Port", p.inputView(fieldPort))},
+		{field: fieldHTTPS, focused: p.focused == fieldHTTPS, content: row("HTTPS", httpsLabel)},
+		{field: fieldAPIKey, focused: p.focused == fieldAPIKey, content: row("API Key", p.inputView(fieldAPIKey))},
+		{content: ""},
+		{field: fieldFetchModels, focused: p.focused == fieldFetchModels, content: row("", fetchBtn)},
+		{content: ""},
+		{field: fieldModelFilter, focused: p.focused == fieldModelFilter, content: row("Filter", p.inputView(fieldModelFilter))},
+		{field: fieldResponseModel, focused: p.focused == fieldResponseModel, content: row("Response model", p.modelSelectorView(p.SelectedResponseModel(), false, p.focused == fieldResponseModel))},
+		{field: fieldKeywordModel, focused: p.focused == fieldKeywordModel, content: row("Keyword model", p.modelSelectorView(p.SelectedKeywordModel(), true, p.focused == fieldKeywordModel))},
+		{field: fieldTheme, focused: p.focused == fieldTheme, content: row("Theme", p.themeSelectorView())},
+		{content: ""},
+		{content: styles.SectionHeader.Render("Search")},
+		{field: fieldMaxResults, focused: p.focused == fieldMaxResults, content: row("Max ref quotes", p.inputView(fieldMaxResults))},
+		{field: fieldMinRelevance, focused: p.focused == fieldMinRelevance, content: row("Min relevance", p.inputView(fieldMinRelevance))},
+		{content: styles.Muted.Render("0.0 keeps broad matches. Try 0.3-0.7 for cleaner results; 1.0 is very strict.")},
+		{content: ""},
+		{content: styles.SectionHeader.Render("Debug")},
+		{field: fieldMockLLM, focused: p.focused == fieldMockLLM, content: row("Mock LLM", mockLLMLabel)},
+		{content: styles.Muted.Render("Refine returns the original text, keywords split on spaces, and answers combine reference quotes.")},
+		{content: ""},
+		{content: styles.SectionHeader.Render("Local Storage")},
+		{field: fieldRootDir, focused: p.focused == fieldRootDir, content: row("Config root", p.inputView(fieldRootDir))},
+		{content: styles.Muted.Render("Leave blank for the default XDG/AppData locations. Saving switches iRecall to that root immediately.")},
+		{content: row("Data dir", styles.Muted.Render(p.previewDataDir()))},
+		{content: row("Config dir", styles.Muted.Render(p.previewConfigDir()))},
+		{content: row("State dir", styles.Muted.Render(p.previewStateDir()))},
+	}
+
+	lines := make([]string, 0, len(blocks))
+	focusStart := 0
+	focusEnd := 0
+	lineCount := 0
+	for _, block := range blocks {
+		blockLines := strings.Split(block.content, "\n")
+		if block.focused {
+			focusStart = lineCount
+			focusEnd = lineCount + len(blockLines) - 1
+		}
+		lines = append(lines, blockLines...)
+		lineCount += len(blockLines)
+	}
+
+	return strings.Join(lines, "\n"), focusStart, focusEnd
+}
+
+func (p *SettingsPage) ensureVisible(start, end int) {
+	if p.viewport.Height <= 0 {
+		return
+	}
+	blockHeight := end - start + 1
+	padding := 1
+	if blockHeight >= p.viewport.Height {
+		p.viewport.SetYOffset(max(0, start-padding))
+		return
+	}
+	if start <= p.viewport.YOffset+padding {
+		p.viewport.SetYOffset(max(0, start-padding))
+		return
+	}
+	bottom := p.viewport.YOffset + p.viewport.Height - 1
+	if end >= bottom-padding {
+		p.viewport.SetYOffset(end - p.viewport.Height + 1 + padding)
+	}
+}
+
+func (p SettingsPage) settingsViewportView() string {
+	scrollbar := p.scrollbarView()
+	if scrollbar == "" {
+		return p.viewport.View()
+	}
+	return lipgloss.JoinHorizontal(lipgloss.Top, p.viewport.View(), " ", scrollbar)
+}
+
+func (p SettingsPage) scrollbarView() string {
+	total := p.viewport.TotalLineCount()
+	visible := p.viewport.VisibleLineCount()
+	if total <= visible || visible <= 0 {
+		return ""
+	}
+
+	trackStyle := lipgloss.NewStyle().Foreground(styles.ColorBorder)
+	thumbStyle := lipgloss.NewStyle().Foreground(styles.ColorPrimary)
+	track := make([]string, visible)
+	for i := range track {
+		track[i] = trackStyle.Render("│")
+	}
+
+	thumbHeight := max(1, visible*visible/total)
+	maxThumbTop := visible - thumbHeight
+	thumbTop := 0
+	if maxThumbTop > 0 {
+		thumbTop = p.viewport.YOffset * maxThumbTop / max(1, total-visible)
+	}
+	for i := thumbTop; i < thumbTop+thumbHeight && i < len(track); i++ {
+		track[i] = thumbStyle.Render("█")
+	}
+
+	return strings.Join(track, "\n")
 }

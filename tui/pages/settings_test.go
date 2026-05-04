@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/gigol/irecall/core"
 	"github.com/gigol/irecall/tui/styles"
 )
@@ -177,5 +178,69 @@ func TestSettingsPageMockLLMToggleUpdatesCurrentSettings(t *testing.T) {
 	}
 	if !strings.Contains(page.View(), "Mock LLM") {
 		t.Fatalf("settings view missing debug control:\n%s", page.View())
+	}
+}
+
+func TestSettingsPageShowsScrollbarWhenContentOverflows(t *testing.T) {
+	page := NewSettingsPage(nil, 80, 12, core.DefaultSettings())
+
+	if page.viewport.TotalLineCount() <= page.viewport.VisibleLineCount() {
+		t.Fatalf("settings page should overflow at small height: total=%d visible=%d", page.viewport.TotalLineCount(), page.viewport.VisibleLineCount())
+	}
+
+	view := page.View()
+	if !strings.Contains(view, "█") || !strings.Contains(view, "│") {
+		t.Fatalf("settings view missing scrollbar markers:\n%s", view)
+	}
+}
+
+func TestSettingsPageKeepsFocusedFieldVisibleInViewport(t *testing.T) {
+	page := NewSettingsPage(nil, 80, 12, core.DefaultSettings())
+
+	for i := 0; i < int(fieldRootDir); i++ {
+		model, _ := page.Update(tea.KeyMsg{Type: tea.KeyDown})
+		page = model
+	}
+
+	if page.focused != fieldRootDir {
+		t.Fatalf("focused field = %v, want %v", page.focused, fieldRootDir)
+	}
+	if page.viewport.YOffset == 0 {
+		t.Fatalf("viewport y offset = %d, want > 0 after moving focus down", page.viewport.YOffset)
+	}
+	if !strings.Contains(page.View(), "Config root") {
+		t.Fatalf("settings view missing focused lower field:\n%s", page.View())
+	}
+}
+
+func TestSettingsPageViewportHeightUsesRenderedFooter(t *testing.T) {
+	page := NewSettingsPage(nil, 80, 12, core.DefaultSettings())
+
+	panelHeight := styles.Panel.GetVerticalFrameSize()
+	footerHeight := lipgloss.Height(page.footerView())
+	if got, want := page.viewport.Height, max(5, page.height-panelHeight-footerHeight); got != want {
+		t.Fatalf("viewport height = %d, want %d", got, want)
+	}
+
+	page.statusMsg = "this is a long status message that should wrap onto multiple lines in a narrow viewport"
+	page.isErr = true
+	page.recalcViewport()
+
+	footerHeight = lipgloss.Height(page.footerView())
+	if got, want := page.viewport.Height, max(5, page.height-panelHeight-footerHeight); got != want {
+		t.Fatalf("viewport height after wrapped status = %d, want %d", got, want)
+	}
+}
+
+func TestSettingsPageTallFocusedBlockAlignsToTop(t *testing.T) {
+	page := NewSettingsPage(nil, 48, 12, core.DefaultSettings())
+	page.viewport.SetYOffset(20)
+
+	focusStart := 8
+	focusEnd := focusStart + page.viewport.Height + 2
+	page.ensureVisible(focusStart, focusEnd)
+
+	if page.viewport.YOffset > focusStart {
+		t.Fatalf("viewport y offset = %d, want <= focus start %d for tall focused block", page.viewport.YOffset, focusStart)
 	}
 }
