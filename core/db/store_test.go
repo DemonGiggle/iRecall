@@ -99,6 +99,55 @@ func TestStoreQuoteLifecycleAndSearch(t *testing.T) {
 	}
 }
 
+func TestApplyQuoteTagUpdateCanTouchQuoteAtomically(t *testing.T) {
+	t.Parallel()
+
+	store := openTestStore(t)
+
+	quoteID, err := store.InsertQuote("SQLite WAL keeps readers moving.", QuoteIdentity{
+		GlobalID:         "quote-touch",
+		AuthorUserID:     "user-1",
+		AuthorName:       "Alice",
+		SourceUserID:     "user-1",
+		SourceName:       "Alice",
+		SourceBackend:    "local",
+		SourceNamespace:  "local:user-1",
+		SourceEntityType: "quote",
+		SourceEntityID:   "quote-touch",
+		SourceLabel:      "Local quote",
+		Version:          1,
+	})
+	if err != nil {
+		t.Fatalf("insert quote: %v", err)
+	}
+
+	if err := store.ApplyQuoteTagUpdate(quoteID, []string{"sqlite", "wal"}, true); err != nil {
+		t.Fatalf("ApplyQuoteTagUpdate() error = %v", err)
+	}
+
+	results, err := store.SearchQuotes([]string{"wal"}, 5)
+	if err != nil {
+		t.Fatalf("search quotes by updated tag: %v", err)
+	}
+	if len(results) != 1 || results[0].ID != quoteID {
+		t.Fatalf("SearchQuotes() = %+v, want quote id %d", results, quoteID)
+	}
+
+	listed, err := store.ListQuotes()
+	if err != nil {
+		t.Fatalf("list quotes: %v", err)
+	}
+	if len(listed) != 1 {
+		t.Fatalf("listed quote count = %d, want 1", len(listed))
+	}
+	if listed[0].Version != 2 {
+		t.Fatalf("quote version = %d, want 2", listed[0].Version)
+	}
+	if listed[0].Tags != "sqlite,wal" && listed[0].Tags != "wal,sqlite" {
+		t.Fatalf("listed tags = %q, want sqlite and wal", listed[0].Tags)
+	}
+}
+
 func TestStoreSettingsRoundTrip(t *testing.T) {
 	t.Parallel()
 

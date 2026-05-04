@@ -58,6 +58,9 @@ const webBridgeJS = `
     UpdateQuote(id, content) {
       return request("POST", "/api/app/update-quote", { id, content });
     },
+    RegenerateQuoteKeywords(id, globalId) {
+      return request("POST", "/api/app/regenerate-quote-keywords", { id, globalId });
+    },
     DeleteQuotes(ids) {
       return request("POST", "/api/app/delete-quotes", { ids });
     },

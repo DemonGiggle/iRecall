@@ -65,6 +65,16 @@ type APITokenCreateResult struct {
 	TokenPrefix string `json:"tokenPrefix"`
 }
 
+type QuoteKeywordRegenerationResult struct {
+	QuoteID     int64      `json:"quoteId"`
+	GlobalID    string     `json:"globalId"`
+	OldKeywords []string   `json:"oldKeywords"`
+	NewKeywords []string   `json:"newKeywords"`
+	Changed     bool       `json:"changed"`
+	Status      string     `json:"status"`
+	Quote       core.Quote `json:"quote"`
+}
+
 func NewApp(root string) (*App, error) {
 	runtimeState, err := OpenRuntime(root)
 	if err != nil {
@@ -138,6 +148,26 @@ func (a *App) RefineQuoteDraft(content string) (string, error) {
 
 func (a *App) UpdateQuote(id int64, content string) (*core.Quote, error) {
 	return a.engine.UpdateQuote(a.context(), id, content)
+}
+
+func (a *App) RegenerateQuoteKeywords(id int64, globalID string) (QuoteKeywordRegenerationResult, error) {
+	result, err := a.engine.RegenerateQuoteKeywords(a.context(), id, globalID)
+	if err != nil {
+		return QuoteKeywordRegenerationResult{}, err
+	}
+	status := "unchanged"
+	if result.Changed {
+		status = "updated"
+	}
+	return QuoteKeywordRegenerationResult{
+		QuoteID:     result.QuoteID,
+		GlobalID:    result.GlobalID,
+		OldKeywords: result.OldKeywords,
+		NewKeywords: result.NewKeywords,
+		Changed:     result.Changed,
+		Status:      status,
+		Quote:       result.Quote,
+	}, nil
 }
 
 func (a *App) DeleteQuotes(ids []int64) error {

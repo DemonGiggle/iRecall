@@ -15,6 +15,11 @@ type Store struct {
 	db *sql.DB
 }
 
+type sqlExecQuerier interface {
+	Exec(query string, args ...any) (sql.Result, error)
+	QueryRow(query string, args ...any) *sql.Row
+}
+
 type QuoteIdentity struct {
 	GlobalID         string
 	AuthorUserID     string
@@ -125,8 +130,12 @@ func (s *Store) InsertImportedQuote(content string, identity QuoteIdentity, crea
 // UpdateQuoteFTS refreshes the FTS index for a quote with its current tags.
 // Must be called after tag associations are saved.
 func (s *Store) UpdateQuoteFTS(id int64, tags []string) error {
+	return s.updateQuoteFTS(s.db, id, tags)
+}
+
+func (s *Store) updateQuoteFTS(exec sqlExecQuerier, id int64, tags []string) error {
 	slog.Debug("db: updating FTS for quote", "id", id, "tags", tags)
-	row := s.db.QueryRow(`SELECT content FROM quotes WHERE id = ?`, id)
+	row := exec.QueryRow(`SELECT content FROM quotes WHERE id = ?`, id)
 	var content string
 	if err := row.Scan(&content); err != nil {
 		slog.Error("db: fetch quote for FTS failed", "id", id, "error", err)
@@ -134,14 +143,14 @@ func (s *Store) UpdateQuoteFTS(id int64, tags []string) error {
 	}
 	tagStr := strings.Join(tags, " ")
 	// delete old FTS entry then reinsert with tag text
-	if _, err := s.db.Exec(
+	if _, err := exec.Exec(
 		`INSERT INTO quotes_fts(quotes_fts, rowid, content, tags) VALUES ('delete', ?, ?, '')`,
 		id, content,
 	); err != nil {
 		slog.Error("db: FTS delete failed", "id", id, "error", err)
 		return fmt.Errorf("fts delete: %w", err)
 	}
-	if _, err := s.db.Exec(
+	if _, err := exec.Exec(
 		`INSERT INTO quotes_fts(rowid, content, tags) VALUES (?, ?, ?)`,
 		id, content, tagStr,
 	); err != nil {
@@ -172,6 +181,57 @@ func (s *Store) UpdateQuoteContent(id int64, content string) error {
 	if err != nil {
 		slog.Error("db: update quote failed", "id", id, "error", err)
 		return fmt.Errorf("update quote: %w", err)
+	}
+	return nil
+}
+
+// TouchQuote bumps the quote version and updated_at without rewriting content.
+func (s *Store) TouchQuote(id int64) error {
+	return s.touchQuote(s.db, id)
+}
+
+func (s *Store) touchQuote(exec sqlExecQuerier, id int64) error {
+	slog.Info("db: touching quote metadata", "id", id)
+	res, err := exec.Exec(
+		`UPDATE quotes SET version = version + 1, updated_at = ? WHERE id = ?`,
+		time.Now().Unix(), id,
+	)
+	if err != nil {
+		slog.Error("db: touch quote failed", "id", id, "error", err)
+		return fmt.Errorf("touch quote: %w", err)
+	}
+	if rows, err := res.RowsAffected(); err == nil && rows == 0 {
+		return fmt.Errorf("quote %d not found", id)
+	}
+	return nil
+}
+
+// ApplyQuoteTagUpdate replaces a quote's tags, refreshes its FTS row, and can
+// optionally bump the quote version/updated_at in the same transaction.
+func (s *Store) ApplyQuoteTagUpdate(quoteID int64, tags []string, touchQuote bool) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin quote tag update: %w", err)
+	}
+	defer tx.Rollback()
+
+	tagIDs, err := s.upsertTags(tx, tags)
+	if err != nil {
+		return fmt.Errorf("upsert quote tags: %w", err)
+	}
+	if err := s.replaceQuoteTags(tx, quoteID, tagIDs); err != nil {
+		return fmt.Errorf("replace quote tags: %w", err)
+	}
+	if err := s.updateQuoteFTS(tx, quoteID, tags); err != nil {
+		return fmt.Errorf("update quote fts: %w", err)
+	}
+	if touchQuote {
+		if err := s.touchQuote(tx, quoteID); err != nil {
+			return fmt.Errorf("touch quote metadata: %w", err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit quote tag update: %w", err)
 	}
 	return nil
 }
@@ -393,6 +453,10 @@ func scanQuoteRows(rows *sql.Rows) ([]QuoteRow, error) {
 
 // UpsertTags inserts tags that don't exist yet and returns all their IDs.
 func (s *Store) UpsertTags(names []string) ([]int64, error) {
+	return s.upsertTags(s.db, names)
+}
+
+func (s *Store) upsertTags(exec sqlExecQuerier, names []string) ([]int64, error) {
 	slog.Debug("db: upserting tags", "tags", names)
 	ids := make([]int64, 0, len(names))
 	for _, name := range names {
@@ -400,13 +464,13 @@ func (s *Store) UpsertTags(names []string) ([]int64, error) {
 		if name == "" {
 			continue
 		}
-		_, err := s.db.Exec(`INSERT OR IGNORE INTO tags(name) VALUES (?)`, name)
+		_, err := exec.Exec(`INSERT OR IGNORE INTO tags(name) VALUES (?)`, name)
 		if err != nil {
 			slog.Error("db: upsert tag failed", "tag", name, "error", err)
 			return nil, fmt.Errorf("upsert tag %q: %w", name, err)
 		}
 		var id int64
-		if err := s.db.QueryRow(`SELECT id FROM tags WHERE name = ?`, name).Scan(&id); err != nil {
+		if err := exec.QueryRow(`SELECT id FROM tags WHERE name = ?`, name).Scan(&id); err != nil {
 			slog.Error("db: fetch tag id failed", "tag", name, "error", err)
 			return nil, fmt.Errorf("fetch tag id %q: %w", name, err)
 		}
@@ -418,9 +482,13 @@ func (s *Store) UpsertTags(names []string) ([]int64, error) {
 
 // InsertQuoteTags creates the many-to-many associations.
 func (s *Store) InsertQuoteTags(quoteID int64, tagIDs []int64) error {
+	return s.insertQuoteTags(s.db, quoteID, tagIDs)
+}
+
+func (s *Store) insertQuoteTags(exec sqlExecQuerier, quoteID int64, tagIDs []int64) error {
 	slog.Debug("db: inserting quote-tag associations", "quote_id", quoteID, "tag_ids", tagIDs)
 	for _, tid := range tagIDs {
-		if _, err := s.db.Exec(
+		if _, err := exec.Exec(
 			`INSERT OR IGNORE INTO quote_tags(quote_id, tag_id) VALUES (?, ?)`,
 			quoteID, tid,
 		); err != nil {
@@ -433,11 +501,15 @@ func (s *Store) InsertQuoteTags(quoteID int64, tagIDs []int64) error {
 
 // ReplaceQuoteTags resets all quote-tag associations for a quote.
 func (s *Store) ReplaceQuoteTags(quoteID int64, tagIDs []int64) error {
+	return s.replaceQuoteTags(s.db, quoteID, tagIDs)
+}
+
+func (s *Store) replaceQuoteTags(exec sqlExecQuerier, quoteID int64, tagIDs []int64) error {
 	slog.Debug("db: replacing quote-tag associations", "quote_id", quoteID, "tag_ids", tagIDs)
-	if _, err := s.db.Exec(`DELETE FROM quote_tags WHERE quote_id = ?`, quoteID); err != nil {
+	if _, err := exec.Exec(`DELETE FROM quote_tags WHERE quote_id = ?`, quoteID); err != nil {
 		return fmt.Errorf("clear quote tags: %w", err)
 	}
-	return s.InsertQuoteTags(quoteID, tagIDs)
+	return s.insertQuoteTags(exec, quoteID, tagIDs)
 }
 
 // --- Recall history ---
