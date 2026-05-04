@@ -7,7 +7,7 @@ WEB_WINDOWS_BIN := bin/irecall-web-windows-amd64.exe
 DESKTOP_BIN := bin/irecall-desktop
 DESKTOP_WINDOWS_BIN := bin/irecall-desktop-windows-amd64.exe
 FRONTEND_DIR := frontend
-WAILS_BUILD_TAGS := wails,production
+WAILS_BUILD_TAGS := wails,production,webkit2_41
 
 .PHONY: build build-cli build-mcp build-web build-web-windows build-desktop build-desktop-windows build-local build-everything frontend-install frontend-build test test-mcp-bootstrap lint install clean run tidy
 
