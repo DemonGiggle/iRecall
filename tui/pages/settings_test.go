@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/gigol/irecall/core"
 	"github.com/gigol/irecall/tui/styles"
 )
@@ -209,5 +210,37 @@ func TestSettingsPageKeepsFocusedFieldVisibleInViewport(t *testing.T) {
 	}
 	if !strings.Contains(page.View(), "Config root") {
 		t.Fatalf("settings view missing focused lower field:\n%s", page.View())
+	}
+}
+
+func TestSettingsPageViewportHeightUsesRenderedFooter(t *testing.T) {
+	page := NewSettingsPage(nil, 80, 12, core.DefaultSettings())
+
+	panelHeight := styles.Panel.GetVerticalFrameSize()
+	footerHeight := lipgloss.Height(page.footerView())
+	if got, want := page.viewport.Height, max(5, page.height-panelHeight-footerHeight); got != want {
+		t.Fatalf("viewport height = %d, want %d", got, want)
+	}
+
+	page.statusMsg = "this is a long status message that should wrap onto multiple lines in a narrow viewport"
+	page.isErr = true
+	page.recalcViewport()
+
+	footerHeight = lipgloss.Height(page.footerView())
+	if got, want := page.viewport.Height, max(5, page.height-panelHeight-footerHeight); got != want {
+		t.Fatalf("viewport height after wrapped status = %d, want %d", got, want)
+	}
+}
+
+func TestSettingsPageTallFocusedBlockAlignsToTop(t *testing.T) {
+	page := NewSettingsPage(nil, 48, 12, core.DefaultSettings())
+	page.viewport.SetYOffset(20)
+
+	focusStart := 8
+	focusEnd := focusStart + page.viewport.Height + 2
+	page.ensureVisible(focusStart, focusEnd)
+
+	if page.viewport.YOffset > focusStart {
+		t.Fatalf("viewport y offset = %d, want <= focus start %d for tall focused block", page.viewport.YOffset, focusStart)
 	}
 }

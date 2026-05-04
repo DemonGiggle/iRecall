@@ -285,6 +285,16 @@ func (p SettingsPage) Update(msg tea.Msg) (SettingsPage, tea.Cmd) {
 }
 
 func (p SettingsPage) View() string {
+	footer := p.footerView()
+	body := lipgloss.JoinVertical(lipgloss.Left,
+		p.settingsViewportView(),
+		footer,
+	)
+
+	return styles.Panel.Width(max(24, p.width-4)).Render(body)
+}
+
+func (p SettingsPage) footerView() string {
 	var statusLine string
 	if p.statusMsg != "" {
 		if p.isErr {
@@ -296,14 +306,11 @@ func (p SettingsPage) View() string {
 
 	helpLinePrimary := styles.HelpBar.Render("↑/↓ move   type edit/filter   ←/→ cycle model/theme   space toggle")
 	helpLineSecondary := styles.HelpBar.Render("enter fetch   ctrl+s save   pgup/pgdn/home/end scroll   tab/shift+tab page")
-	body := lipgloss.JoinVertical(lipgloss.Left,
-		p.settingsViewportView(),
+	return lipgloss.JoinVertical(lipgloss.Left,
 		statusLine,
 		helpLinePrimary,
 		helpLineSecondary,
 	)
-
-	return styles.Panel.Width(max(24, p.width-4)).Render(body)
 }
 
 func (p *SettingsPage) modelSelectorView(selected string, allowFallback bool, focused bool) string {
@@ -645,7 +652,7 @@ func (p *SettingsPage) recalcViewport() {
 	panelWidth := max(24, p.width-4)
 	panelFrameWidth := styles.Panel.GetHorizontalFrameSize()
 	panelFrameHeight := styles.Panel.GetVerticalFrameSize()
-	footerHeight := 4
+	footerHeight := lipgloss.Height(p.footerView())
 
 	p.viewport.Width = max(1, panelWidth-panelFrameWidth-2)
 	p.viewport.Height = max(5, p.height-panelFrameHeight-footerHeight)
@@ -747,7 +754,12 @@ func (p *SettingsPage) ensureVisible(start, end int) {
 	if p.viewport.Height <= 0 {
 		return
 	}
+	blockHeight := end - start + 1
 	padding := 1
+	if blockHeight >= p.viewport.Height {
+		p.viewport.SetYOffset(max(0, start-padding))
+		return
+	}
 	if start <= p.viewport.YOffset+padding {
 		p.viewport.SetYOffset(max(0, start-padding))
 		return
