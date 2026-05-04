@@ -31,7 +31,7 @@ The project currently ships with:
 
 - Go
 - a compatible OpenAI-style API endpoint for chat completions
-- optional: Node.js and npm for frontend-backed builds (`make frontend-build`, `make build-web`, `make build-desktop`)
+- optional: Node.js and npm for frontend-backed builds (`make frontend-build`, `make build-web`, `make build-desktop`, `make build-release`)
 
 ### Build the terminal client
 
@@ -177,11 +177,20 @@ Common targets:
 make build
 make build-mcp
 make build-web
+make build-release
 make run
 make test
 make lint
 make build-all
 ```
+
+Release artifact bundle:
+
+```bash
+make build-release
+```
+
+This writes versioned `.tar.gz` release archives to `dist/release/` for the TUI, desktop app, web frontend bundle, and web server. Windows executables are packaged inside `.tar.gz` archives instead of being emitted as raw `.exe` files.
 
 Desktop build:
 
