@@ -187,6 +187,11 @@ func TestExtractTagsRequestsBroaderTagSet(t *testing.T) {
 	defer srv.Close()
 
 	engine := newTestEngine(t, srv.Listener.Addr().String())
+	engine.UpdateProvider(ProviderConfig{
+		Host:         srv.Listener.Addr().String(),
+		Model:        "response-model",
+		KeywordModel: "keyword-model",
+	})
 
 	tags, err := engine.ExtractTags(context.Background(), "Raft relies on leader election, replication, and quorum to keep a distributed system consistent during failures.")
 	if err != nil {
@@ -195,8 +200,8 @@ func TestExtractTagsRequestsBroaderTagSet(t *testing.T) {
 	if len(tags) != 7 {
 		t.Fatalf("tag count = %d, want 7", len(tags))
 	}
-	if gotRequest.Model != "test-model" {
-		t.Fatalf("model = %q, want test-model", gotRequest.Model)
+	if gotRequest.Model != "keyword-model" {
+		t.Fatalf("model = %q, want keyword-model", gotRequest.Model)
 	}
 	if gotRequest.Stream {
 		t.Fatal("stream = true, want false")
@@ -217,6 +222,7 @@ func TestExtractTagsRepairsWeakGenericResults(t *testing.T) {
 
 	var requestCount int
 	var gotRequests []struct {
+		Model    string `json:"model"`
 		Messages []struct {
 			Role    string `json:"role"`
 			Content string `json:"content"`
@@ -227,6 +233,7 @@ func TestExtractTagsRepairsWeakGenericResults(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requestCount++
 		var req struct {
+			Model    string `json:"model"`
 			Messages []struct {
 				Role    string `json:"role"`
 				Content string `json:"content"`
@@ -256,6 +263,11 @@ func TestExtractTagsRepairsWeakGenericResults(t *testing.T) {
 	defer srv.Close()
 
 	engine := newTestEngine(t, srv.Listener.Addr().String())
+	engine.UpdateProvider(ProviderConfig{
+		Host:         srv.Listener.Addr().String(),
+		Model:        "response-model",
+		KeywordModel: "keyword-model",
+	})
 
 	tags, err := engine.ExtractTags(context.Background(), "Raft relies on leader election, replication, and quorum to keep a distributed system consistent during failures.")
 	if err != nil {
@@ -267,6 +279,12 @@ func TestExtractTagsRepairsWeakGenericResults(t *testing.T) {
 	}
 	if requestCount != 2 {
 		t.Fatalf("request count = %d, want 2", requestCount)
+	}
+	if gotRequests[0].Model != "keyword-model" {
+		t.Fatalf("first request model = %q, want keyword-model", gotRequests[0].Model)
+	}
+	if gotRequests[1].Model != "keyword-model" {
+		t.Fatalf("repair request model = %q, want keyword-model", gotRequests[1].Model)
 	}
 	if !strings.Contains(gotRequests[1].Messages[0].Content, "repairing a JSON keyword extractor result") {
 		t.Fatalf("repair prompt = %q, want repair instructions", gotRequests[1].Messages[0].Content)

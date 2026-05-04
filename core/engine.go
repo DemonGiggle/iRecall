@@ -375,7 +375,7 @@ func (e *Engine) ExtractTags(ctx context.Context, text string) ([]string, error)
 	}
 	zero := 0.0
 	maxTok := 384
-	raw, err := e.llm.Chat(ctx, msgs, nil, llm.ChatOptions{Temperature: &zero, MaxTokens: &maxTok})
+	raw, err := e.keywordLLM.Chat(ctx, msgs, nil, llm.ChatOptions{Temperature: &zero, MaxTokens: &maxTok})
 	if err != nil {
 		slog.Error("engine: extract tags LLM call failed", "error", err)
 		return nil, err
@@ -420,7 +420,7 @@ func (e *Engine) repairTags(ctx context.Context, text string, initial []string) 
 	}
 	zero := 0.0
 	maxTok := 384
-	raw, err := e.llm.Chat(ctx, msgs, nil, llm.ChatOptions{Temperature: &zero, MaxTokens: &maxTok})
+	raw, err := e.keywordLLM.Chat(ctx, msgs, nil, llm.ChatOptions{Temperature: &zero, MaxTokens: &maxTok})
 	if err != nil {
 		return nil, err
 	}
