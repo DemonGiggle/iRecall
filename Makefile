@@ -1,5 +1,12 @@
 VERSION  := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 LDFLAGS  := -ldflags "-X main.version=$(VERSION) -s -w"
+RELEASE_VERSION ?= $(shell \
+	base=$$(git describe --tags --exact-match 2>/dev/null || git rev-parse --short HEAD 2>/dev/null || echo "dev"); \
+	if git diff-index --quiet HEAD -- 2>/dev/null; then \
+		printf '%s' "$$base"; \
+	else \
+		printf '%s-dirty' "$$base"; \
+	fi)
 BIN      := bin/irecall
 MCP_BIN  := bin/irecall-mcp
 WEB_BIN  := bin/irecall-web
@@ -60,10 +67,10 @@ build-release: clean-release frontend-build
 		arch=$${target#*/}; \
 		ext=""; \
 		if [ "$$os" = "windows" ]; then ext=".exe"; fi; \
-		stage="$(RELEASE_DIR)/irecall-tui-$(VERSION)-$$os-$$arch"; \
+		stage="$(RELEASE_DIR)/irecall-tui-$(RELEASE_VERSION)-$$os-$$arch"; \
 		mkdir -p "$$stage"; \
 		GOOS=$$os GOARCH=$$arch go build $(LDFLAGS) -o "$$stage/irecall$$ext" ./cmd/irecall; \
-		tar -C "$(RELEASE_DIR)" -czf "$(RELEASE_DIR)/irecall-tui-$(VERSION)-$$os-$$arch.tar.gz" "irecall-tui-$(VERSION)-$$os-$$arch"; \
+		tar -C "$(RELEASE_DIR)" -czf "$(RELEASE_DIR)/irecall-tui-$(RELEASE_VERSION)-$$os-$$arch.tar.gz" "irecall-tui-$(RELEASE_VERSION)-$$os-$$arch"; \
 		rm -rf "$$stage"; \
 	done; \
 	for target in $(RELEASE_WEB_SERVER_TARGETS); do \
@@ -71,10 +78,10 @@ build-release: clean-release frontend-build
 		arch=$${target#*/}; \
 		ext=""; \
 		if [ "$$os" = "windows" ]; then ext=".exe"; fi; \
-		stage="$(RELEASE_DIR)/irecall-web-server-$(VERSION)-$$os-$$arch"; \
+		stage="$(RELEASE_DIR)/irecall-web-server-$(RELEASE_VERSION)-$$os-$$arch"; \
 		mkdir -p "$$stage"; \
 		GOOS=$$os GOARCH=$$arch go build $(LDFLAGS) -o "$$stage/irecall-web$$ext" ./web; \
-		tar -C "$(RELEASE_DIR)" -czf "$(RELEASE_DIR)/irecall-web-server-$(VERSION)-$$os-$$arch.tar.gz" "irecall-web-server-$(VERSION)-$$os-$$arch"; \
+		tar -C "$(RELEASE_DIR)" -czf "$(RELEASE_DIR)/irecall-web-server-$(RELEASE_VERSION)-$$os-$$arch.tar.gz" "irecall-web-server-$(RELEASE_VERSION)-$$os-$$arch"; \
 		rm -rf "$$stage"; \
 	done; \
 	for target in $(RELEASE_DESKTOP_TARGETS); do \
@@ -82,16 +89,16 @@ build-release: clean-release frontend-build
 		arch=$${target#*/}; \
 		ext=""; \
 		if [ "$$os" = "windows" ]; then ext=".exe"; fi; \
-		stage="$(RELEASE_DIR)/irecall-desktop-$(VERSION)-$$os-$$arch"; \
+		stage="$(RELEASE_DIR)/irecall-desktop-$(RELEASE_VERSION)-$$os-$$arch"; \
 		mkdir -p "$$stage"; \
 		GOOS=$$os GOARCH=$$arch go build -tags "$(WAILS_BUILD_TAGS)" -o "$$stage/irecall-desktop$$ext" ./desktop; \
-		tar -C "$(RELEASE_DIR)" -czf "$(RELEASE_DIR)/irecall-desktop-$(VERSION)-$$os-$$arch.tar.gz" "irecall-desktop-$(VERSION)-$$os-$$arch"; \
+		tar -C "$(RELEASE_DIR)" -czf "$(RELEASE_DIR)/irecall-desktop-$(RELEASE_VERSION)-$$os-$$arch.tar.gz" "irecall-desktop-$(RELEASE_VERSION)-$$os-$$arch"; \
 		rm -rf "$$stage"; \
 	done; \
-	stage="$(RELEASE_DIR)/irecall-web-$(VERSION)"; \
+	stage="$(RELEASE_DIR)/irecall-web-$(RELEASE_VERSION)"; \
 	mkdir -p "$$stage"; \
 	cp -R "$(FRONTEND_DIR)/dist" "$$stage/"; \
-	tar -C "$(RELEASE_DIR)" -czf "$(RELEASE_DIR)/irecall-web-$(VERSION).tar.gz" "irecall-web-$(VERSION)"; \
+	tar -C "$(RELEASE_DIR)" -czf "$(RELEASE_DIR)/irecall-web-$(RELEASE_VERSION).tar.gz" "irecall-web-$(RELEASE_VERSION)"; \
 	rm -rf "$$stage"; \
 	checksum_cmd="shasum -a 256"; \
 	if command -v sha256sum >/dev/null 2>&1; then checksum_cmd="sha256sum"; fi; \
@@ -117,9 +124,11 @@ install:
 
 clean:
 	rm -rf bin/ $(FRONTEND_DIR)/dist $(RELEASE_DIR)
+	@rmdir --ignore-fail-on-non-empty dist 2>/dev/null || true
 
 clean-release:
 	rm -rf $(RELEASE_DIR)
+	@rmdir --ignore-fail-on-non-empty dist 2>/dev/null || true
 
 # Cross-compilation targets
 build-linux-amd64:

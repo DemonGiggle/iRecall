@@ -192,6 +192,8 @@ make build-release
 
 This writes versioned `.tar.gz` release archives to `dist/release/` for the TUI, desktop app, web frontend bundle, and web server. Windows executables are packaged inside `.tar.gz` archives instead of being emitted as raw `.exe` files.
 
+Artifact filenames use `RELEASE_VERSION`, which defaults to the exact Git tag on tagged commits and otherwise falls back to the current short commit hash. You can override it explicitly, for example `make build-release RELEASE_VERSION=v0.3.0`.
+
 Desktop build:
 
 ```bash
