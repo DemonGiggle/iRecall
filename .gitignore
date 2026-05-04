@@ -8,3 +8,4 @@ frontend/dist
 .codex-temp/
 .debug-web/
 .tools/
+dist/
