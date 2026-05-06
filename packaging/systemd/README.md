@@ -31,7 +31,7 @@ This unit is intended for a headless local iRecall web API that MCP clients can 
    IRECALL_PROVIDER_PORT=443
    IRECALL_PROVIDER_HTTPS=true
    IRECALL_PROVIDER_API_KEY_PATH=/etc/irecall/openai-api-key
-   IRECALL_PROVIDER_MODEL=gpt-4.1-mini
+   IRECALL_PROVIDER_MODEL=gpt-5-nano
 
    Store the provider API key in the referenced file and make it readable by the irecall service user:
 
@@ -65,6 +65,10 @@ This unit is intended for a headless local iRecall web API that MCP clients can 
    sudo chmod 0640 /etc/irecall/api-token
 
    The command writes the full token to /etc/irecall/api-token and prints only the token prefix. Prefer pointing `irecall-mcp --token-file` at this path instead of copying the plaintext token into client config.
+
+   If you want to run `irecall-mcp` as your normal user, add that user to the `irecall` group and log out/in so the new group membership takes effect:
+
+   sudo usermod -aG irecall <your-user>
 
 End-to-end smoke test
 
