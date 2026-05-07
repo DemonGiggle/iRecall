@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"runtime/debug"
 	"strings"
@@ -17,36 +18,45 @@ import (
 var version = "dev"
 
 func main() {
-	baseURLFlag := flag.String("base-url", "", "override the iRecall web API base URL (default: IRECALL_BASE_URL or http://127.0.0.1:9527)")
-	tokenFileFlag := flag.String("token-file", "", "read the API token from this file (preferred over IRECALL_API_TOKEN)")
-	timeoutFlag := flag.Duration("timeout", 15*time.Second, "HTTP timeout for calls to the iRecall web API")
-	versionFlag := flag.Bool("version", false, "print version and exit")
-	flag.Usage = func() {
-		fmt.Fprint(flag.CommandLine.Output(), usageText(flag.CommandLine, os.Args[0]))
+	os.Exit(run(os.Args[0], os.Args[1:], os.Stdout, os.Stderr))
+}
+
+func run(program string, args []string, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet(program, flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	baseURLFlag := fs.String("base-url", "", "override the iRecall web API base URL (default: IRECALL_BASE_URL or http://127.0.0.1:9527)")
+	tokenFileFlag := fs.String("token-file", "", "read the API token from this file (preferred over IRECALL_API_TOKEN)")
+	timeoutFlag := fs.Duration("timeout", 15*time.Second, "HTTP timeout for calls to the iRecall web API")
+	versionFlag := fs.Bool("version", false, "print version and exit")
+	fs.Usage = func() {
+		fmt.Fprint(fs.Output(), usageText(fs, program))
 	}
-	flag.Parse()
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
 
 	if *versionFlag {
-		fmt.Println("iRecall MCP", binaryVersion())
-		return
+		fmt.Fprintln(stdout, "iRecall MCP", binaryVersion())
+		return 0
 	}
 
 	cfg, err := irecallmcp.LoadConfig(*baseURLFlag, *tokenFileFlag, *timeoutFlag)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "irecall-mcp: %v\n", err)
-		os.Exit(1)
+		fmt.Fprintf(stderr, "irecall-mcp: %v\n", err)
+		return 1
 	}
 
 	srv, err := irecallmcp.NewServer(cfg, binaryVersion())
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "irecall-mcp: %v\n", err)
-		os.Exit(1)
+		fmt.Fprintf(stderr, "irecall-mcp: %v\n", err)
+		return 1
 	}
 
 	if err := mcpserver.ServeStdio(srv); err != nil {
-		fmt.Fprintf(os.Stderr, "irecall-mcp: %v\n", err)
-		os.Exit(1)
+		fmt.Fprintf(stderr, "irecall-mcp: %v\n", err)
+		return 1
 	}
+	return 0
 }
 
 func usageText(fs *flag.FlagSet, program string) string {
