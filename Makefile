@@ -21,7 +21,7 @@ RELEASE_WEB_SERVER_TARGETS := $(RELEASE_TUI_TARGETS)
 # Wails desktop cross-builds are currently limited to the targets validated by this repo's toolchain.
 RELEASE_DESKTOP_TARGETS ?= linux/amd64 windows/amd64 windows/arm64
 
-.PHONY: build build-cli build-mcp build-web build-web-windows build-desktop build-desktop-windows build-local build-everything build-release clean-release frontend-install frontend-build test test-mcp-bootstrap lint install clean run tidy
+.PHONY: build build-cli build-mcp build-web build-web-windows build-desktop build-desktop-windows build-local build-everything build-release clean-release frontend-install frontend-build test test-mcp-bootstrap test-mcp-e2e lint install clean run tidy
 
 build: build-cli
 
@@ -112,6 +112,9 @@ test:
 
 test-mcp-bootstrap:
 	go test ./web -run TestOperatorBootstrapIssuesTokenAndMCPHealthChecksRealWebServer -count=1
+
+test-mcp-e2e:
+	go test -tags e2e ./e2e -run TestMCPProcessEndToEndAgainstLiveWebServer -count=1
 
 lint:
 	go vet ./...
