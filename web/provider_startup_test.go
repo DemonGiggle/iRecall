@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -17,6 +18,43 @@ import (
 	irecallapp "github.com/gigol/irecall/app"
 	"github.com/gigol/irecall/core"
 )
+
+func TestOptionalBoolFlagBehaviors(t *testing.T) {
+	t.Parallel()
+
+	var flagValue optionalBoolFlag
+	if flagValue.String() != "" {
+		t.Fatalf("unset String() = %q, want empty", flagValue.String())
+	}
+	if !flagValue.IsBoolFlag() {
+		t.Fatal("IsBoolFlag() = false, want true")
+	}
+	if err := flagValue.Set("true"); err != nil {
+		t.Fatalf("Set(true) error = %v", err)
+	}
+	if !flagValue.set || !flagValue.value {
+		t.Fatalf("flag state = %+v, want set=true value=true", flagValue)
+	}
+	if got := flagValue.String(); got != "true" {
+		t.Fatalf("String() = %q, want true", got)
+	}
+	if err := flagValue.Set("not-bool"); err == nil {
+		t.Fatal("Set(invalid) error = nil, want parse failure")
+	}
+}
+
+func TestProviderStartupOptionsHasOverrides(t *testing.T) {
+	t.Parallel()
+
+	if (ProviderStartupOptions{}).HasOverrides() {
+		t.Fatal("HasOverrides() = true for empty options, want false")
+	}
+
+	opts := ProviderStartupOptions{Model: "runtime-model"}
+	if !opts.HasOverrides() {
+		t.Fatal("HasOverrides() = false with model override, want true")
+	}
+}
 
 func TestProviderStartupOptionsValidateRequiresAPIOnly(t *testing.T) {
 	t.Parallel()
@@ -140,6 +178,36 @@ func TestProviderStartupOptionsResolveRejectsBadAPIKeyFiles(t *testing.T) {
 				t.Fatalf("Resolve() error = %q, want substring %q", err, tt.wantErr)
 			}
 		})
+	}
+}
+
+func TestApplyAPIOnlyProviderStartupConfigNoOpCases(t *testing.T) {
+	t.Parallel()
+
+	runtimeApp := newTestApp(t)
+	original := *runtimeApp.GetSettings()
+
+	if err := applyAPIOnlyProviderStartupConfig(runtimeApp, ServerOptions{}, ProviderStartupOptions{}); err != nil {
+		t.Fatalf("applyAPIOnlyProviderStartupConfig(non api-only empty opts) error = %v", err)
+	}
+	if !reflect.DeepEqual(*runtimeApp.GetSettings(), original) {
+		t.Fatalf("settings changed for non api-only no-op: got %+v want %+v", *runtimeApp.GetSettings(), original)
+	}
+
+	if err := applyAPIOnlyProviderStartupConfig(runtimeApp, ServerOptions{APIOnly: true}, ProviderStartupOptions{}); err != nil {
+		t.Fatalf("applyAPIOnlyProviderStartupConfig(no overrides) error = %v", err)
+	}
+	if !reflect.DeepEqual(*runtimeApp.GetSettings(), original) {
+		t.Fatalf("settings changed for empty overrides no-op: got %+v want %+v", *runtimeApp.GetSettings(), original)
+	}
+}
+
+func TestApplyAPIOnlyProviderStartupConfigRequiresInitializedApp(t *testing.T) {
+	t.Parallel()
+
+	err := applyAPIOnlyProviderStartupConfig(nil, ServerOptions{APIOnly: true}, ProviderStartupOptions{Host: "provider.example"})
+	if err == nil || !strings.Contains(err.Error(), "app is not initialized") {
+		t.Fatalf("applyAPIOnlyProviderStartupConfig(nil) error = %v, want initialized app failure", err)
 	}
 }
 
@@ -307,6 +375,23 @@ func TestAPIOnlyProviderStartupConfigEnablesLLMRoutes(t *testing.T) {
 	}
 	if observed.ReasoningEffort != "none" {
 		t.Fatalf("provider reasoning_effort = %q, want none", observed.ReasoningEffort)
+	}
+}
+
+func TestReadSecretFileSuccess(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "provider-secret")
+	if err := os.WriteFile(path, []byte("  top-secret \n"), 0o600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	value, err := readSecretFile(path, "provider API key")
+	if err != nil {
+		t.Fatalf("readSecretFile() error = %v", err)
+	}
+	if value != "top-secret" {
+		t.Fatalf("readSecretFile() = %q, want trimmed secret", value)
 	}
 }
 

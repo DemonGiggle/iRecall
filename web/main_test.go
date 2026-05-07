@@ -19,6 +19,8 @@ func TestUsageTextIncludesVersionFlagAndExamples(t *testing.T) {
 	fs.Bool("api-only", false, "run a headless API server without serving the frontend UI or requiring a web password at startup")
 	fs.String("host", "0.0.0.0", "host/interface to bind the web server to")
 	fs.Int("port", 0, "port to listen on (overrides saved web port)")
+	fs.String("provider-host", "", "override provider host/server for --api-only mode")
+	fs.String("provider-model", "", "override response/default provider model for --api-only mode")
 	fs.Bool("version", false, "print version and exit")
 
 	text := usageText(fs, "irecall-web")
@@ -30,12 +32,35 @@ func TestUsageTextIncludesVersionFlagAndExamples(t *testing.T) {
 		"-host string",
 		`default "0.0.0.0"`,
 		"-port int",
+		"-provider-host string",
+		"-provider-model string",
 		"-version",
 		"--version",
+		"--api-only --provider-host",
 		"auth issue-token",
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("usage text missing %q:\n%s", want, text)
+		}
+	}
+}
+
+func TestFlagDefaultsTextIncludesRegisteredDefaults(t *testing.T) {
+	t.Parallel()
+
+	fs := flag.NewFlagSet("irecall-web", flag.ContinueOnError)
+	fs.String("host", "127.0.0.1", "bind address")
+	fs.Int("port", 9527, "listen port")
+
+	text := flagDefaultsText(fs)
+	for _, want := range []string{
+		"-host string",
+		`default "127.0.0.1"`,
+		"-port int",
+		"default 9527",
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("flag defaults text missing %q:\n%s", want, text)
 		}
 	}
 }
