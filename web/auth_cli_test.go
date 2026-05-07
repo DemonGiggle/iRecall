@@ -140,6 +140,75 @@ func TestAuthCommandDataPathDoesNotPersistPreferredRoot(t *testing.T) {
 	}
 }
 
+func TestAuthCommandTokenStatusWithoutConfiguredToken(t *testing.T) {
+	root := t.TempDir()
+
+	var stdout bytes.Buffer
+	if err := runAuthCommand([]string{"token-status", "--data-path", root}, strings.NewReader(""), &stdout); err != nil {
+		t.Fatalf("runAuthCommand(token-status) error = %v", err)
+	}
+	if got := strings.TrimSpace(stdout.String()); got != "token: not configured" {
+		t.Fatalf("token-status output = %q, want not configured", got)
+	}
+}
+
+func TestAuthCommandTokenStatusWithConfiguredToken(t *testing.T) {
+	root := t.TempDir()
+
+	token, err := issueTokenForTest(root)
+	if err != nil {
+		t.Fatalf("issue token: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	if err := runAuthCommand([]string{"token-status", "--data-path", root}, strings.NewReader(""), &stdout); err != nil {
+		t.Fatalf("runAuthCommand(token-status) error = %v", err)
+	}
+	output := stdout.String()
+	if !strings.Contains(output, "token: configured") {
+		t.Fatalf("token-status output = %q, want configured", output)
+	}
+
+	runtimeApp, err := irecallapp.NewApp(root)
+	if err != nil {
+		t.Fatalf("NewApp() error = %v", err)
+	}
+	defer runtimeApp.Shutdown(context.Background())
+	status, err := runtimeApp.GetAPITokenStatus()
+	if err != nil {
+		t.Fatalf("GetAPITokenStatus() error = %v", err)
+	}
+	if !strings.Contains(output, status.TokenPrefix) {
+		t.Fatalf("token-status output = %q, want token prefix %q", output, status.TokenPrefix)
+	}
+	if ok, err := runtimeApp.VerifyAPIToken(token); err != nil || !ok {
+		t.Fatalf("VerifyAPIToken() = %v, %v; want true, nil", ok, err)
+	}
+}
+
+func TestAuthCommandRejectsMissingAndUnknownSubcommands(t *testing.T) {
+	t.Run("missing subcommand", func(t *testing.T) {
+		err := runAuthCommand(nil, strings.NewReader(""), &bytes.Buffer{})
+		if err == nil || !strings.Contains(err.Error(), "missing auth subcommand") {
+			t.Fatalf("runAuthCommand(nil) error = %v, want missing subcommand", err)
+		}
+	})
+
+	t.Run("unknown subcommand", func(t *testing.T) {
+		err := runAuthCommand([]string{"mystery-subcommand"}, strings.NewReader(""), &bytes.Buffer{})
+		if err == nil || !strings.Contains(err.Error(), `unknown auth subcommand "mystery-subcommand"`) {
+			t.Fatalf("runAuthCommand(unknown) error = %v, want unknown subcommand", err)
+		}
+	})
+}
+
+func TestWriteTokenFileRejectsEmptyPath(t *testing.T) {
+	err := writeTokenFile("   ", "secret-token")
+	if err == nil || !strings.Contains(err.Error(), "token file path is empty") {
+		t.Fatalf("writeTokenFile(empty) error = %v, want empty path failure", err)
+	}
+}
+
 func issueTokenForTest(root string) (string, error) {
 	tokenPath := filepath.Join(os.TempDir(), "irecall-token-test-"+filepath.Base(root))
 	defer os.Remove(tokenPath)
