@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"flag"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"runtime/debug"
@@ -19,29 +20,37 @@ import (
 var version = "dev"
 
 func main() {
-	debugFlag := flag.Bool("debug", false, "enable debug logging")
-	dataPathFlag := flag.String("data-path", "", "store database, config, and logs under this root path")
-	versionFlag := flag.Bool("version", false, "print version and exit")
-	flag.Usage = func() {
-		fmt.Fprint(flag.CommandLine.Output(), usageText(flag.CommandLine, os.Args[0]))
+	os.Exit(run(os.Args[0], os.Args[1:], os.Stdout, os.Stderr))
+}
+
+func run(program string, args []string, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet(program, flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	debugFlag := fs.Bool("debug", false, "enable debug logging")
+	dataPathFlag := fs.String("data-path", "", "store database, config, and logs under this root path")
+	versionFlag := fs.Bool("version", false, "print version and exit")
+	fs.Usage = func() {
+		fmt.Fprint(fs.Output(), usageText(fs, program))
 	}
-	flag.Parse()
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
 
 	if *versionFlag {
-		fmt.Println("iRecall", binaryVersion())
-		os.Exit(0)
+		fmt.Fprintln(stdout, "iRecall", binaryVersion())
+		return 0
 	}
 
 	if *dataPathFlag != "" {
 		config.SetRootPath(*dataPathFlag)
 	} else if _, err := config.ApplyPreferredRootPath(); err != nil {
-		fmt.Fprintf(os.Stderr, "irecall: cannot load preferred data root: %v\n", err)
-		os.Exit(1)
+		fmt.Fprintf(stderr, "irecall: cannot load preferred data root: %v\n", err)
+		return 1
 	}
 
 	if err := config.EnsureDirs(); err != nil {
-		fmt.Fprintf(os.Stderr, "irecall: cannot create data directories: %v\n", err)
-		os.Exit(1)
+		fmt.Fprintf(stderr, "irecall: cannot create data directories: %v\n", err)
+		return 1
 	}
 
 	// Set up file-based structured logging (never log to stdout/stderr — TUI owns them).
@@ -51,16 +60,16 @@ func main() {
 	}
 	logFile, err := os.OpenFile(config.LogPath(), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "irecall: cannot open log file: %v\n", err)
-		os.Exit(1)
+		fmt.Fprintf(stderr, "irecall: cannot open log file: %v\n", err)
+		return 1
 	}
 	defer logFile.Close()
 	slog.SetDefault(slog.New(slog.NewJSONHandler(logFile, &slog.HandlerOptions{Level: logLevel})))
 
 	runtimeState, err := appbackend.OpenRuntime(config.RootPath())
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "irecall: cannot open runtime: %v\n", err)
-		os.Exit(1)
+		fmt.Fprintf(stderr, "irecall: cannot open runtime: %v\n", err)
+		return 1
 	}
 
 	// Start TUI.
@@ -70,11 +79,12 @@ func main() {
 		tea.WithMouseCellMotion(),
 	)
 	if _, err := p.Run(); err != nil {
-		fmt.Fprintf(os.Stderr, "irecall: %v\n", err)
+		fmt.Fprintf(stderr, "irecall: %v\n", err)
 		runtimeState.Engine.Close()
-		os.Exit(1)
+		return 1
 	}
 	runtimeState.Engine.Close()
+	return 0
 }
 
 func usageText(fs *flag.FlagSet, program string) string {
