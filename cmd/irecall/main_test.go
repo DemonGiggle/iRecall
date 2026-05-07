@@ -1,7 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"flag"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -39,5 +42,45 @@ func TestBinaryVersionPrefersInjectedValue(t *testing.T) {
 
 	if got := binaryVersion(); got != "v1.2.3" {
 		t.Fatalf("binaryVersion() = %q, want %q", got, "v1.2.3")
+	}
+}
+
+func TestRunVersionWritesVersionAndExitsSuccess(t *testing.T) {
+	original := version
+	version = "v9.9.9"
+	t.Cleanup(func() { version = original })
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := run("irecall", []string{"--version"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("run(--version) exit code = %d, want 0", code)
+	}
+	if got := strings.TrimSpace(stdout.String()); got != "iRecall v9.9.9" {
+		t.Fatalf("stdout = %q, want version output", got)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want empty", stderr.String())
+	}
+}
+
+func TestRunReportsDirectorySetupErrors(t *testing.T) {
+	filePath := filepath.Join(t.TempDir(), "not-a-directory")
+	if err := os.WriteFile(filePath, []byte("block"), 0o600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := run("irecall", []string{"-data-path", filePath}, &stdout, &stderr)
+	if code != 1 {
+		t.Fatalf("run(-data-path file) exit code = %d, want 1", code)
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("stdout = %q, want empty", stdout.String())
+	}
+	errText := stderr.String()
+	if !strings.Contains(errText, "irecall: cannot create data directories:") {
+		t.Fatalf("stderr = %q, want directory setup failure", errText)
 	}
 }
