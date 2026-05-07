@@ -383,3 +383,172 @@ func TestApplyRuntimeProviderInitializesMissingSettings(t *testing.T) {
 		t.Fatalf("settings.Provider = %+v, want %+v", app.settings.Provider, provider)
 	}
 }
+
+func TestDesktopBackendUpdateAndDeleteQuotes(t *testing.T) {
+	t.Parallel()
+
+	app, err := NewApp(filepath.Join(t.TempDir(), "desktop-update-delete"))
+	if err != nil {
+		t.Fatalf("NewApp() error = %v", err)
+	}
+	t.Cleanup(func() { app.Shutdown(context.Background()) })
+
+	first, err := app.AddQuote("first quote")
+	if err != nil {
+		t.Fatalf("AddQuote(first) error = %v", err)
+	}
+	second, err := app.AddQuote("second quote")
+	if err != nil {
+		t.Fatalf("AddQuote(second) error = %v", err)
+	}
+
+	updated, err := app.UpdateQuote(first.ID, "updated first quote")
+	if err != nil {
+		t.Fatalf("UpdateQuote() error = %v", err)
+	}
+	if updated.Content != "updated first quote" {
+		t.Fatalf("updated content = %q, want updated first quote", updated.Content)
+	}
+
+	if err := app.DeleteQuotes([]int64{second.ID}); err != nil {
+		t.Fatalf("DeleteQuotes() error = %v", err)
+	}
+
+	quotes, err := app.ListQuotes()
+	if err != nil {
+		t.Fatalf("ListQuotes() error = %v", err)
+	}
+	if len(quotes) != 1 {
+		t.Fatalf("quote count = %d, want 1", len(quotes))
+	}
+	if quotes[0].ID != first.ID || quotes[0].Content != "updated first quote" {
+		t.Fatalf("remaining quote = %+v, want updated first quote only", quotes[0])
+	}
+}
+
+func TestDesktopBackendPasswordAndAPITokenHelpers(t *testing.T) {
+	t.Parallel()
+
+	app, err := NewApp(filepath.Join(t.TempDir(), "desktop-auth-helpers"))
+	if err != nil {
+		t.Fatalf("NewApp() error = %v", err)
+	}
+	t.Cleanup(func() { app.Shutdown(context.Background()) })
+
+	originalPassword := "Secret-pass-123!"
+	nextPassword := "EvenBetter-456!"
+
+	if err := app.SetupPassword(originalPassword, originalPassword); err != nil {
+		t.Fatalf("SetupPassword() error = %v", err)
+	}
+	if err := app.ChangePassword(originalPassword, nextPassword, nextPassword); err != nil {
+		t.Fatalf("ChangePassword() error = %v", err)
+	}
+	if err := app.Login(originalPassword); err == nil || err.Error() != "invalid password" {
+		t.Fatalf("Login(old password) error = %v, want invalid password", err)
+	}
+	if err := app.Login(nextPassword); err != nil {
+		t.Fatalf("Login(new password) error = %v", err)
+	}
+
+	tokenResult, err := app.CreateAPITokenWithPassword(nextPassword)
+	if err != nil {
+		t.Fatalf("CreateAPITokenWithPassword() error = %v", err)
+	}
+	if tokenResult.Token == "" || tokenResult.TokenPrefix == "" {
+		t.Fatalf("token result = %+v, want token and prefix", tokenResult)
+	}
+
+	ok, err := app.VerifyAPIToken(tokenResult.Token)
+	if err != nil {
+		t.Fatalf("VerifyAPIToken(created) error = %v", err)
+	}
+	if !ok {
+		t.Fatal("VerifyAPIToken(created) = false, want true")
+	}
+
+	if err := app.RevokeAPITokenWithPassword(nextPassword); err != nil {
+		t.Fatalf("RevokeAPITokenWithPassword() error = %v", err)
+	}
+	ok, err = app.VerifyAPIToken(tokenResult.Token)
+	if err != nil {
+		t.Fatalf("VerifyAPIToken(revoked) error = %v", err)
+	}
+	if ok {
+		t.Fatal("VerifyAPIToken(revoked) = true, want false")
+	}
+
+	if err := app.ResetPassword(); err != nil {
+		t.Fatalf("ResetPassword() error = %v", err)
+	}
+	if err := app.Login(nextPassword); err == nil || err.Error() != "web password is not configured" {
+		t.Fatalf("Login(after reset) error = %v, want not configured", err)
+	}
+}
+
+func TestDesktopBackendGetUserProfileReflectsSavedProfile(t *testing.T) {
+	t.Parallel()
+
+	app, err := NewApp(filepath.Join(t.TempDir(), "desktop-profile"))
+	if err != nil {
+		t.Fatalf("NewApp() error = %v", err)
+	}
+	t.Cleanup(func() { app.Shutdown(context.Background()) })
+
+	initial := app.GetUserProfile()
+	if initial == nil {
+		t.Fatal("GetUserProfile() = nil, want initialized profile")
+	}
+	if initial.DisplayName != "" {
+		t.Fatalf("initial display name = %q, want empty", initial.DisplayName)
+	}
+
+	saved, err := app.SaveUserProfile("Alice")
+	if err != nil {
+		t.Fatalf("SaveUserProfile() error = %v", err)
+	}
+	got := app.GetUserProfile()
+	if got == nil || got.DisplayName != "Alice" || got.UserID != saved.UserID {
+		t.Fatalf("GetUserProfile() = %+v, want saved profile %+v", got, saved)
+	}
+}
+
+func TestDesktopBackendRunRecallWithMockLLM(t *testing.T) {
+	t.Parallel()
+
+	app, err := NewApp(filepath.Join(t.TempDir(), "desktop-run-recall"))
+	if err != nil {
+		t.Fatalf("NewApp() error = %v", err)
+	}
+	t.Cleanup(func() { app.Shutdown(context.Background()) })
+
+	if _, err := app.SaveUserProfile("Alice"); err != nil {
+		t.Fatalf("SaveUserProfile() error = %v", err)
+	}
+	if _, err := app.AddQuote("alpha beta note"); err != nil {
+		t.Fatalf("AddQuote() error = %v", err)
+	}
+
+	settings := *app.GetSettings()
+	settings.Debug.MockLLM = true
+	if _, err := app.SaveSettings(settings); err != nil {
+		t.Fatalf("SaveSettings(MockLLM) error = %v", err)
+	}
+
+	result, err := app.RunRecall("alpha beta")
+	if err != nil {
+		t.Fatalf("RunRecall() error = %v", err)
+	}
+	if result.Question != "alpha beta" {
+		t.Fatalf("question = %q, want alpha beta", result.Question)
+	}
+	if len(result.Keywords) != 2 || result.Keywords[0] != "alpha" || result.Keywords[1] != "beta" {
+		t.Fatalf("keywords = %#v, want alpha/beta", result.Keywords)
+	}
+	if len(result.Quotes) != 1 || result.Quotes[0].Content != "alpha beta note" {
+		t.Fatalf("quotes = %+v, want matching note", result.Quotes)
+	}
+	if result.Response != "alpha beta note" {
+		t.Fatalf("response = %q, want joined mock quote content", result.Response)
+	}
+}
