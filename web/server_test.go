@@ -434,6 +434,206 @@ func TestHandleRegenerateQuoteKeywordsSupportsGlobalID(t *testing.T) {
 	}
 }
 
+func TestQuoteRoutesUpdateAndDeleteQuotes(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp(t)
+	first, err := app.AddQuote("first quote")
+	if err != nil {
+		t.Fatalf("AddQuote(first) error = %v", err)
+	}
+	second, err := app.AddQuote("second quote")
+	if err != nil {
+		t.Fatalf("AddQuote(second) error = %v", err)
+	}
+	tokenResult, err := app.CreateAPIToken()
+	if err != nil {
+		t.Fatalf("CreateAPIToken() error = %v", err)
+	}
+	server := newTestServer(t, app)
+
+	updateReq := httptest.NewRequest(http.MethodPost, "/api/app/update-quote", jsonBody(t, map[string]any{
+		"id":      first.ID,
+		"content": "updated first quote",
+	}))
+	updateReq.Header.Set("Content-Type", "application/json")
+	updateReq.Header.Set("Authorization", "Bearer "+tokenResult.Token)
+	updateRes := httptest.NewRecorder()
+	server.ServeHTTP(updateRes, updateReq)
+	if updateRes.Code != http.StatusOK {
+		t.Fatalf("POST /api/app/update-quote = %d, body = %s", updateRes.Code, updateRes.Body.String())
+	}
+
+	var updated core.Quote
+	if err := json.Unmarshal(updateRes.Body.Bytes(), &updated); err != nil {
+		t.Fatalf("decode update response: %v", err)
+	}
+	if updated.ID != first.ID || updated.Content != "updated first quote" {
+		t.Fatalf("updated quote = %+v, want updated first quote", updated)
+	}
+
+	deleteReq := httptest.NewRequest(http.MethodPost, "/api/app/delete-quotes", jsonBody(t, map[string]any{
+		"ids": []int64{second.ID},
+	}))
+	deleteReq.Header.Set("Content-Type", "application/json")
+	deleteReq.Header.Set("Authorization", "Bearer "+tokenResult.Token)
+	deleteRes := httptest.NewRecorder()
+	server.ServeHTTP(deleteRes, deleteReq)
+	if deleteRes.Code != http.StatusOK {
+		t.Fatalf("POST /api/app/delete-quotes = %d, body = %s", deleteRes.Code, deleteRes.Body.String())
+	}
+
+	var deleted struct {
+		OK bool `json:"ok"`
+	}
+	if err := json.Unmarshal(deleteRes.Body.Bytes(), &deleted); err != nil {
+		t.Fatalf("decode delete response: %v", err)
+	}
+	if !deleted.OK {
+		t.Fatal("delete response ok = false, want true")
+	}
+
+	quotes, err := app.ListQuotes()
+	if err != nil {
+		t.Fatalf("ListQuotes() error = %v", err)
+	}
+	if len(quotes) != 1 || quotes[0].ID != first.ID || quotes[0].Content != "updated first quote" {
+		t.Fatalf("quotes after update/delete = %+v, want only updated first quote", quotes)
+	}
+}
+
+func TestHandleSaveUserProfileViaBearerAuth(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp(t)
+	tokenResult, err := app.CreateAPIToken()
+	if err != nil {
+		t.Fatalf("CreateAPIToken() error = %v", err)
+	}
+	server := newTestServer(t, app)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/app/save-user-profile", jsonBody(t, map[string]string{
+		"name": "Alice",
+	}))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+tokenResult.Token)
+	res := httptest.NewRecorder()
+	server.ServeHTTP(res, req)
+	if res.Code != http.StatusOK {
+		t.Fatalf("POST /api/app/save-user-profile = %d, body = %s", res.Code, res.Body.String())
+	}
+
+	var profile core.UserProfile
+	if err := json.Unmarshal(res.Body.Bytes(), &profile); err != nil {
+		t.Fatalf("decode profile response: %v", err)
+	}
+	if profile.DisplayName != "Alice" || profile.UserID == "" {
+		t.Fatalf("profile = %+v, want saved display name and user ID", profile)
+	}
+	if got := app.GetUserProfile(); got == nil || got.DisplayName != "Alice" {
+		t.Fatalf("app.GetUserProfile() = %+v, want updated profile", got)
+	}
+}
+
+func TestHandleChangePasswordViaSession(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp(t)
+	if err := app.SetupPassword("Secret-pass-123!", "Secret-pass-123!"); err != nil {
+		t.Fatalf("SetupPassword() error = %v", err)
+	}
+	server := newTestServer(t, app)
+
+	loginReq := httptest.NewRequest(http.MethodPost, "/api/auth/login", jsonBody(t, map[string]string{
+		"password": "Secret-pass-123!",
+	}))
+	loginReq.Header.Set("Content-Type", "application/json")
+	loginRes := httptest.NewRecorder()
+	server.ServeHTTP(loginRes, loginReq)
+	if loginRes.Code != http.StatusOK {
+		t.Fatalf("POST /api/auth/login = %d, want %d", loginRes.Code, http.StatusOK)
+	}
+	cookies := loginRes.Result().Cookies()
+	if len(cookies) == 0 {
+		t.Fatal("login returned no cookies")
+	}
+
+	changeReq := httptest.NewRequest(http.MethodPost, "/api/auth/change-password", jsonBody(t, map[string]string{
+		"current": "Secret-pass-123!",
+		"next":    "EvenBetter-456!",
+		"confirm": "EvenBetter-456!",
+	}))
+	changeReq.Header.Set("Content-Type", "application/json")
+	changeReq.AddCookie(cookies[0])
+	changeRes := httptest.NewRecorder()
+	server.ServeHTTP(changeRes, changeReq)
+	if changeRes.Code != http.StatusOK {
+		t.Fatalf("POST /api/auth/change-password = %d, body = %s", changeRes.Code, changeRes.Body.String())
+	}
+
+	if err := app.Login("Secret-pass-123!"); err == nil {
+		t.Fatal("Login(old password) error = nil, want failure")
+	}
+	if err := app.Login("EvenBetter-456!"); err != nil {
+		t.Fatalf("Login(new password) error = %v", err)
+	}
+}
+
+func TestHandleRunRecallViaBearerAuth(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp(t)
+	if _, err := app.SaveUserProfile("Alice"); err != nil {
+		t.Fatalf("SaveUserProfile() error = %v", err)
+	}
+	if _, err := app.AddQuote("alpha beta note"); err != nil {
+		t.Fatalf("AddQuote() error = %v", err)
+	}
+	settings := *app.GetSettings()
+	settings.Debug.MockLLM = true
+	if _, err := app.SaveSettings(settings); err != nil {
+		t.Fatalf("SaveSettings(MockLLM) error = %v", err)
+	}
+	tokenResult, err := app.CreateAPIToken()
+	if err != nil {
+		t.Fatalf("CreateAPIToken() error = %v", err)
+	}
+	server := newTestServer(t, app)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/app/run-recall", jsonBody(t, map[string]string{
+		"question": "alpha beta",
+	}))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+tokenResult.Token)
+	res := httptest.NewRecorder()
+	server.ServeHTTP(res, req)
+	if res.Code != http.StatusOK {
+		t.Fatalf("POST /api/app/run-recall = %d, body = %s", res.Code, res.Body.String())
+	}
+
+	var result struct {
+		Question string       `json:"question"`
+		Keywords []string     `json:"keywords"`
+		Quotes   []core.Quote `json:"quotes"`
+		Response string       `json:"response"`
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &result); err != nil {
+		t.Fatalf("decode recall response: %v", err)
+	}
+	if result.Question != "alpha beta" {
+		t.Fatalf("question = %q, want alpha beta", result.Question)
+	}
+	if !slices.Equal(result.Keywords, []string{"alpha", "beta"}) {
+		t.Fatalf("keywords = %#v, want %#v", result.Keywords, []string{"alpha", "beta"})
+	}
+	if len(result.Quotes) != 1 || result.Quotes[0].Content != "alpha beta note" {
+		t.Fatalf("quotes = %+v, want matching note", result.Quotes)
+	}
+	if result.Response != "alpha beta note" {
+		t.Fatalf("response = %q, want mock joined quote content", result.Response)
+	}
+}
+
 func newTestApp(t *testing.T) *irecallapp.App {
 	t.Helper()
 
