@@ -133,7 +133,7 @@ interface DesktopBackend {
   GetAPITokenStatus(): Promise<APITokenStatus>;
   CreateAPIToken(): Promise<APITokenCreateResult>;
   BootstrapState(): Promise<BootstrapState>;
-  CountQuotes(): Promise<CountResponse>;
+  CountQuotes(): Promise<number | CountResponse>;
   ListQuotesPage(limit: number, offset: number): Promise<Quote[]>;
   ListQuotes(): Promise<Quote[]>;
   AddQuote(content: string): Promise<Quote>;
@@ -152,7 +152,7 @@ interface DesktopBackend {
   SaveSettings(settings: SettingsPayload): Promise<SettingsPayload>;
   FetchModels(settings: ProviderConfig): Promise<string[]>;
   RunRecall(question: string): Promise<RecallResult>;
-  CountRecallHistory(): Promise<CountResponse>;
+  CountRecallHistory(): Promise<number | CountResponse>;
   ListRecallHistoryPage(limit: number, offset: number): Promise<RecallHistorySummary[]>;
   ListRecallHistory(): Promise<RecallHistorySummary[]>;
   GetRecallHistory(id: number): Promise<RecallHistoryEntry>;
@@ -1050,8 +1050,8 @@ async function loadQuotes(): Promise<void> {
   state.quotesError = "";
   render();
   try {
-    const count = await backend().CountQuotes();
-    state.quotesTotalCount = count.count;
+    const totalCount = normalizeCount(await backend().CountQuotes());
+    state.quotesTotalCount = totalCount;
     if (loadAll) {
       const quotes = await backend().ListQuotes();
       state.quotes = quotes;
@@ -1060,7 +1060,7 @@ async function loadQuotes(): Promise<void> {
       state.quotesCursor = clampCursor(state.quotesCursor, filteredQuotes);
       state.quotesSelected = clampSelection(state.quotesSelected, quotes);
     } else {
-      const offset = clampListOffset(count.count, quotePageSize, state.quotesOffset);
+      const offset = clampListOffset(totalCount, quotePageSize, state.quotesOffset);
       const quotes = await backend().ListQuotesPage(quotePageSize, offset);
       state.quotes = quotes;
       state.quotesOffset = offset;
@@ -1084,11 +1084,11 @@ async function loadHistory(): Promise<void> {
   state.historyStatusIsError = false;
   render();
   try {
-    const count = await backend().CountRecallHistory();
-    const offset = clampListOffset(count.count, historyPageSize, state.historyOffset);
+    const totalCount = normalizeCount(await backend().CountRecallHistory());
+    const offset = clampListOffset(totalCount, historyPageSize, state.historyOffset);
     const entries = await backend().ListRecallHistoryPage(historyPageSize, offset);
     const activeDetailId = state.historyDetail?.ID ?? null;
-    state.historyTotalCount = count.count;
+    state.historyTotalCount = totalCount;
     state.historyOffset = offset;
     state.historyEntries = entries;
     state.historyCursor = clampHistoryCursor(state.historyCursor, entries);
@@ -3367,6 +3367,16 @@ function syncSelectedKeywordModel(form: SettingsFormState): void {
 
 function patchQuoteList(list: Quote[], updated: Quote): Quote[] {
   return list.map((quote) => (quote.ID === updated.ID ? updated : quote));
+}
+
+function normalizeCount(value: number | CountResponse): number {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (value && typeof value === "object" && typeof value.count === "number" && Number.isFinite(value.count)) {
+    return value.count;
+  }
+  throw new Error("Invalid count response from backend");
 }
 
 function clampListOffset(totalCount: number, pageSize: number, offset: number): number {
