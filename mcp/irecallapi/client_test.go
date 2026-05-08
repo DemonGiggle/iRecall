@@ -89,6 +89,8 @@ func TestClientMethodsUseExpectedPathsHeadersAndPayloads(t *testing.T) {
 			_, _ = w.Write([]byte(`{"productName":"iRecall","greeting":"Hi! Tester","paths":{"rootDir":"/tmp/irecall"}}`))
 		case "/api/app/count-quotes":
 			_, _ = w.Write([]byte(`{"count":1}`))
+		case "/api/app/count-recall-history":
+			_, _ = w.Write([]byte(`{"count":1}`))
 		case "/api/app/list-quotes":
 			_, _ = w.Write([]byte(`[{"ID":7,"GlobalID":"quote-7","Content":"stored quote","Tags":["test"],"Version":2,"IsOwnedByMe":true,"CreatedAt":"` + quoteCreatedAt + `","UpdatedAt":"` + quoteUpdatedAt + `"}]`))
 		case "/api/app/add-quote":
@@ -179,9 +181,17 @@ func TestClientMethodsUseExpectedPathsHeadersAndPayloads(t *testing.T) {
 		t.Fatal("DeleteQuotes() OK = false, want true")
 	}
 
-	history, err := client.ListRecallHistory(context.Background())
+	historyCount, err := client.CountRecallHistory(context.Background())
 	if err != nil {
-		t.Fatalf("ListRecallHistory() error = %v", err)
+		t.Fatalf("CountRecallHistory() error = %v", err)
+	}
+	if historyCount.Count != 1 {
+		t.Fatalf("history count = %d, want 1", historyCount.Count)
+	}
+
+	history, err := client.ListRecallHistoryPage(context.Background(), 5, 10)
+	if err != nil {
+		t.Fatalf("ListRecallHistoryPage() error = %v", err)
 	}
 	if len(history) != 1 || history[0].ID != 11 {
 		t.Fatalf("history = %+v, want one entry with ID 11", history)
@@ -212,7 +222,8 @@ func TestClientMethodsUseExpectedPathsHeadersAndPayloads(t *testing.T) {
 		{Method: http.MethodPost, Path: "/api/app/save-recall-as-quote", Auth: "Bearer test-token", UserAgent: "irecall-mcp/0", ContentType: "application/json", Body: `{"question":"q","response":"r","keywords":["k"]}`},
 		{Method: http.MethodPost, Path: "/api/app/update-quote", Auth: "Bearer test-token", UserAgent: "irecall-mcp/0", ContentType: "application/json", Body: `{"id":10,"content":"updated note"}`},
 		{Method: http.MethodPost, Path: "/api/app/delete-quotes", Auth: "Bearer test-token", UserAgent: "irecall-mcp/0", ContentType: "application/json", Body: `{"ids":[10,11]}`},
-		{Method: http.MethodGet, Path: "/api/app/list-recall-history", Auth: "Bearer test-token", UserAgent: "irecall-mcp/0"},
+		{Method: http.MethodGet, Path: "/api/app/count-recall-history", Auth: "Bearer test-token", UserAgent: "irecall-mcp/0"},
+		{Method: http.MethodGet, Path: "/api/app/list-recall-history", Query: "limit=5&offset=10", Auth: "Bearer test-token", UserAgent: "irecall-mcp/0"},
 		{Method: http.MethodGet, Path: "/api/app/get-recall-history", Query: "id=11", Auth: "Bearer test-token", UserAgent: "irecall-mcp/0"},
 		{Method: http.MethodPost, Path: "/api/app/delete-recall-history", Auth: "Bearer test-token", UserAgent: "irecall-mcp/0", ContentType: "application/json", Body: `{"ids":[11]}`},
 	}

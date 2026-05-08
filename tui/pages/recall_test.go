@@ -46,7 +46,7 @@ func TestRecallPageFocusJumpAndReferenceHints(t *testing.T) {
 	}
 
 	view := page.View()
-	if !containsAllText(view, "ctrl+j: Focus input", "↑/↓: Move", "a: Select all", "u: Deselect all", "s: Share", "Reference Quotes", "alpha", "beta", "gamma", "+1 more") {
+	if !containsAllText(view, "ctrl+j: Focus input", "↑/↓: Move", "a: Select visible", "u: Clear", "s: Share", "Reference Quotes", "alpha", "beta", "gamma", "+1 more") {
 		t.Fatalf("reference panel hints missing expected content:\n%s", view)
 	}
 

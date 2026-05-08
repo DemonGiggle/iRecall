@@ -250,16 +250,47 @@ func TestStoreRecallHistoryLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("insert recall history: %v", err)
 	}
+	secondHistoryID, err := store.InsertRecallHistory("How do I page through history?", "Use limit and offset.", []int64{secondQuoteID})
+	if err != nil {
+		t.Fatalf("insert second recall history: %v", err)
+	}
 
 	summaries, err := store.ListRecallHistory()
 	if err != nil {
 		t.Fatalf("list recall history: %v", err)
 	}
-	if len(summaries) != 1 {
-		t.Fatalf("history count = %d, want 1", len(summaries))
+	if len(summaries) != 2 {
+		t.Fatalf("history count = %d, want 2", len(summaries))
 	}
-	if summaries[0].ID != historyID || summaries[0].Question != "How do goroutines coordinate?" {
-		t.Fatalf("history summary = %+v", summaries[0])
+	if summaries[0].ID != secondHistoryID || summaries[0].Question != "How do I page through history?" {
+		t.Fatalf("newest history summary = %+v", summaries[0])
+	}
+	if summaries[1].ID != historyID || summaries[1].Question != "How do goroutines coordinate?" {
+		t.Fatalf("older history summary = %+v", summaries[1])
+	}
+
+	count, err := store.CountRecallHistory()
+	if err != nil {
+		t.Fatalf("count recall history: %v", err)
+	}
+	if count != 2 {
+		t.Fatalf("recall history count = %d, want 2", count)
+	}
+
+	page, err := store.ListRecallHistoryPage(1, 0)
+	if err != nil {
+		t.Fatalf("list recall history page 1: %v", err)
+	}
+	if len(page) != 1 || page[0].ID != secondHistoryID {
+		t.Fatalf("page 1 = %+v, want newest entry %d", page, secondHistoryID)
+	}
+
+	page, err = store.ListRecallHistoryPage(1, 1)
+	if err != nil {
+		t.Fatalf("list recall history page 2: %v", err)
+	}
+	if len(page) != 1 || page[0].ID != historyID {
+		t.Fatalf("page 2 = %+v, want older entry %d", page, historyID)
 	}
 
 	entry, err := store.GetRecallHistory(historyID)
@@ -276,7 +307,7 @@ func TestStoreRecallHistoryLifecycle(t *testing.T) {
 		t.Fatalf("history quote order = [%d %d], want [%d %d]", entry.Quotes[0].ID, entry.Quotes[1].ID, firstQuoteID, secondQuoteID)
 	}
 
-	if err := store.DeleteRecallHistory([]int64{historyID}); err != nil {
+	if err := store.DeleteRecallHistory([]int64{historyID, secondHistoryID}); err != nil {
 		t.Fatalf("delete recall history: %v", err)
 	}
 

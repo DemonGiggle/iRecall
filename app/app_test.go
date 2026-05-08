@@ -157,16 +157,39 @@ func TestDesktopBackendRecallHistoryLifecycle(t *testing.T) {
 	); err != nil {
 		t.Fatalf("SaveRecallHistory() error = %v", err)
 	}
+	if _, err := app.engine.SaveRecallHistory(context.Background(),
+		"How do I move between pages?",
+		"Use previous and next controls.",
+		[]core.Quote{*quote},
+	); err != nil {
+		t.Fatalf("SaveRecallHistory(second) error = %v", err)
+	}
+
+	count, err := app.CountRecallHistory()
+	if err != nil {
+		t.Fatalf("CountRecallHistory() error = %v", err)
+	}
+	if count != 2 {
+		t.Fatalf("CountRecallHistory() = %d, want 2", count)
+	}
+
+	historyPage, err := app.ListRecallHistoryPage(1, 0)
+	if err != nil {
+		t.Fatalf("ListRecallHistoryPage() error = %v", err)
+	}
+	if len(historyPage) != 1 || historyPage[0].Question != "How do I move between pages?" {
+		t.Fatalf("history page = %+v, want newest history entry", historyPage)
+	}
 
 	history, err := app.ListRecallHistory()
 	if err != nil {
 		t.Fatalf("ListRecallHistory() error = %v", err)
 	}
-	if len(history) != 1 {
-		t.Fatalf("history count = %d, want 1", len(history))
+	if len(history) != 2 {
+		t.Fatalf("history count = %d, want 2", len(history))
 	}
 
-	entry, err := app.GetRecallHistory(history[0].ID)
+	entry, err := app.GetRecallHistory(history[1].ID)
 	if err != nil {
 		t.Fatalf("GetRecallHistory() error = %v", err)
 	}
@@ -177,7 +200,7 @@ func TestDesktopBackendRecallHistoryLifecycle(t *testing.T) {
 		t.Fatalf("history quotes = %+v, want original quote", entry.Quotes)
 	}
 
-	if err := app.DeleteRecallHistory([]int64{entry.ID}); err != nil {
+	if err := app.DeleteRecallHistory([]int64{history[0].ID, history[1].ID}); err != nil {
 		t.Fatalf("DeleteRecallHistory() error = %v", err)
 	}
 

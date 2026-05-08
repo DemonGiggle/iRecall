@@ -12,7 +12,7 @@ import (
 	"github.com/gigol/irecall/tui/styles"
 )
 
-const quoteListEntryActions = "↑/↓: Move   pgup/pgdn: Page   x: Select   a: Select all   u: Deselect all   e: Edit   d: Delete   s: Share"
+const quoteListEntryActions = "↑/↓: Move   pgup/pgdn: Page   x: Select   a: Select visible   u: Clear   e: Edit   d: Delete   s: Share"
 const quoteDetailEntryActions = "enter/esc: Back   ↑/↓: Scroll   pgup/pgdn: Page   x: Select   e: Edit   d: Delete   s: Share"
 
 type quoteListActionKind int

@@ -43,8 +43,19 @@ const webBridgeJS = `
     CountQuotes() {
       return request("GET", "/api/app/count-quotes");
     },
+    ListQuotesPage(limit, offset) {
+      const query = new URLSearchParams();
+      if (Number.isFinite(limit) && limit > 0) {
+        query.set("limit", String(limit));
+      }
+      if (Number.isFinite(offset) && offset > 0) {
+        query.set("offset", String(offset));
+      }
+      const suffix = query.size > 0 ? "?" + query.toString() : "";
+      return request("GET", "/api/app/list-quotes" + suffix);
+    },
     ListQuotes() {
-      return request("GET", "/api/app/list-quotes");
+      return App.ListQuotesPage(0, 0);
     },
     AddQuote(content) {
       return request("POST", "/api/app/add-quote", { content });
@@ -82,8 +93,22 @@ const webBridgeJS = `
     RunRecall(question) {
       return request("POST", "/api/app/run-recall", { question });
     },
+    CountRecallHistory() {
+      return request("GET", "/api/app/count-recall-history");
+    },
+    ListRecallHistoryPage(limit, offset) {
+      const query = new URLSearchParams();
+      if (Number.isFinite(limit) && limit > 0) {
+        query.set("limit", String(limit));
+      }
+      if (Number.isFinite(offset) && offset > 0) {
+        query.set("offset", String(offset));
+      }
+      const suffix = query.size > 0 ? "?" + query.toString() : "";
+      return request("GET", "/api/app/list-recall-history" + suffix);
+    },
     ListRecallHistory() {
-      return request("GET", "/api/app/list-recall-history");
+      return App.ListRecallHistoryPage(0, 0);
     },
     GetRecallHistory(id) {
       const url = "/api/app/get-recall-history?id=" + encodeURIComponent(String(id));

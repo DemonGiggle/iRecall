@@ -217,6 +217,8 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.overlay = overlayNone
 		if len(msg.DeletedIDs) > 0 {
 			a.history.RemoveHistories(msg.DeletedIDs)
+			cmds = append(cmds, a.history.Reload())
+			return a, tea.Batch(cmds...)
 		}
 		return a, nil
 
