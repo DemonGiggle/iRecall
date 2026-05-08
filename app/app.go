@@ -178,6 +178,14 @@ func (a *App) ListRecallHistory() ([]core.RecallHistorySummary, error) {
 	return a.engine.ListRecallHistory(a.context())
 }
 
+func (a *App) ListRecallHistoryPage(limit, offset int) ([]core.RecallHistorySummary, error) {
+	return a.engine.ListRecallHistoryPage(a.context(), limit, offset)
+}
+
+func (a *App) CountRecallHistory() (int64, error) {
+	return a.engine.CountRecallHistory(a.context())
+}
+
 func (a *App) GetRecallHistory(id int64) (*core.RecallHistoryEntry, error) {
 	return a.engine.GetRecallHistory(a.context(), id)
 }

@@ -121,6 +121,10 @@ interface APITokenCreateResult {
   tokenPrefix: string;
 }
 
+interface CountResponse {
+  count: number;
+}
+
 interface DesktopBackend {
   AuthStatus(): Promise<AuthStatus>;
   Login(password: string): Promise<void>;
@@ -129,6 +133,8 @@ interface DesktopBackend {
   GetAPITokenStatus(): Promise<APITokenStatus>;
   CreateAPIToken(): Promise<APITokenCreateResult>;
   BootstrapState(): Promise<BootstrapState>;
+  CountQuotes(): Promise<CountResponse>;
+  ListQuotesPage(limit: number, offset: number): Promise<Quote[]>;
   ListQuotes(): Promise<Quote[]>;
   AddQuote(content: string): Promise<Quote>;
   SaveRecallAsQuote(question: string, response: string, keywords: string[]): Promise<Quote>;
@@ -146,6 +152,8 @@ interface DesktopBackend {
   SaveSettings(settings: SettingsPayload): Promise<SettingsPayload>;
   FetchModels(settings: ProviderConfig): Promise<string[]>;
   RunRecall(question: string): Promise<RecallResult>;
+  CountRecallHistory(): Promise<CountResponse>;
+  ListRecallHistoryPage(limit: number, offset: number): Promise<RecallHistorySummary[]>;
   ListRecallHistory(): Promise<RecallHistorySummary[]>;
   GetRecallHistory(id: number): Promise<RecallHistoryEntry>;
   DeleteRecallHistory(ids: number[]): Promise<void>;
@@ -267,6 +275,9 @@ interface AppState {
   quotes: Quote[];
   quotesLoading: boolean;
   quotesError: string;
+  quotesTotalCount: number;
+  quotesOffset: number;
+  quotesLoadedAll: boolean;
   quotesCursor: number;
   quotesSelected: Set<number>;
   libraryQuery: string;
@@ -284,6 +295,8 @@ interface AppState {
   historyEntries: RecallHistorySummary[];
   historyLoading: boolean;
   historyError: string;
+  historyTotalCount: number;
+  historyOffset: number;
   historyCursor: number;
   historySelected: Set<number>;
   historyDetail: RecallHistoryEntry | null;
@@ -318,6 +331,9 @@ const state: AppState = {
   quotes: [],
   quotesLoading: false,
   quotesError: "",
+  quotesTotalCount: 0,
+  quotesOffset: 0,
+  quotesLoadedAll: false,
   quotesCursor: 0,
   quotesSelected: new Set<number>(),
   libraryQuery: "",
@@ -335,6 +351,8 @@ const state: AppState = {
   historyEntries: [],
   historyLoading: false,
   historyError: "",
+  historyTotalCount: 0,
+  historyOffset: 0,
   historyCursor: 0,
   historySelected: new Set<number>(),
   historyDetail: null,
@@ -371,6 +389,8 @@ let bootPromise: Promise<void> | null = null;
 let toastTimer: number | null = null;
 
 const navItems: PageName[] = ["Recall", "History", "Quotes", "Settings"];
+const quotePageSize = 20;
+const historyPageSize = 20;
 
 export function renderApp(root: HTMLElement): void {
   rootEl = root;
@@ -474,7 +494,12 @@ async function submitAuthLogout(): Promise<void> {
   state.bootstrap = null;
   state.overlay = null;
   state.quotes = [];
+  state.quotesTotalCount = 0;
+  state.quotesOffset = 0;
+  state.quotesLoadedAll = false;
   state.historyEntries = [];
+  state.historyTotalCount = 0;
+  state.historyOffset = 0;
   state.historyDetail = null;
   state.authPassword = "";
   state.authConfirmPassword = "";
@@ -602,8 +627,36 @@ async function handleClick(event: MouseEvent): Promise<void> {
     case "quotes-refresh":
       await loadQuotes();
       return;
+    case "quotes-prev-page":
+      if (canMoveQuotePage(-1)) {
+        state.quotesOffset = Math.max(0, state.quotesOffset - quotePageSize);
+        state.quotesSelected = new Set<number>();
+        await loadQuotes();
+      }
+      return;
+    case "quotes-next-page":
+      if (canMoveQuotePage(1)) {
+        state.quotesOffset += quotePageSize;
+        state.quotesSelected = new Set<number>();
+        await loadQuotes();
+      }
+      return;
     case "history-refresh":
       await loadHistory();
+      return;
+    case "history-prev-page":
+      if (canMoveHistoryPage(-1)) {
+        state.historyOffset = Math.max(0, state.historyOffset - historyPageSize);
+        state.historySelected = new Set<number>();
+        await loadHistory();
+      }
+      return;
+    case "history-next-page":
+      if (canMoveHistoryPage(1)) {
+        state.historyOffset += historyPageSize;
+        state.historySelected = new Set<number>();
+        await loadHistory();
+      }
       return;
     case "history-view-current":
       await openCurrentHistory();
@@ -778,9 +831,18 @@ function handleInput(event: Event): void {
       state.recallQuestion = target.value;
       return;
     case "library-query":
+      const wasFiltering = isQuoteFilterActive();
       state.libraryQuery = target.value;
       state.quotesCursor = 0;
+      state.quotesSelected = new Set<number>();
       render();
+      if (isQuoteFilterActive()) {
+        if (!state.quotesLoadedAll || !wasFiltering) {
+          void loadQuotes();
+        }
+      } else if (wasFiltering) {
+        void loadQuotes();
+      }
       return;
     case "profile-name":
       if (state.overlay?.type === "namePrompt") {
@@ -983,14 +1045,29 @@ async function switchPage(page: PageName): Promise<void> {
 }
 
 async function loadQuotes(): Promise<void> {
+  const loadAll = isQuoteFilterActive();
   state.quotesLoading = true;
   state.quotesError = "";
   render();
   try {
-    const quotes = await backend().ListQuotes();
-    state.quotes = quotes;
-    state.quotesCursor = clampCursor(state.quotesCursor, quotes);
-    state.quotesSelected = clampSelection(state.quotesSelected, quotes);
+    const count = await backend().CountQuotes();
+    state.quotesTotalCount = count.count;
+    if (loadAll) {
+      const quotes = await backend().ListQuotes();
+      state.quotes = quotes;
+      state.quotesLoadedAll = true;
+      const filteredQuotes = getFilteredLibraryQuotes();
+      state.quotesCursor = clampCursor(state.quotesCursor, filteredQuotes);
+      state.quotesSelected = clampSelection(state.quotesSelected, quotes);
+    } else {
+      const offset = clampListOffset(count.count, quotePageSize, state.quotesOffset);
+      const quotes = await backend().ListQuotesPage(quotePageSize, offset);
+      state.quotes = quotes;
+      state.quotesOffset = offset;
+      state.quotesLoadedAll = false;
+      state.quotesCursor = clampCursor(state.quotesCursor, quotes);
+      state.quotesSelected = clampSelection(state.quotesSelected, quotes);
+    }
     state.quotesError = "";
   } catch (error) {
     state.quotesError = getErrorMessage(error);
@@ -1007,8 +1084,12 @@ async function loadHistory(): Promise<void> {
   state.historyStatusIsError = false;
   render();
   try {
-    const entries = await backend().ListRecallHistory();
+    const count = await backend().CountRecallHistory();
+    const offset = clampListOffset(count.count, historyPageSize, state.historyOffset);
+    const entries = await backend().ListRecallHistoryPage(historyPageSize, offset);
     const activeDetailId = state.historyDetail?.ID ?? null;
+    state.historyTotalCount = count.count;
+    state.historyOffset = offset;
     state.historyEntries = entries;
     state.historyCursor = clampHistoryCursor(state.historyCursor, entries);
     state.historySelected = clampHistorySelection(state.historySelected, entries);
@@ -1820,6 +1901,10 @@ function getFilteredLibraryQuotes(): Quote[] {
   });
 }
 
+function isQuoteFilterActive(): boolean {
+  return state.libraryQuery.trim() !== "";
+}
+
 function applyQuoteUpdate(updated: Quote): void {
   state.quotes = patchQuoteList(state.quotes, updated);
   state.recallQuotes = patchQuoteList(state.recallQuotes, updated);
@@ -1839,6 +1924,7 @@ function removeQuotes(ids: number[]): void {
       Quotes: state.historyDetail.Quotes.filter((quote) => !remove.has(quote.ID)),
     };
   }
+  state.quotesTotalCount = Math.max(0, state.quotesTotalCount - ids.length);
   state.quotesSelected = new Set([...state.quotesSelected].filter((id) => !remove.has(id)));
   state.recallSelected = new Set([...state.recallSelected].filter((id) => !remove.has(id)));
   state.historyQuoteSelected = new Set([...state.historyQuoteSelected].filter((id) => !remove.has(id)));
@@ -1886,7 +1972,9 @@ function selectedOrCurrentHistory(): RecallHistorySummary[] {
 
 function removeHistoryEntries(ids: number[]): void {
   const remove = new Set(ids);
+  const removedCount = state.historyEntries.filter((entry) => remove.has(entry.ID)).length;
   state.historyEntries = state.historyEntries.filter((entry) => !remove.has(entry.ID));
+  state.historyTotalCount = Math.max(0, state.historyTotalCount - removedCount);
   state.historySelected = new Set([...state.historySelected].filter((id) => !remove.has(id)));
   state.historyCursor = clampHistoryCursor(state.historyCursor, state.historyEntries);
   if (state.historyDetail && remove.has(state.historyDetail.ID)) {
@@ -2188,6 +2276,10 @@ function renderQuotesPage(): string {
   const selectedCount = filteredQuotes.filter((quote) => state.quotesSelected.has(quote.ID)).length;
   const allSelected = filteredQuotes.length > 0 && selectedCount === filteredQuotes.length;
   const partiallySelected = selectedCount > 0 && !allSelected;
+  const pagingDisabled = isQuoteFilterActive();
+  const quoteSummary = pagingDisabled
+    ? `${filteredQuotes.length} matching ${filteredQuotes.length === 1 ? "quote" : "quotes"} from ${state.quotesTotalCount} total. Paging pauses while filtering.`
+    : formatVisibleSummary(state.quotesOffset, filteredQuotes.length, state.quotesTotalCount, "quote", "quotes");
 
   return `
     <section class="page page-quotes">
@@ -2222,11 +2314,19 @@ function renderQuotesPage(): string {
                 </label>
                 <div>
                   <div class="section-title">Quote list</div>
-                  <div class="muted">${filteredQuotes.length} ${filteredQuotes.length === 1 ? "quote" : "quotes"}</div>
+                  <div class="muted">${escapeHtml(quoteSummary)}</div>
                 </div>
               </div>
             </div>
             ${renderQuoteSelectionToolbar("quotes", selectedCount, filteredQuotes.length)}
+            ${renderPaginationToolbar({
+              prevAction: "quotes-prev-page",
+              nextAction: "quotes-next-page",
+              canPrev: canMoveQuotePage(-1),
+              canNext: canMoveQuotePage(1),
+              label: pagingDisabled ? "Filtered results loaded from the full library." : formatPageLabel(state.quotesTotalCount, quotePageSize, state.quotesOffset),
+              disabled: pagingDisabled,
+            })}
             ${
               state.quotesLoading
                 ? '<div class="empty-state">Loading quotes…</div>'
@@ -2245,6 +2345,7 @@ function renderHistoryPage(): string {
   const selectedCount = state.historyEntries.filter((entry) => state.historySelected.has(entry.ID)).length;
   const allSelected = state.historyEntries.length > 0 && selectedCount === state.historyEntries.length;
   const partiallySelected = selectedCount > 0 && !allSelected;
+  const historySummary = formatVisibleSummary(state.historyOffset, state.historyEntries.length, state.historyTotalCount, "saved recall session", "saved recall sessions");
 
   return `
     <section class="page page-history">
@@ -2271,16 +2372,23 @@ function renderHistoryPage(): string {
                     ${allSelected ? "checked" : ""}
                     ${partiallySelected ? 'data-indeterminate="true"' : ""}
                     ${state.historyEntries.length === 0 ? "disabled" : ""}
-                    aria-label="Select all history sessions"
+                    aria-label="Select all visible history sessions"
                   />
                 </label>
                 <div>
                   <div class="section-title">History list</div>
-                  <div class="muted">${state.historyEntries.length} saved recall sessions</div>
+                  <div class="muted">${escapeHtml(historySummary)}</div>
                 </div>
               </div>
             </div>
             ${renderHistorySelectionToolbar(selectedCount, state.historyEntries.length)}
+            ${renderPaginationToolbar({
+              prevAction: "history-prev-page",
+              nextAction: "history-next-page",
+              canPrev: canMoveHistoryPage(-1),
+              canNext: canMoveHistoryPage(1),
+              label: formatPageLabel(state.historyTotalCount, historyPageSize, state.historyOffset),
+            })}
             ${
               state.historyLoading
                 ? '<div class="empty-state">Loading history…</div>'
@@ -2307,7 +2415,7 @@ function renderQuoteSelectionToolbar(context: QuoteContext, selectedCount: numbe
       <div class="toolbar toolbar-quiet">
         ${
           selectedCount < totalCount
-            ? `<button class="button button-subtle" data-action="quote-select-all" data-context="${context}" type="button">Select all</button>`
+            ? `<button class="button button-subtle" data-action="quote-select-all" data-context="${context}" type="button">Select visible</button>`
             : ""
         }
         <button class="button button-primary" data-action="quote-share-current" data-context="${context}" type="button">Share</button>
@@ -2327,11 +2435,31 @@ function renderHistorySelectionToolbar(selectedCount: number, totalCount: number
       <div class="toolbar toolbar-quiet">
         ${
           selectedCount < totalCount
-            ? '<button class="button button-subtle" data-action="history-select-all" type="button">Select all</button>'
+            ? '<button class="button button-subtle" data-action="history-select-all" type="button">Select visible</button>'
             : ""
         }
         <button class="button button-danger" data-action="history-delete-current" type="button">Delete</button>
         <button class="button button-subtle" data-action="history-deselect-all" type="button">Clear</button>
+      </div>
+    </div>
+  `;
+}
+
+function renderPaginationToolbar(options: {
+  prevAction: string;
+  nextAction: string;
+  canPrev: boolean;
+  canNext: boolean;
+  label: string;
+  disabled?: boolean;
+}): string {
+  const disabled = options.disabled ?? false;
+  return `
+    <div class="selection-toolbar">
+      <div class="selection-summary">${escapeHtml(options.label)}</div>
+      <div class="toolbar toolbar-quiet">
+        <button class="button button-subtle" data-action="${options.prevAction}" type="button" ${disabled || !options.canPrev ? "disabled" : ""}>Previous</button>
+        <button class="button button-subtle" data-action="${options.nextAction}" type="button" ${disabled || !options.canNext ? "disabled" : ""}>Next</button>
       </div>
     </div>
   `;
@@ -3239,6 +3367,53 @@ function syncSelectedKeywordModel(form: SettingsFormState): void {
 
 function patchQuoteList(list: Quote[], updated: Quote): Quote[] {
   return list.map((quote) => (quote.ID === updated.ID ? updated : quote));
+}
+
+function clampListOffset(totalCount: number, pageSize: number, offset: number): number {
+  if (totalCount <= 0 || pageSize <= 0) {
+    return 0;
+  }
+  const normalized = Math.max(0, offset);
+  const maxOffset = Math.floor((totalCount - 1) / pageSize) * pageSize;
+  return Math.min(normalized, maxOffset);
+}
+
+function formatVisibleSummary(offset: number, visibleCount: number, totalCount: number, singular: string, plural: string): string {
+  if (totalCount <= 0 || visibleCount <= 0) {
+    return `0 ${plural}`;
+  }
+  const start = offset + 1;
+  const end = offset + visibleCount;
+  return `Showing ${start}-${end} of ${totalCount} ${totalCount === 1 ? singular : plural}`;
+}
+
+function formatPageLabel(totalCount: number, pageSize: number, offset: number): string {
+  if (totalCount <= 0 || pageSize <= 0) {
+    return "Page 1 of 1";
+  }
+  const total = Math.ceil(totalCount / pageSize);
+  const current = Math.floor(clampListOffset(totalCount, pageSize, offset) / pageSize) + 1;
+  return `Page ${current} of ${total}`;
+}
+
+function canMoveQuotePage(direction: -1 | 1): boolean {
+  if (state.quotesLoading || isQuoteFilterActive()) {
+    return false;
+  }
+  if (direction < 0) {
+    return state.quotesOffset > 0;
+  }
+  return state.quotesOffset + quotePageSize < state.quotesTotalCount;
+}
+
+function canMoveHistoryPage(direction: -1 | 1): boolean {
+  if (state.historyLoading) {
+    return false;
+  }
+  if (direction < 0) {
+    return state.historyOffset > 0;
+  }
+  return state.historyOffset + historyPageSize < state.historyTotalCount;
 }
 
 function clampCursor(cursor: number, quotes: Quote[]): number {

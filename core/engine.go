@@ -795,8 +795,17 @@ func (e *Engine) SaveRecallHistory(ctx context.Context, question, response strin
 }
 
 func (e *Engine) ListRecallHistory(ctx context.Context) ([]RecallHistorySummary, error) {
+	return e.ListRecallHistoryPage(ctx, 0, 0)
+}
+
+func (e *Engine) CountRecallHistory(ctx context.Context) (int64, error) {
 	_ = ctx
-	rows, err := e.store.ListRecallHistory()
+	return e.store.CountRecallHistory()
+}
+
+func (e *Engine) ListRecallHistoryPage(ctx context.Context, limit, offset int) ([]RecallHistorySummary, error) {
+	_ = ctx
+	rows, err := e.store.ListRecallHistoryPage(limit, offset)
 	if err != nil {
 		return nil, err
 	}

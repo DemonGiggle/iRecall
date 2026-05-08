@@ -97,6 +97,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("/api/app/save-settings", s.requireAPIAuth(http.HandlerFunc(s.handleSaveSettings)))
 	mux.Handle("/api/app/fetch-models", s.requireAPIAuth(http.HandlerFunc(s.handleFetchModels)))
 	mux.Handle("/api/app/run-recall", s.requireAPIAuth(http.HandlerFunc(s.handleRunRecall)))
+	mux.Handle("/api/app/count-recall-history", s.requireAPIAuth(http.HandlerFunc(s.handleCountRecallHistory)))
 	mux.Handle("/api/app/list-recall-history", s.requireAPIAuth(http.HandlerFunc(s.handleListRecallHistory)))
 	mux.Handle("/api/app/get-recall-history", s.requireAPIAuth(http.HandlerFunc(s.handleGetRecallHistory)))
 	mux.Handle("/api/app/delete-recall-history", s.requireAPIAuth(http.HandlerFunc(s.handleDeleteRecallHistory)))
@@ -456,12 +457,30 @@ func (s *Server) handleRunRecall(w http.ResponseWriter, r *http.Request) {
 	writeAppJSON(w, value, err)
 }
 
+func (s *Server) handleCountRecallHistory(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeMethodNotAllowed(w)
+		return
+	}
+	count, err := s.app.CountRecallHistory()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]int64{"count": count})
+}
+
 func (s *Server) handleListRecallHistory(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeMethodNotAllowed(w)
 		return
 	}
-	value, err := s.app.ListRecallHistory()
+	limit, offset, err := parsePagination(r, 0, 0, 500)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	value, err := s.app.ListRecallHistoryPage(limit, offset)
 	writeAppJSON(w, value, err)
 }
 

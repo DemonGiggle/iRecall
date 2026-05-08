@@ -2,7 +2,6 @@ package pages
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"time"
 
@@ -14,8 +13,10 @@ import (
 )
 
 type HistoryLoadedMsg struct {
-	Entries []core.RecallHistorySummary
-	Err     error
+	Entries    []core.RecallHistorySummary
+	TotalCount int64
+	Offset     int
+	Err        error
 }
 
 type HistoryDetailLoadedMsg struct {
@@ -157,6 +158,9 @@ type HistoryPage struct {
 	errMsg        string
 	statusMsg     string
 	statusErr     bool
+	totalCount    int64
+	offset        int
+	pageSize      int
 
 	width  int
 	height int
@@ -170,6 +174,7 @@ func NewHistoryPage(engine *core.Engine, width, height int) HistoryPage {
 		loading:   true,
 		width:     width,
 		height:    height,
+		pageSize:  historyListPageSize,
 		focus:     historyFocusDetail,
 	}
 	page.recalcLayout()
@@ -188,6 +193,9 @@ func (p HistoryPage) Update(msg tea.Msg) (HistoryPage, tea.Cmd) {
 			p.errMsg = "Error loading history: " + msg.Err.Error()
 			return p, nil
 		}
+		p.errMsg = ""
+		p.totalCount = msg.TotalCount
+		p.offset = msg.Offset
 		p.entries = msg.Entries
 		p.selection.clamp(p.entries)
 		p.listViewport.SetContent(p.renderList())
@@ -210,9 +218,26 @@ func (p HistoryPage) Update(msg tea.Msg) (HistoryPage, tea.Cmd) {
 		if !p.detail {
 			switch msg.String() {
 			case "r":
+				if p.loading {
+					return p, nil
+				}
 				p.loading = true
 				p.errMsg = ""
 				return p, p.loadHistory()
+			case "left":
+				if !p.loading && p.canMovePrevPage() {
+					p.loading = true
+					p.errMsg = ""
+					p.offset -= p.pageSize
+					return p, p.loadHistory()
+				}
+			case "right":
+				if !p.loading && p.canMoveNextPage() {
+					p.loading = true
+					p.errMsg = ""
+					p.offset += p.pageSize
+					return p, p.loadHistory()
+				}
 			case "up":
 				p.selection.move(-1, p.entries)
 				p.listViewport.SetContent(p.renderList())
@@ -364,7 +389,7 @@ func (p HistoryPage) Update(msg tea.Msg) (HistoryPage, tea.Cmd) {
 }
 
 func (p HistoryPage) View() string {
-	help := "↑/↓: Move   pgup/pgdn: Page   enter: View   x: Select   a: Select all   u: Deselect all   d: Delete   r: Refresh"
+	help := "←/→: Result Page   ↑/↓: Move   pgup/pgdn: Scroll   enter: View   x: Select   a: Select visible   u: Clear   d: Delete   r: Refresh"
 	body := styles.Muted.Render("  Loading history...")
 	if p.errMsg != "" {
 		body = styles.StatusErr.Render("  " + p.errMsg)
@@ -395,7 +420,7 @@ func (p HistoryPage) View() string {
 
 	return styles.Panel.Width(p.width - 4).Render(
 		lipgloss.JoinVertical(lipgloss.Left,
-			styles.SectionHeader.Render(fmt.Sprintf("History (%d)", len(p.entries))),
+			styles.SectionHeader.Render(p.title()),
 			body,
 			status,
 			"",
@@ -462,6 +487,10 @@ func (p *HistoryPage) RemoveHistories(ids []int64) {
 		}
 	}
 	p.entries = filtered
+	p.totalCount -= int64(len(ids))
+	if p.totalCount < 0 {
+		p.totalCount = 0
+	}
 	p.selection.clamp(p.entries)
 	if p.entry != nil && remove[p.entry.ID] {
 		p.entry = nil
@@ -563,9 +592,16 @@ func (p HistoryPage) renderList() string {
 
 func (p *HistoryPage) loadHistory() tea.Cmd {
 	engine := p.engine
+	offset := p.offset
+	pageSize := p.pageSize
 	return func() tea.Msg {
-		entries, err := engine.ListRecallHistory(context.Background())
-		return HistoryLoadedMsg{Entries: entries, Err: err}
+		totalCount, err := engine.CountRecallHistory(context.Background())
+		if err != nil {
+			return HistoryLoadedMsg{Err: err}
+		}
+		offset = clampPageOffset(totalCount, pageSize, offset)
+		entries, err := engine.ListRecallHistoryPage(context.Background(), pageSize, offset)
+		return HistoryLoadedMsg{Entries: entries, TotalCount: totalCount, Offset: offset, Err: err}
 	}
 }
 
@@ -596,6 +632,18 @@ func (p *HistoryPage) currentQuotes() []core.Quote {
 
 func formatHistoryTime(t time.Time) string {
 	return t.Local().Format("2006-01-02 15:04")
+}
+
+func (p HistoryPage) title() string {
+	return formatPagedTitle("History", p.totalCount, p.pageSize, p.offset)
+}
+
+func (p HistoryPage) canMovePrevPage() bool {
+	return p.offset > 0
+}
+
+func (p HistoryPage) canMoveNextPage() bool {
+	return p.offset+p.pageSize < int(p.totalCount)
 }
 
 func historyEntryIndexAtOrAfterLine(entries []core.RecallHistorySummary, offset int) int {

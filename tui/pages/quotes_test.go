@@ -48,7 +48,7 @@ func TestQuotesPageShareUsesSelectedOrCurrentQuote(t *testing.T) {
 		t.Fatalf("shared quotes = %+v, want selected quote 2", open.Quotes)
 	}
 
-	if !containsAllText(page.View(), "Stored Quotes", "a: Select all", "u: Deselect all", "s: Share") {
+	if !containsAllText(page.View(), "Stored Quotes", "a: Select visible", "u: Clear", "s: Share") {
 		t.Fatalf("quotes page widget missing shared quote actions:\n%s", page.View())
 	}
 }

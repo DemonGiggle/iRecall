@@ -59,6 +59,66 @@ func TestBearerTokenAuthenticatesAppRoutes(t *testing.T) {
 	}
 }
 
+func TestRecallHistoryPaginationRoutesViaBearerAuth(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp(t)
+	if _, err := app.SaveUserProfile("Alice"); err != nil {
+		t.Fatalf("SaveUserProfile() error = %v", err)
+	}
+	if _, err := app.AddQuote("first second question history pagination reference"); err != nil {
+		t.Fatalf("AddQuote() error = %v", err)
+	}
+	settings := *app.GetSettings()
+	settings.Debug.MockLLM = true
+	if _, err := app.SaveSettings(settings); err != nil {
+		t.Fatalf("SaveSettings(MockLLM) error = %v", err)
+	}
+	if _, err := app.RunRecall("first question"); err != nil {
+		t.Fatalf("RunRecall(first) error = %v", err)
+	}
+	if _, err := app.RunRecall("second question"); err != nil {
+		t.Fatalf("RunRecall(second) error = %v", err)
+	}
+	tokenResult, err := app.CreateAPIToken()
+	if err != nil {
+		t.Fatalf("CreateAPIToken() error = %v", err)
+	}
+	server := newTestServer(t, app)
+
+	countReq := httptest.NewRequest(http.MethodGet, "/api/app/count-recall-history", nil)
+	countReq.Header.Set("Authorization", "Bearer "+tokenResult.Token)
+	countRes := httptest.NewRecorder()
+	server.ServeHTTP(countRes, countReq)
+	if countRes.Code != http.StatusOK {
+		t.Fatalf("GET /api/app/count-recall-history = %d, body = %s", countRes.Code, countRes.Body.String())
+	}
+	var count struct {
+		Count int64 `json:"count"`
+	}
+	if err := json.Unmarshal(countRes.Body.Bytes(), &count); err != nil {
+		t.Fatalf("decode history count response: %v", err)
+	}
+	if count.Count != 2 {
+		t.Fatalf("history count = %d, want 2", count.Count)
+	}
+
+	listReq := httptest.NewRequest(http.MethodGet, "/api/app/list-recall-history?limit=1&offset=1", nil)
+	listReq.Header.Set("Authorization", "Bearer "+tokenResult.Token)
+	listRes := httptest.NewRecorder()
+	server.ServeHTTP(listRes, listReq)
+	if listRes.Code != http.StatusOK {
+		t.Fatalf("GET /api/app/list-recall-history = %d, body = %s", listRes.Code, listRes.Body.String())
+	}
+	var entries []core.RecallHistorySummary
+	if err := json.Unmarshal(listRes.Body.Bytes(), &entries); err != nil {
+		t.Fatalf("decode paged history response: %v", err)
+	}
+	if len(entries) != 1 || entries[0].Question != "first question" {
+		t.Fatalf("paged history entries = %+v, want older entry only", entries)
+	}
+}
+
 func TestAPIOnlyModeStartsWithoutWebPasswordAndRequiresBearerToken(t *testing.T) {
 	t.Parallel()
 

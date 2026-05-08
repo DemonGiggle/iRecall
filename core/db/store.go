@@ -547,10 +547,42 @@ func (s *Store) InsertRecallHistory(question, response string, quoteIDs []int64)
 }
 
 func (s *Store) ListRecallHistory() ([]RecallHistorySummaryRow, error) {
+	return s.ListRecallHistoryPage(0, 0)
+}
+
+func (s *Store) CountRecallHistory() (int64, error) {
+	var count int64
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM recall_history`).Scan(&count); err != nil {
+		return 0, fmt.Errorf("count recall history: %w", err)
+	}
+	return count, nil
+}
+
+func (s *Store) ListRecallHistoryPage(limit, offset int) ([]RecallHistorySummaryRow, error) {
+	if offset < 0 {
+		offset = 0
+	}
+	query := `
+		SELECT id, question, response, created_at
+		FROM recall_history
+		ORDER BY created_at DESC, id DESC
+	`
+	var args []any
+	switch {
+	case limit > 0:
+		query += `
+			LIMIT ? OFFSET ?
+		`
+		args = append(args, limit, offset)
+	case offset > 0:
+		query += `
+			LIMIT -1 OFFSET ?
+		`
+		args = append(args, offset)
+	}
 	rows, err := s.db.Query(
-		`SELECT id, question, response, created_at
-		 FROM recall_history
-		 ORDER BY created_at DESC, id DESC`,
+		query,
+		args...,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("list recall history: %w", err)

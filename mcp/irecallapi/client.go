@@ -86,6 +86,14 @@ func (c *Client) ListQuotes(ctx context.Context, limit, offset int) ([]Quote, er
 	return value, nil
 }
 
+func (c *Client) CountRecallHistory(ctx context.Context) (*RecallHistoryCountResponse, error) {
+	var value RecallHistoryCountResponse
+	if err := c.doJSON(ctx, http.MethodGet, "/api/app/count-recall-history", nil, &value); err != nil {
+		return nil, err
+	}
+	return &value, nil
+}
+
 func (c *Client) AddQuote(ctx context.Context, content string) (*Quote, error) {
 	var value Quote
 	if err := c.doJSON(ctx, http.MethodPost, "/api/app/add-quote", AddQuoteRequest{Content: content}, &value); err != nil {
@@ -131,8 +139,23 @@ func (c *Client) DeleteQuotes(ctx context.Context, ids []int64) (*OKResponse, er
 }
 
 func (c *Client) ListRecallHistory(ctx context.Context) ([]RecallHistorySummary, error) {
+	return c.ListRecallHistoryPage(ctx, 0, 0)
+}
+
+func (c *Client) ListRecallHistoryPage(ctx context.Context, limit, offset int) ([]RecallHistorySummary, error) {
 	var value []RecallHistorySummary
-	if err := c.doJSON(ctx, http.MethodGet, "/api/app/list-recall-history", nil, &value); err != nil {
+	path := "/api/app/list-recall-history"
+	if limit > 0 || offset > 0 {
+		query := url.Values{}
+		if limit > 0 {
+			query.Set("limit", fmt.Sprintf("%d", limit))
+		}
+		if offset > 0 {
+			query.Set("offset", fmt.Sprintf("%d", offset))
+		}
+		path += "?" + query.Encode()
+	}
+	if err := c.doJSON(ctx, http.MethodGet, path, nil, &value); err != nil {
 		return nil, err
 	}
 	return value, nil
