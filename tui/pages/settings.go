@@ -75,6 +75,15 @@ var settingsFocusOrder = []settingsField{
 	fieldRootDir,
 }
 
+func settingsFocusOrderIndex(field settingsField) (int, bool) {
+	for i, focusField := range settingsFocusOrder {
+		if focusField == field {
+			return i, true
+		}
+	}
+	return -1, false
+}
+
 // SettingsPage manages LLM provider and search configuration.
 type SettingsPage struct {
 	engine *core.Engine
@@ -519,11 +528,12 @@ func (p *SettingsPage) cycleFocus(dir int) {
 		p.inputs[p.focused].Blur()
 	}
 
-	currentIdx := 0
-	for i, field := range settingsFocusOrder {
-		if field == p.focused {
-			currentIdx = i
-			break
+	currentIdx, ok := settingsFocusOrderIndex(p.focused)
+	if !ok {
+		if dir < 0 {
+			currentIdx = 0
+		} else {
+			currentIdx = -1
 		}
 	}
 	nextIdx := (currentIdx + dir) % len(settingsFocusOrder)
