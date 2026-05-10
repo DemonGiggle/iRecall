@@ -8,9 +8,11 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/gigol/irecall/core/db"
 	"github.com/gigol/irecall/core/llm"
@@ -361,7 +363,8 @@ func (e *Engine) ExtractTags(ctx context.Context, text string) ([]string, error)
 		{
 			Role: "system",
 			Content: `You are a JSON keyword extractor. ` +
-				`Output ONLY a valid JSON array of short lowercase keyword strings. ` +
+				`Output ONLY a valid JSON array of short lowercase English keyword strings. ` +
+				`Translate non-English concepts into natural English search terms, while preserving proper nouns, product names, acronyms, and code identifiers. ` +
 				`Prefer broad, relevant coverage. ` +
 				`For dense or technical text, include a rich set of tags, usually up to 30. ` +
 				`For short or simple text, return fewer tags when appropriate. ` +
@@ -406,7 +409,8 @@ func (e *Engine) repairTags(ctx context.Context, text string, initial []string) 
 		{
 			Role: "system",
 			Content: `You are repairing a JSON keyword extractor result. ` +
-				`Return ONLY a valid JSON array of short lowercase keyword strings. ` +
+				`Return ONLY a valid JSON array of short lowercase English keyword strings. ` +
+				`Translate non-English concepts into natural English search terms, while preserving proper nouns, product names, acronyms, and code identifiers. ` +
 				`Prefer high-signal tags: specific technologies, entities, actions, domains, and concepts. ` +
 				`Avoid generic labels such as "quote", "note", "text", "content", "topic", or "summary". ` +
 				`Return up to 30 tags. For short or simple text, fewer tags are appropriate.`,
@@ -446,7 +450,9 @@ func (e *Engine) ExtractKeywords(ctx context.Context, question string) ([]string
 		{
 			Role: "system",
 			Content: `You are a JSON search keyword extractor. ` +
-				`Output ONLY a valid JSON array of 3 to 6 short lowercase keyword strings useful for searching a knowledge base. ` +
+				`Output ONLY a valid JSON array of 3 to 6 short lowercase English keyword strings useful for searching a knowledge base. ` +
+				`Translate non-English questions into the same English keyword language used by stored quote tags. ` +
+				`Preserve proper nouns, product names, acronyms, and code identifiers. ` +
 				`No explanation, no markdown, no code fences, no extra text — just the JSON array. ` +
 				`Example output: ["emmc", "flash", "partition"]`,
 		},
@@ -468,9 +474,126 @@ func (e *Engine) ExtractKeywords(ctx context.Context, question string) ([]string
 		slog.Error("engine: parse keywords failed", "raw", raw, "error", err)
 		return nil, err
 	}
+	normalized, _ := normalizeTags(keywords)
+	if len(normalized) == 0 {
+		return nil, fmt.Errorf("keyword extraction produced no usable keywords")
+	}
+	if containsNonASCIIKeyword(normalized) {
+		translated, translateErr := e.repairSearchKeywords(ctx, question, normalized)
+		if translateErr != nil {
+			slog.Warn("engine: search keyword translation repair failed, keeping initial keywords", "error", translateErr, "keywords", normalized)
+		} else {
+			normalized = translated
+		}
+	}
+	keywords = appendCrossLanguageSearchFallbacks(normalized, question)
 	slog.Info("engine: extracted keywords", "keywords", keywords)
 	return keywords, nil
 }
+
+func (e *Engine) repairSearchKeywords(ctx context.Context, question string, initial []string) ([]string, error) {
+	msgs := []llm.Message{
+		{
+			Role: "system",
+			Content: `You are repairing a JSON search keyword extractor result. ` +
+				`Return ONLY a valid JSON array of 3 to 6 short lowercase English keyword strings useful for searching a knowledge base. ` +
+				`Translate every non-English keyword into natural English search terms. ` +
+				`Preserve proper nouns, product names, acronyms, and code identifiers. ` +
+				`No explanation, no markdown, no code fences, no extra text — just the JSON array.`,
+		},
+		{
+			Role: "user",
+			Content: "Improve these draft search keywords for the question below.\n\n" +
+				"Draft keywords: " + mustMarshalJSONArray(initial) + "\n\n" +
+				"Question:\n" + question,
+		},
+	}
+	zero := 0.0
+	maxTok := 100
+	raw, err := e.keywordLLM.Chat(ctx, msgs, nil, llm.ChatOptions{Temperature: &zero, MaxTokens: &maxTok})
+	if err != nil {
+		return nil, err
+	}
+	keywords, err := parseJSONStringArray(raw)
+	if err != nil {
+		return nil, err
+	}
+	normalized, _ := normalizeTags(keywords)
+	if len(normalized) == 0 {
+		return nil, fmt.Errorf("repair produced no usable keywords")
+	}
+	return normalized, nil
+}
+
+func containsNonASCIIKeyword(keywords []string) bool {
+	for _, kw := range keywords {
+		if containsNonASCII(kw) {
+			return true
+		}
+	}
+	return false
+}
+
+func appendCrossLanguageSearchFallbacks(keywords []string, question string) []string {
+	out := make([]string, 0, len(keywords)+8)
+	seen := make(map[string]struct{}, len(keywords)+4)
+	add := func(value string) {
+		value = normalizeSearchToken(value)
+		if value == "" {
+			return
+		}
+		if _, ok := seen[value]; ok {
+			return
+		}
+		seen[value] = struct{}{}
+		out = append(out, value)
+	}
+	for _, kw := range keywords {
+		add(kw)
+	}
+	if containsNonASCII(question) {
+		for _, token := range originalQuestionFallbackTokens(question) {
+			add(token)
+		}
+	}
+	return out
+}
+
+func originalQuestionFallbackTokens(text string) []string {
+	matches := originalQuestionTokenPattern.FindAllString(text, -1)
+	if len(matches) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(matches))
+	for _, match := range matches {
+		match = normalizeSearchToken(match)
+		if match != "" {
+			out = append(out, match)
+		}
+	}
+	return out
+}
+
+func normalizeSearchToken(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	value = strings.Join(strings.Fields(value), " ")
+	value = strings.Trim(value, `"'`)
+	value = strings.TrimFunc(value, func(r rune) bool {
+		return strings.ContainsRune(".,;:!?()[]{}", r)
+	})
+	return value
+}
+
+func containsNonASCII(value string) bool {
+	for _, r := range value {
+		if r > unicode.MaxASCII {
+			return true
+		}
+	}
+	return false
+}
+
+var originalQuestionTokenPattern = regexp.MustCompile(`[A-Za-z0-9_./#+-]{2,}|[^\x00-\x7F]+`)
 
 // SearchQuotes runs a ranked FTS5 search using the given keywords.
 func (e *Engine) SearchQuotes(ctx context.Context, keywords []string) ([]Quote, error) {
@@ -507,10 +630,33 @@ func (e *Engine) SearchQuotes(ctx context.Context, keywords []string) ([]Quote, 
 }
 
 func quoteRelevanceScore(keywords []string, quote Quote) float64 {
+	normalized := normalizeSearchKeywords(keywords)
+	if len(normalized) == 0 {
+		return 0
+	}
+
+	haystack := strings.ToLower(quote.Content + "\n" + strings.Join(quote.Tags, "\n"))
+	best := keywordCoverageScore(normalized, haystack)
+	if containsNonASCIIKeyword(normalized) {
+		ascii := make([]string, 0, len(normalized))
+		nonASCII := make([]string, 0, len(normalized))
+		for _, kw := range normalized {
+			if containsNonASCII(kw) {
+				nonASCII = append(nonASCII, kw)
+			} else {
+				ascii = append(ascii, kw)
+			}
+		}
+		best = max(best, keywordCoverageScore(ascii, haystack), keywordCoverageScore(nonASCII, haystack))
+	}
+	return math.Round(best*100) / 100
+}
+
+func normalizeSearchKeywords(keywords []string) []string {
 	normalized := make([]string, 0, len(keywords))
 	seen := make(map[string]struct{}, len(keywords))
 	for _, kw := range keywords {
-		kw = strings.ToLower(strings.TrimSpace(kw))
+		kw = normalizeSearchToken(kw)
 		if kw == "" {
 			continue
 		}
@@ -520,19 +666,20 @@ func quoteRelevanceScore(keywords []string, quote Quote) float64 {
 		seen[kw] = struct{}{}
 		normalized = append(normalized, kw)
 	}
-	if len(normalized) == 0 {
+	return normalized
+}
+
+func keywordCoverageScore(keywords []string, haystack string) float64 {
+	if len(keywords) == 0 {
 		return 0
 	}
-
-	haystack := strings.ToLower(quote.Content + "\n" + strings.Join(quote.Tags, "\n"))
 	matches := 0
-	for _, kw := range normalized {
+	for _, kw := range keywords {
 		if strings.Contains(haystack, kw) {
 			matches++
 		}
 	}
-	score := float64(matches) / float64(len(normalized))
-	return math.Round(score*100) / 100
+	return float64(matches) / float64(len(keywords))
 }
 
 // GenerateResponse streams a synthesized answer grounded in candidate quotes.

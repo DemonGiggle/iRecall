@@ -357,6 +357,93 @@ func TestExtractKeywordsMockLLMSplitsBySpaces(t *testing.T) {
 	}
 }
 
+func TestExtractKeywordsPromptsForEnglishAndAddsOriginalLanguageFallbacks(t *testing.T) {
+	t.Parallel()
+
+	var gotRequests []struct {
+		Messages []struct {
+			Role    string `json:"role"`
+			Content string `json:"content"`
+		} `json:"messages"`
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Messages []struct {
+				Role    string `json:"role"`
+				Content string `json:"content"`
+			} `json:"messages"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		gotRequests = append(gotRequests, req)
+		w.Header().Set("Content-Type", "application/json")
+		content := `["flash memory","partition"]`
+		if len(gotRequests) == 1 {
+			content = `["快閃記憶體","分割區"]`
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"choices": []map[string]any{{
+				"message": map[string]string{"content": content},
+			}},
+		})
+	}))
+	defer srv.Close()
+
+	engine := newTestEngine(t, srv.Listener.Addr().String())
+	keywords, err := engine.ExtractKeywords(context.Background(), "怎麼查 emmc 分割區？")
+	if err != nil {
+		t.Fatalf("ExtractKeywords() error = %v", err)
+	}
+
+	want := []string{"flash memory", "partition", "怎麼查", "emmc", "分割區？"}
+	if !reflect.DeepEqual(keywords, want) {
+		t.Fatalf("ExtractKeywords() = %#v, want %#v", keywords, want)
+	}
+	if len(gotRequests) != 2 {
+		t.Fatalf("request count = %d, want 2", len(gotRequests))
+	}
+	if len(gotRequests[0].Messages) == 0 || !strings.Contains(gotRequests[0].Messages[0].Content, "same English keyword language used by stored quote tags") {
+		t.Fatalf("system prompt = %#v, want English keyword language guidance", gotRequests[0].Messages)
+	}
+	if len(gotRequests[1].Messages) == 0 || !strings.Contains(gotRequests[1].Messages[0].Content, "repairing a JSON search keyword extractor result") {
+		t.Fatalf("repair prompt = %#v, want search keyword repair guidance", gotRequests[1].Messages)
+	}
+}
+
+func TestExtractTagsPromptsForEnglishKeywords(t *testing.T) {
+	t.Parallel()
+
+	var gotRequest struct {
+		Messages []struct {
+			Role    string `json:"role"`
+			Content string `json:"content"`
+		} `json:"messages"`
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&gotRequest); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"choices": []map[string]any{{
+				"message": map[string]string{"content": `["flash memory","partition"]`},
+			}},
+		})
+	}))
+	defer srv.Close()
+
+	engine := newTestEngine(t, srv.Listener.Addr().String())
+	if _, err := engine.ExtractTags(context.Background(), "這段在講 eMMC 分割區"); err != nil {
+		t.Fatalf("ExtractTags() error = %v", err)
+	}
+	if len(gotRequest.Messages) == 0 || !strings.Contains(gotRequest.Messages[0].Content, "lowercase English keyword strings") {
+		t.Fatalf("system prompt = %#v, want English keyword guidance", gotRequest.Messages)
+	}
+}
+
 func TestRegenerateQuoteKeywordsReplacesStoredTags(t *testing.T) {
 	t.Parallel()
 
