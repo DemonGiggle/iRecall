@@ -194,10 +194,29 @@ func TestSettingsPageShowsScrollbarWhenContentOverflows(t *testing.T) {
 	}
 }
 
+func TestSettingsPageKeyNavigationMatchesRenderedOrder(t *testing.T) {
+	page := NewSettingsPage(nil, 120, 40, core.DefaultSettings())
+	page.focused = fieldTheme
+
+	for _, want := range []settingsField{fieldMaxResults, fieldMinRelevance, fieldMockLLM, fieldRootDir} {
+		model, _ := page.Update(tea.KeyMsg{Type: tea.KeyDown})
+		page = model
+		if page.focused != want {
+			t.Fatalf("focused field after down = %v, want %v", page.focused, want)
+		}
+	}
+
+	model, _ := page.Update(tea.KeyMsg{Type: tea.KeyUp})
+	page = model
+	if page.focused != fieldMockLLM {
+		t.Fatalf("focused field after up = %v, want %v", page.focused, fieldMockLLM)
+	}
+}
+
 func TestSettingsPageKeepsFocusedFieldVisibleInViewport(t *testing.T) {
 	page := NewSettingsPage(nil, 80, 12, core.DefaultSettings())
 
-	for i := 0; i < int(fieldRootDir); i++ {
+	for steps := 0; steps < int(fieldCount) && page.focused != fieldRootDir; steps++ {
 		model, _ := page.Update(tea.KeyMsg{Type: tea.KeyDown})
 		page = model
 	}

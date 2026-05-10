@@ -59,6 +59,22 @@ const (
 	fieldCount // sentinel
 )
 
+var settingsFocusOrder = []settingsField{
+	fieldHost,
+	fieldPort,
+	fieldHTTPS,
+	fieldAPIKey,
+	fieldFetchModels,
+	fieldModelFilter,
+	fieldResponseModel,
+	fieldKeywordModel,
+	fieldTheme,
+	fieldMaxResults,
+	fieldMinRelevance,
+	fieldMockLLM,
+	fieldRootDir,
+}
+
 // SettingsPage manages LLM provider and search configuration.
 type SettingsPage struct {
 	engine *core.Engine
@@ -502,7 +518,19 @@ func (p *SettingsPage) cycleFocus(dir int) {
 	if p.isInputField(p.focused) {
 		p.inputs[p.focused].Blur()
 	}
-	p.focused = settingsField((int(p.focused) + dir + int(fieldCount)) % int(fieldCount))
+
+	currentIdx := 0
+	for i, field := range settingsFocusOrder {
+		if field == p.focused {
+			currentIdx = i
+			break
+		}
+	}
+	nextIdx := (currentIdx + dir) % len(settingsFocusOrder)
+	if nextIdx < 0 {
+		nextIdx += len(settingsFocusOrder)
+	}
+	p.focused = settingsFocusOrder[nextIdx]
 	if p.isInputField(p.focused) {
 		p.inputs[p.focused].Focus()
 	}
