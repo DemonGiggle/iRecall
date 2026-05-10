@@ -13,9 +13,9 @@ import (
 func TestDesktopBackendQuoteShareRoundTrip(t *testing.T) {
 	t.Parallel()
 
-	alice, err := NewApp(filepath.Join(t.TempDir(), "alice"))
+	alice, err := NewAppWithOptions(filepath.Join(t.TempDir(), "alice"), AppOptions{})
 	if err != nil {
-		t.Fatalf("NewApp(alice) error = %v", err)
+		t.Fatalf("NewAppWithOptions(alice) error = %v", err)
 	}
 	t.Cleanup(func() { alice.Shutdown(context.Background()) })
 
@@ -35,9 +35,9 @@ func TestDesktopBackendQuoteShareRoundTrip(t *testing.T) {
 		t.Fatalf("Stat(exportPath) error = %v", err)
 	}
 
-	bob, err := NewApp(filepath.Join(t.TempDir(), "bob"))
+	bob, err := NewAppWithOptions(filepath.Join(t.TempDir(), "bob"), AppOptions{})
 	if err != nil {
-		t.Fatalf("NewApp(bob) error = %v", err)
+		t.Fatalf("NewAppWithOptions(bob) error = %v", err)
 	}
 	t.Cleanup(func() { bob.Shutdown(context.Background()) })
 
@@ -70,9 +70,9 @@ func TestDesktopBackendQuoteShareRoundTrip(t *testing.T) {
 func TestDesktopBackendBootstrapState(t *testing.T) {
 	t.Parallel()
 
-	app, err := NewApp(filepath.Join(t.TempDir(), "desktop"))
+	app, err := NewAppWithOptions(filepath.Join(t.TempDir(), "desktop"), AppOptions{})
 	if err != nil {
-		t.Fatalf("NewApp() error = %v", err)
+		t.Fatalf("NewAppWithOptions() error = %v", err)
 	}
 	t.Cleanup(func() { app.Shutdown(context.Background()) })
 
@@ -105,9 +105,9 @@ func TestDesktopBackendBootstrapState(t *testing.T) {
 func TestDesktopBackendCountQuotes(t *testing.T) {
 	t.Parallel()
 
-	app, err := NewApp(filepath.Join(t.TempDir(), "desktop-count"))
+	app, err := NewAppWithOptions(filepath.Join(t.TempDir(), "desktop-count"), AppOptions{})
 	if err != nil {
-		t.Fatalf("NewApp() error = %v", err)
+		t.Fatalf("NewAppWithOptions() error = %v", err)
 	}
 	t.Cleanup(func() { app.Shutdown(context.Background()) })
 
@@ -135,9 +135,9 @@ func TestDesktopBackendCountQuotes(t *testing.T) {
 func TestDesktopBackendRecallHistoryLifecycle(t *testing.T) {
 	t.Parallel()
 
-	app, err := NewApp(filepath.Join(t.TempDir(), "desktop-history"))
+	app, err := NewAppWithOptions(filepath.Join(t.TempDir(), "desktop-history"), AppOptions{})
 	if err != nil {
-		t.Fatalf("NewApp() error = %v", err)
+		t.Fatalf("NewAppWithOptions() error = %v", err)
 	}
 	t.Cleanup(func() { app.Shutdown(context.Background()) })
 
@@ -216,9 +216,9 @@ func TestDesktopBackendRecallHistoryLifecycle(t *testing.T) {
 func TestDesktopBackendSaveRecallAsQuote(t *testing.T) {
 	t.Parallel()
 
-	app, err := NewApp(filepath.Join(t.TempDir(), "desktop-recall-quote"))
+	app, err := NewAppWithOptions(filepath.Join(t.TempDir(), "desktop-recall-quote"), AppOptions{})
 	if err != nil {
-		t.Fatalf("NewApp() error = %v", err)
+		t.Fatalf("NewAppWithOptions() error = %v", err)
 	}
 	t.Cleanup(func() { app.Shutdown(context.Background()) })
 
@@ -248,9 +248,9 @@ func TestDesktopBackendSaveRecallAsQuote(t *testing.T) {
 func TestDesktopBackendImportQuotesPayload(t *testing.T) {
 	t.Parallel()
 
-	app, err := NewApp(filepath.Join(t.TempDir(), "desktop-import-payload"))
+	app, err := NewAppWithOptions(filepath.Join(t.TempDir(), "desktop-import-payload"), AppOptions{})
 	if err != nil {
-		t.Fatalf("NewApp() error = %v", err)
+		t.Fatalf("NewAppWithOptions() error = %v", err)
 	}
 	t.Cleanup(func() { app.Shutdown(context.Background()) })
 
@@ -268,9 +268,9 @@ func TestDesktopBackendImportQuotesPayload(t *testing.T) {
 		t.Fatalf("PreviewQuoteExport() error = %v", err)
 	}
 
-	target, err := NewApp(filepath.Join(t.TempDir(), "desktop-import-target"))
+	target, err := NewAppWithOptions(filepath.Join(t.TempDir(), "desktop-import-target"), AppOptions{})
 	if err != nil {
-		t.Fatalf("NewApp(target) error = %v", err)
+		t.Fatalf("NewAppWithOptions(target) error = %v", err)
 	}
 	t.Cleanup(func() { target.Shutdown(context.Background()) })
 
@@ -292,9 +292,9 @@ func TestNewAppUsesDefaultStorageWhenRootIsEmpty(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(t.TempDir(), "xdg-config"))
 	t.Setenv("XDG_STATE_HOME", filepath.Join(t.TempDir(), "xdg-state"))
 
-	app, err := NewApp("")
+	app, err := NewAppWithOptions("", AppOptions{})
 	if err != nil {
-		t.Fatalf("NewApp(\"\") error = %v", err)
+		t.Fatalf("NewAppWithOptions(\"\") error = %v", err)
 	}
 	t.Cleanup(func() { app.Shutdown(context.Background()) })
 
@@ -313,7 +313,8 @@ func TestNewAppUsesDefaultStorageWhenRootIsEmpty(t *testing.T) {
 }
 
 func TestDesktopBackendSaveSettingsSwitchesStorageRoot(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", filepath.Join(t.TempDir(), "xdg-config"))
+	xdgConfig := filepath.Join(t.TempDir(), "xdg-config")
+	t.Setenv("XDG_CONFIG_HOME", xdgConfig)
 
 	sourceRoot := filepath.Join(t.TempDir(), "desktop-source")
 	targetRoot := filepath.Join(t.TempDir(), "desktop-target")
@@ -371,15 +372,18 @@ func TestDesktopBackendSaveSettingsSwitchesStorageRoot(t *testing.T) {
 	if preferredRoot != absTarget {
 		t.Fatalf("preferred root = %q, want %q", preferredRoot, absTarget)
 	}
+	if _, err := os.Stat(filepath.Join(xdgConfig, "irecall", config.PreferredRootFileName)); err != nil {
+		t.Fatalf("preferred root marker missing from isolated config dir: %v", err)
+	}
 }
 
 func TestApplyRuntimeProviderInitializesMissingSettings(t *testing.T) {
 	t.Parallel()
 
 	root := filepath.Join(t.TempDir(), "runtime-provider")
-	app, err := NewApp(root)
+	app, err := NewAppWithOptions(root, AppOptions{})
 	if err != nil {
-		t.Fatalf("NewApp() error = %v", err)
+		t.Fatalf("NewAppWithOptions() error = %v", err)
 	}
 	t.Cleanup(func() { app.Shutdown(context.Background()) })
 
@@ -410,9 +414,9 @@ func TestApplyRuntimeProviderInitializesMissingSettings(t *testing.T) {
 func TestDesktopBackendUpdateAndDeleteQuotes(t *testing.T) {
 	t.Parallel()
 
-	app, err := NewApp(filepath.Join(t.TempDir(), "desktop-update-delete"))
+	app, err := NewAppWithOptions(filepath.Join(t.TempDir(), "desktop-update-delete"), AppOptions{})
 	if err != nil {
-		t.Fatalf("NewApp() error = %v", err)
+		t.Fatalf("NewAppWithOptions() error = %v", err)
 	}
 	t.Cleanup(func() { app.Shutdown(context.Background()) })
 
@@ -452,9 +456,9 @@ func TestDesktopBackendUpdateAndDeleteQuotes(t *testing.T) {
 func TestDesktopBackendPasswordAndAPITokenHelpers(t *testing.T) {
 	t.Parallel()
 
-	app, err := NewApp(filepath.Join(t.TempDir(), "desktop-auth-helpers"))
+	app, err := NewAppWithOptions(filepath.Join(t.TempDir(), "desktop-auth-helpers"), AppOptions{})
 	if err != nil {
-		t.Fatalf("NewApp() error = %v", err)
+		t.Fatalf("NewAppWithOptions() error = %v", err)
 	}
 	t.Cleanup(func() { app.Shutdown(context.Background()) })
 
@@ -512,9 +516,9 @@ func TestDesktopBackendPasswordAndAPITokenHelpers(t *testing.T) {
 func TestDesktopBackendGetUserProfileReflectsSavedProfile(t *testing.T) {
 	t.Parallel()
 
-	app, err := NewApp(filepath.Join(t.TempDir(), "desktop-profile"))
+	app, err := NewAppWithOptions(filepath.Join(t.TempDir(), "desktop-profile"), AppOptions{})
 	if err != nil {
-		t.Fatalf("NewApp() error = %v", err)
+		t.Fatalf("NewAppWithOptions() error = %v", err)
 	}
 	t.Cleanup(func() { app.Shutdown(context.Background()) })
 
@@ -539,9 +543,9 @@ func TestDesktopBackendGetUserProfileReflectsSavedProfile(t *testing.T) {
 func TestDesktopBackendRunRecallWithMockLLM(t *testing.T) {
 	t.Parallel()
 
-	app, err := NewApp(filepath.Join(t.TempDir(), "desktop-run-recall"))
+	app, err := NewAppWithOptions(filepath.Join(t.TempDir(), "desktop-run-recall"), AppOptions{})
 	if err != nil {
-		t.Fatalf("NewApp() error = %v", err)
+		t.Fatalf("NewAppWithOptions() error = %v", err)
 	}
 	t.Cleanup(func() { app.Shutdown(context.Background()) })
 
@@ -573,5 +577,35 @@ func TestDesktopBackendRunRecallWithMockLLM(t *testing.T) {
 	}
 	if result.Response != "alpha beta note" {
 		t.Fatalf("response = %q, want joined mock quote content", result.Response)
+	}
+}
+
+func TestDesktopBackendCanSkipPreferredRootPersistence(t *testing.T) {
+	xdgConfig := filepath.Join(t.TempDir(), "xdg-config")
+	t.Setenv("XDG_CONFIG_HOME", xdgConfig)
+
+	sourceRoot := filepath.Join(t.TempDir(), "source")
+	targetRoot := filepath.Join(t.TempDir(), "target")
+	app, err := NewAppWithOptions(sourceRoot, AppOptions{})
+	if err != nil {
+		t.Fatalf("NewAppWithOptions() error = %v", err)
+	}
+	t.Cleanup(func() { app.Shutdown(context.Background()) })
+
+	settings := *app.GetSettings()
+	settings.RootDir = targetRoot
+	if _, err := app.SaveSettings(settings); err != nil {
+		t.Fatalf("SaveSettings() error = %v", err)
+	}
+
+	preferredRoot, err := config.LoadPreferredRootPath()
+	if err != nil {
+		t.Fatalf("LoadPreferredRootPath() error = %v", err)
+	}
+	if preferredRoot != "" {
+		t.Fatalf("preferred root = %q, want empty when app persistence disabled", preferredRoot)
+	}
+	if _, err := os.Stat(filepath.Join(xdgConfig, "irecall", config.PreferredRootFileName)); !os.IsNotExist(err) {
+		t.Fatalf("preferred root marker exists or stat failed: %v", err)
 	}
 }

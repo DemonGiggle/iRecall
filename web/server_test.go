@@ -697,9 +697,9 @@ func TestHandleRunRecallViaBearerAuth(t *testing.T) {
 func newTestApp(t *testing.T) *irecallapp.App {
 	t.Helper()
 
-	app, err := irecallapp.NewApp(t.TempDir())
+	app, err := irecallapp.NewAppWithOptions(t.TempDir(), irecallapp.AppOptions{})
 	if err != nil {
-		t.Fatalf("NewApp() error = %v", err)
+		t.Fatalf("NewAppWithOptions() error = %v", err)
 	}
 	t.Cleanup(func() {
 		app.Shutdown(context.Background())

@@ -43,9 +43,9 @@ func TestOperatorBootstrapIssuesTokenAndMCPHealthChecksRealWebServer(t *testing.
 		t.Fatalf("stdout leaked full token: %q", stdout.String())
 	}
 
-	runtimeApp, err := irecallapp.NewApp(root)
+	runtimeApp, err := irecallapp.NewAppWithOptions(root, irecallapp.AppOptions{})
 	if err != nil {
-		t.Fatalf("NewApp() error = %v", err)
+		t.Fatalf("NewAppWithOptions() error = %v", err)
 	}
 	t.Cleanup(func() { runtimeApp.Shutdown(context.Background()) })
 	settings := *runtimeApp.GetSettings()

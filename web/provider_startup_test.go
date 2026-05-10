@@ -215,9 +215,9 @@ func TestApplyAPIOnlyProviderStartupConfigOverridesRuntimeWithoutPersisting(t *t
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(t.TempDir(), "xdg-config"))
 
 	root := filepath.Join(t.TempDir(), "runtime-provider")
-	runtimeApp, err := irecallapp.NewApp(root)
+	runtimeApp, err := irecallapp.NewAppWithOptions(root, irecallapp.AppOptions{})
 	if err != nil {
-		t.Fatalf("NewApp() error = %v", err)
+		t.Fatalf("NewAppWithOptions() error = %v", err)
 	}
 
 	savedSettings := *runtimeApp.GetSettings()
@@ -266,9 +266,9 @@ func TestApplyAPIOnlyProviderStartupConfigOverridesRuntimeWithoutPersisting(t *t
 
 	runtimeApp.Shutdown(context.Background())
 
-	reopened, err := irecallapp.NewApp(root)
+	reopened, err := irecallapp.NewAppWithOptions(root, irecallapp.AppOptions{})
 	if err != nil {
-		t.Fatalf("NewApp(reopen) error = %v", err)
+		t.Fatalf("NewAppWithOptions(reopen) error = %v", err)
 	}
 	t.Cleanup(func() { reopened.Shutdown(context.Background()) })
 

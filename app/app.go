@@ -15,11 +15,12 @@ import (
 )
 
 type App struct {
-	ctx      context.Context
-	engine   *core.Engine
-	settings *core.Settings
-	profile  *core.UserProfile
-	paths    AppPaths
+	ctx                  context.Context
+	engine               *core.Engine
+	settings             *core.Settings
+	profile              *core.UserProfile
+	paths                AppPaths
+	persistPreferredRoot bool
 }
 
 type AppPaths struct {
@@ -76,16 +77,25 @@ type QuoteKeywordRegenerationResult struct {
 }
 
 func NewApp(root string) (*App, error) {
+	return NewAppWithOptions(root, AppOptions{PersistPreferredRoot: true})
+}
+
+type AppOptions struct {
+	PersistPreferredRoot bool
+}
+
+func NewAppWithOptions(root string, opts AppOptions) (*App, error) {
 	runtimeState, err := OpenRuntime(root)
 	if err != nil {
 		return nil, err
 	}
 
 	return &App{
-		engine:   runtimeState.Engine,
-		settings: runtimeState.Settings,
-		profile:  runtimeState.Profile,
-		paths:    runtimeState.Paths,
+		engine:               runtimeState.Engine,
+		settings:             runtimeState.Settings,
+		profile:              runtimeState.Profile,
+		paths:                runtimeState.Paths,
+		persistPreferredRoot: opts.PersistPreferredRoot,
 	}, nil
 }
 
@@ -256,12 +266,12 @@ func (a *App) ApplyRuntimeProvider(provider core.ProviderConfig) error {
 }
 
 func (a *App) SaveSettings(settings core.Settings) (*core.Settings, error) {
-	nextRuntime, err := SwitchRuntime(&RuntimeState{
+	nextRuntime, err := SwitchRuntimeWithOptions(&RuntimeState{
 		Engine:   a.engine,
 		Settings: a.settings,
 		Profile:  a.profile,
 		Paths:    a.paths,
-	}, &settings)
+	}, &settings, RuntimeSwitchOptions{PersistPreferredRoot: a.persistPreferredRoot})
 	if err != nil {
 		if nextRuntime != nil {
 			a.engine = nextRuntime.Engine

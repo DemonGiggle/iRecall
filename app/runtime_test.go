@@ -119,6 +119,30 @@ func TestSwitchRuntimeUsesExistingTargetWithoutCopyingSourceData(t *testing.T) {
 	}
 }
 
+func TestSwitchRuntimeCanSkipPreferredRootPersistence(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(t.TempDir(), "xdg-config"))
+
+	current := openRuntimeForTest(t, filepath.Join(t.TempDir(), "current"))
+	defer func() { _ = current.Engine.Close() }()
+
+	next := *current.Settings
+	next.RootDir = filepath.Join(t.TempDir(), "target")
+
+	switched, err := SwitchRuntimeWithOptions(current, &next, RuntimeSwitchOptions{PersistPreferredRoot: false})
+	if err != nil {
+		t.Fatalf("SwitchRuntimeWithOptions() error = %v", err)
+	}
+	defer func() { _ = switched.Engine.Close() }()
+
+	preferredRoot, err := config.LoadPreferredRootPath()
+	if err != nil {
+		t.Fatalf("LoadPreferredRootPath() error = %v", err)
+	}
+	if preferredRoot != "" {
+		t.Fatalf("preferred root = %q, want empty when persistence disabled", preferredRoot)
+	}
+}
+
 func TestSwitchRuntimeRestoresOriginalRuntimeOnCopyFailure(t *testing.T) {
 	sourceRoot := filepath.Join(t.TempDir(), "source")
 	seedQuoteForRuntimeTest(t, sourceRoot, "restore me")
@@ -291,9 +315,9 @@ func openRuntimeForTest(t *testing.T, root string) *RuntimeState {
 func seedQuoteForRuntimeTest(t *testing.T, root, content string) {
 	t.Helper()
 
-	app, err := NewApp(root)
+	app, err := NewAppWithOptions(root, AppOptions{})
 	if err != nil {
-		t.Fatalf("NewApp(%q) error = %v", root, err)
+		t.Fatalf("NewAppWithOptions(%q) error = %v", root, err)
 	}
 	if _, err := app.AddQuote(content); err != nil {
 		_ = app.engine.Close()
