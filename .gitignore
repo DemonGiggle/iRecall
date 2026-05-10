@@ -9,3 +9,4 @@ frontend/dist
 .debug-web/
 .tools/
 dist/
+*.log
