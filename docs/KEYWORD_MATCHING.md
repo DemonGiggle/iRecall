@@ -17,12 +17,13 @@ It does not describe future semantic retrieval or embedding-based search. The cu
 
 When the user asks a recall question, iRecall currently does this:
 
-1. Send the question to the configured LLM and ask it to return `3` to `6` short lowercase search keywords.
-2. Run a SQLite FTS5 search over quote content plus tag text.
-3. Order the raw candidates by SQLite FTS rank.
-4. Optionally apply an engine-side `MinRelevance` filter based on keyword coverage.
-5. Trim the result list to `MaxResults`.
-6. Pass the surviving quotes into grounded response generation.
+1. Send the question to the configured LLM and ask it to return `3` to `6` short lowercase English search keywords.
+2. If the model still returns non-English keywords, run a repair pass that translates them to English, then keep original-language question tokens as fallback search terms.
+3. Run a SQLite FTS5 search over quote content plus tag text.
+4. Order the raw candidates by SQLite FTS rank.
+5. Optionally apply an engine-side `MinRelevance` filter based on keyword coverage.
+6. Trim the result list to `MaxResults`.
+7. Pass the surviving quotes into grounded response generation.
 
 In code:
 
@@ -38,16 +39,33 @@ The engine asks the model for a JSON array of search keywords.
 Current prompt contract:
 
 - output must be JSON only
-- output should be `3` to `6` short lowercase strings
+- output should be `3` to `6` short lowercase English strings
+- non-English questions should be translated into the same English keyword language used by stored quote tags
+- proper nouns, product names, acronyms, and code identifiers should be preserved
 - the keywords should be useful for searching a knowledge base
 
-That behavior is defined in [core/engine.go:353](../core/engine.go).
+That behavior is defined in [core/engine.go](../core/engine.go).
 
 Important consequences:
 
 - Retrieval quality depends heavily on the keyword extractor.
 - If the model chooses narrow or generic keywords, the search quality changes accordingly.
-- iRecall does not currently expand synonyms or run alternate retrieval strategies after keyword extraction.
+- iRecall does not currently expand general synonyms or run semantic retrieval after keyword extraction.
+- For cross-language robustness, non-English keyword outputs are repaired toward English and original-language question tokens are appended as fallback terms.
+
+### Cross-language fallback
+
+Quote tag extraction also asks for English keyword tags. This makes insert-time tags and query-time keywords use the same default language even when the original note or question is not English.
+
+Because model behavior can vary, query keyword extraction has two safeguards:
+
+1. If the first keyword result still contains non-English terms, the engine asks the keyword model to repair those draft keywords into English.
+2. If the original question contains non-ASCII text, the engine appends normalized original-language tokens from the question as fallback search terms.
+
+This protects both directions:
+
+- English tags can still match non-English questions through translated query keywords.
+- Original-language content can still match through fallback question tokens.
 
 ## 2. What is indexed
 
@@ -120,14 +138,15 @@ When `MinRelevance > 0`:
 The current score is simple keyword coverage:
 
 1. normalize keywords to lowercase
-2. trim whitespace
+2. trim whitespace and surrounding punctuation/symbols
 3. deduplicate repeated keywords
 4. build a lowercase haystack from:
    - quote content
    - quote tags
 5. count how many normalized keywords appear via substring match
 6. score = `matched_keywords / total_keywords`
-7. round to 2 decimal places
+7. if a mixed English/original-language fallback set is present, also score the English-only and original-language-only subsets and keep the best score
+8. round to 2 decimal places
 
 So if the extracted keywords are:
 
