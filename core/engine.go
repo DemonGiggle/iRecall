@@ -579,7 +579,7 @@ func normalizeSearchToken(value string) string {
 	value = strings.Join(strings.Fields(value), " ")
 	value = strings.Trim(value, `"'`)
 	value = strings.TrimFunc(value, func(r rune) bool {
-		return unicode.IsPunct(r) || unicode.IsSymbol(r)
+		return strings.ContainsRune(".,;:!?()[]{}", r)
 	})
 	return value
 }
@@ -593,7 +593,7 @@ func containsNonASCII(value string) bool {
 	return false
 }
 
-var originalQuestionTokenPattern = regexp.MustCompile(`[A-Za-z0-9_./#-]{2,}|[^\x00-\x7F]+`)
+var originalQuestionTokenPattern = regexp.MustCompile(`[A-Za-z0-9_./#+-]{2,}|[^\x00-\x7F]+`)
 
 // SearchQuotes runs a ranked FTS5 search using the given keywords.
 func (e *Engine) SearchQuotes(ctx context.Context, keywords []string) ([]Quote, error) {

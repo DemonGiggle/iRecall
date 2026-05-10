@@ -246,7 +246,6 @@ func TestAppRoutesNoticeAndDeleteOverlays(t *testing.T) {
 }
 
 func TestAppRoutesDeleteHistoryAndSettingsApply(t *testing.T) {
-	t.Parallel()
 
 	app := newTestApp(t)
 	quotes, err := app.engine.ListQuotes(context.Background())

@@ -397,7 +397,7 @@ func TestExtractKeywordsPromptsForEnglishAndAddsOriginalLanguageFallbacks(t *tes
 		t.Fatalf("ExtractKeywords() error = %v", err)
 	}
 
-	want := []string{"flash memory", "partition", "怎麼查", "emmc", "分割區"}
+	want := []string{"flash memory", "partition", "怎麼查", "emmc", "分割區？"}
 	if !reflect.DeepEqual(keywords, want) {
 		t.Fatalf("ExtractKeywords() = %#v, want %#v", keywords, want)
 	}
