@@ -46,9 +46,9 @@ func TestAuthCommandIssueTokenWithoutWebPasswordAndWritesTokenFile(t *testing.T)
 		t.Fatalf("token file mode = %o, want 600", got)
 	}
 
-	runtimeApp, err := irecallapp.NewApp(root)
+	runtimeApp, err := irecallapp.NewAppWithOptions(root, irecallapp.AppOptions{})
 	if err != nil {
-		t.Fatalf("NewApp() error = %v", err)
+		t.Fatalf("NewAppWithOptions() error = %v", err)
 	}
 	defer runtimeApp.Shutdown(context.Background())
 	ok, err := runtimeApp.VerifyAPIToken(token)
@@ -75,9 +75,9 @@ func TestAuthCommandRotateAndRevokeTokenWithoutWebPassword(t *testing.T) {
 		t.Fatalf("rotated token matched first token")
 	}
 
-	runtimeApp, err := irecallapp.NewApp(root)
+	runtimeApp, err := irecallapp.NewAppWithOptions(root, irecallapp.AppOptions{})
 	if err != nil {
-		t.Fatalf("NewApp() error = %v", err)
+		t.Fatalf("NewAppWithOptions() error = %v", err)
 	}
 	ok, err := runtimeApp.VerifyAPIToken(firstToken)
 	if err != nil {
@@ -99,9 +99,9 @@ func TestAuthCommandRotateAndRevokeTokenWithoutWebPassword(t *testing.T) {
 	if err := runAuthCommand([]string{"revoke-token", "--data-path", root}, strings.NewReader(""), &stdout); err != nil {
 		t.Fatalf("runAuthCommand(revoke-token) error = %v", err)
 	}
-	runtimeApp, err = irecallapp.NewApp(root)
+	runtimeApp, err = irecallapp.NewAppWithOptions(root, irecallapp.AppOptions{})
 	if err != nil {
-		t.Fatalf("NewApp(after revoke) error = %v", err)
+		t.Fatalf("NewAppWithOptions(after revoke) error = %v", err)
 	}
 	defer runtimeApp.Shutdown(context.Background())
 	ok, err = runtimeApp.VerifyAPIToken(secondToken)
@@ -169,9 +169,9 @@ func TestAuthCommandTokenStatusWithConfiguredToken(t *testing.T) {
 		t.Fatalf("token-status output = %q, want configured", output)
 	}
 
-	runtimeApp, err := irecallapp.NewApp(root)
+	runtimeApp, err := irecallapp.NewAppWithOptions(root, irecallapp.AppOptions{})
 	if err != nil {
-		t.Fatalf("NewApp() error = %v", err)
+		t.Fatalf("NewAppWithOptions() error = %v", err)
 	}
 	defer runtimeApp.Shutdown(context.Background())
 	status, err := runtimeApp.GetAPITokenStatus()

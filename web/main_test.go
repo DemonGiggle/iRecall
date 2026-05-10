@@ -88,9 +88,9 @@ func TestServerOptionsValidateRejectsConflictingFlags(t *testing.T) {
 }
 
 func TestEnsureWebPasswordConfiguredRequiresPasswordInNormalMode(t *testing.T) {
-	runtimeApp, err := irecallapp.NewApp(t.TempDir())
+	runtimeApp, err := irecallapp.NewAppWithOptions(t.TempDir(), irecallapp.AppOptions{})
 	if err != nil {
-		t.Fatalf("NewApp() error = %v", err)
+		t.Fatalf("NewAppWithOptions() error = %v", err)
 	}
 	t.Cleanup(func() { runtimeApp.Shutdown(context.Background()) })
 
@@ -110,9 +110,9 @@ func TestEnsureWebPasswordConfiguredRequiresPasswordInNormalMode(t *testing.T) {
 }
 
 func TestEnsureWebPasswordConfiguredAllowsExistingPassword(t *testing.T) {
-	runtimeApp, err := irecallapp.NewApp(t.TempDir())
+	runtimeApp, err := irecallapp.NewAppWithOptions(t.TempDir(), irecallapp.AppOptions{})
 	if err != nil {
-		t.Fatalf("NewApp() error = %v", err)
+		t.Fatalf("NewAppWithOptions() error = %v", err)
 	}
 	t.Cleanup(func() { runtimeApp.Shutdown(context.Background()) })
 

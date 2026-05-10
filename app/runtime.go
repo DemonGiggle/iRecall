@@ -64,6 +64,14 @@ func OpenRuntime(root string) (*RuntimeState, error) {
 }
 
 func SwitchRuntime(current *RuntimeState, nextSettings *core.Settings) (*RuntimeState, error) {
+	return SwitchRuntimeWithOptions(current, nextSettings, RuntimeSwitchOptions{PersistPreferredRoot: true})
+}
+
+type RuntimeSwitchOptions struct {
+	PersistPreferredRoot bool
+}
+
+func SwitchRuntimeWithOptions(current *RuntimeState, nextSettings *core.Settings, opts RuntimeSwitchOptions) (*RuntimeState, error) {
 	if current == nil || current.Engine == nil {
 		return nil, fmt.Errorf("runtime is not initialized")
 	}
@@ -83,8 +91,10 @@ func SwitchRuntime(current *RuntimeState, nextSettings *core.Settings) (*Runtime
 		if err := current.Engine.SaveSettings(context.Background(), nextSettings); err != nil {
 			return nil, err
 		}
-		if err := config.SavePreferredRootPath(nextRoot); err != nil {
-			return nil, fmt.Errorf("persist preferred root: %w", err)
+		if opts.PersistPreferredRoot {
+			if err := config.SavePreferredRootPath(nextRoot); err != nil {
+				return nil, fmt.Errorf("persist preferred root: %w", err)
+			}
 		}
 		current.Settings = nextSettings
 		current.Paths.RootDir = nextRoot
@@ -129,9 +139,11 @@ func SwitchRuntime(current *RuntimeState, nextSettings *core.Settings) (*Runtime
 	}
 	nextRuntime.Settings = nextSettings
 
-	if err := config.SavePreferredRootPath(nextRoot); err != nil {
-		_ = nextRuntime.Engine.Close()
-		return restoreOnError(fmt.Errorf("persist preferred root: %w", err))
+	if opts.PersistPreferredRoot {
+		if err := config.SavePreferredRootPath(nextRoot); err != nil {
+			_ = nextRuntime.Engine.Close()
+			return restoreOnError(fmt.Errorf("persist preferred root: %w", err))
+		}
 	}
 
 	return nextRuntime, nil
