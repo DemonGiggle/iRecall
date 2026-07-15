@@ -491,6 +491,86 @@ pre {
   line-height: 1.6;
 }
 
+.attachment-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.attachment-card {
+  display: grid;
+  gap: 7px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-soft);
+  color: inherit;
+  text-decoration: none;
+  min-width: 0;
+}
+
+.attachment-card img,
+.attachment-placeholder {
+  width: 100%;
+  height: 112px;
+  object-fit: cover;
+  border-radius: 7px;
+  background: var(--surface);
+}
+
+.attachment-placeholder {
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+}
+
+.attachment-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attachment-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.attachment-card {
+  display: grid;
+  gap: 7px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-soft);
+  color: inherit;
+  text-decoration: none;
+  min-width: 0;
+}
+
+.attachment-card img,
+.attachment-placeholder {
+  width: 100%;
+  height: 112px;
+  object-fit: cover;
+  border-radius: 7px;
+  background: var(--surface);
+}
+
+.attachment-placeholder {
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+}
+
+.attachment-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .compact-box {
   min-height: 0;
   max-height: 320px;

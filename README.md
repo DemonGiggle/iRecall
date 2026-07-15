@@ -97,16 +97,16 @@ The shipped clients currently expose four primary surfaces:
 
 - `Recall`: ask questions and review the retrieved quotes used to answer them
 - `History`: review saved recall sessions and reopen their reference quotes
-- `Quotes`: browse, edit, delete, import, and export stored quotes
+- `Quotes`: browse, edit, delete, attach images, import, and export stored quotes
 - `Settings`: configure provider, retrieval, and theme options
 
 Notable workflows:
 
-- add quotes from the TUI and refine drafts before saving
+- add quotes from the TUI, attach images with `ctrl+o`, and refine drafts before saving
 - save the current Recall question/response as a quote
 - reopen a past History entry and save it as a quote later
-- export selected quotes to a JSON payload
-- import shared quotes back into another instance
+- export selected quotes to portable `.irecall` bundles
+- import `.irecall` bundles or legacy JSON shares into another instance
 - tune retrieval with `MaxResults` and `MinRelevance`
 
 `MinRelevance` uses a normalized `0.0..1.0` scale:

@@ -1,6 +1,8 @@
 package pages
 
 import (
+	"archive/zip"
+	"bytes"
 	"context"
 	"os"
 	"path/filepath"
@@ -33,11 +35,11 @@ func TestQuoteSharePageExportsAndSavesPayload(t *testing.T) {
 	page = model
 
 	if page.payload == "" {
-		t.Fatal("payload = empty, want exported JSON")
+		t.Fatal("payload = empty, want exported manifest")
 	}
 	if !containsAll(
 		page.payload,
-		"\"schema_version\": 2",
+		"\"schema_version\": 3",
 		"\"source_backend\": \"local\"",
 		"\"source_entity_type\": \"quote\"",
 		"first shared quote",
@@ -46,7 +48,7 @@ func TestQuoteSharePageExportsAndSavesPayload(t *testing.T) {
 		t.Fatalf("payload missing expected content:\n%s", page.payload)
 	}
 
-	path := filepath.Join(t.TempDir(), "exports", "quotes.json")
+	path := filepath.Join(t.TempDir(), "exports", "quotes.irecall")
 	page.pathInput.SetValue(path)
 	model, cmd := page.Update(tea.KeyMsg{Type: tea.KeyCtrlS})
 	page = model
@@ -61,8 +63,12 @@ func TestQuoteSharePageExportsAndSavesPayload(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReadFile(%q) error = %v", path, err)
 	}
-	if string(data) != page.payload {
-		t.Fatalf("saved payload mismatch\nsaved:\n%s\nwant:\n%s", string(data), page.payload)
+	zr, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	if err != nil {
+		t.Fatalf("open saved bundle: %v", err)
+	}
+	if len(zr.File) == 0 || zr.File[0].Name != "manifest.json" {
+		t.Fatalf("bundle entries = %#v, want manifest.json", zr.File)
 	}
 	if !strings.Contains(page.statusMsg, path) {
 		t.Fatalf("status = %q, want path %q", page.statusMsg, path)

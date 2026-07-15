@@ -400,6 +400,12 @@ func (w quoteListWidget) renderDetail() string {
 	} else {
 		parts = append(parts, styles.Muted.Render("Tags: (none)"))
 	}
+	if len(q.Attachments) > 0 {
+		parts = append(parts, styles.SectionHeader.Render(fmt.Sprintf("Images (%d)", len(q.Attachments))))
+		for _, attachment := range q.Attachments {
+			parts = append(parts, fmt.Sprintf("• %s  %dx%d  %s", attachment.Filename, attachment.Width, attachment.Height, formatAttachmentBytes(attachment.Size)))
+		}
+	}
 
 	return lipgloss.JoinVertical(lipgloss.Left, parts...)
 }
@@ -463,6 +469,9 @@ func renderQuoteFunctionList(quotes []core.Quote, selection quoteSelection, inne
 		check = styles.QuoteNumber.Render(check)
 		number := styles.QuoteNumber.Render(fmt.Sprintf("[%d]", i+1))
 		content := truncateQuotePreview(q.Content, innerW-10)
+		if len(q.Attachments) > 0 {
+			content += fmt.Sprintf("  [images:%d]", len(q.Attachments))
+		}
 		sb.WriteString(prefix + check + " " + number + " " + content + "\n")
 
 		if !q.IsOwnedByMe && q.SourceName != "" {

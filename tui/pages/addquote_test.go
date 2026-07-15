@@ -1,6 +1,9 @@
 package pages
 
 import (
+	"encoding/base64"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -51,6 +54,39 @@ func TestQuoteEditorPreviewAcceptAndReject(t *testing.T) {
 	}
 	if page.textarea.Value() != "accepted draft" {
 		t.Fatalf("textarea after accept = %q, want accepted draft", page.textarea.Value())
+	}
+}
+
+func TestQuoteEditorStagesAndRemovesImagePath(t *testing.T) {
+	data, err := base64.StdEncoding.DecodeString("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=")
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "tiny.png")
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	page := NewQuoteEditorPage(nil, 100, 35)
+	page.Reset(QuoteEditorModeAdd, nil)
+	model, _ := page.Update(tea.KeyMsg{Type: tea.KeyCtrlO})
+	page = model
+	if !page.attachmentMode {
+		t.Fatal("attachment manager did not open")
+	}
+	page.attachmentInput.SetValue(path)
+	model, _ = page.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	page = model
+	if len(page.newImages) != 1 || page.newImages[0].Filename != "tiny.png" {
+		t.Fatalf("staged images = %#v", page.newImages)
+	}
+	if !containsAll(page.View(), "tiny.png", "staged", "Attachments (1/5)") {
+		t.Fatalf("attachment view missing metadata:\n%s", page.View())
+	}
+	model, _ = page.Update(tea.KeyMsg{Type: tea.KeyDelete})
+	page = model
+	if len(page.newImages) != 0 {
+		t.Fatalf("images after delete = %#v", page.newImages)
 	}
 }
 

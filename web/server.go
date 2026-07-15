@@ -10,6 +10,7 @@ import (
 	"io"
 	"io/fs"
 	"log/slog"
+	"mime"
 	"net/http"
 	"path"
 	"strconv"
@@ -86,9 +87,15 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("/api/app/count-quotes", s.requireAPIAuth(http.HandlerFunc(s.handleCountQuotes)))
 	mux.Handle("/api/app/list-quotes", s.requireAPIAuth(http.HandlerFunc(s.handleListQuotes)))
 	mux.Handle("/api/app/add-quote", s.requireAPIAuth(http.HandlerFunc(s.handleAddQuote)))
+	mux.Handle("/api/app/add-quote-with-images", s.requireAPIAuth(http.HandlerFunc(s.handleAddQuoteWithImages)))
 	mux.Handle("/api/app/save-recall-as-quote", s.requireAPIAuth(http.HandlerFunc(s.handleSaveRecallAsQuote)))
 	mux.Handle("/api/app/refine-quote-draft", s.requireAPIAuth(http.HandlerFunc(s.handleRefineQuoteDraft)))
 	mux.Handle("/api/app/update-quote", s.requireAPIAuth(http.HandlerFunc(s.handleUpdateQuote)))
+	mux.Handle("/api/app/update-quote-with-images", s.requireAPIAuth(http.HandlerFunc(s.handleUpdateQuoteWithImages)))
+	mux.Handle("/api/app/get-quote-attachment", s.requireAPIAuth(http.HandlerFunc(s.handleGetQuoteAttachment)))
+	mux.Handle("/api/app/quote-attachment-content", s.requireAPIAuth(http.HandlerFunc(s.handleQuoteAttachmentContent)))
+	mux.Handle("/api/app/export-quote-bundle", s.requireAPIAuth(http.HandlerFunc(s.handleExportQuoteBundle)))
+	mux.Handle("/api/app/import-quote-bundle", s.requireAPIAuth(http.HandlerFunc(s.handleImportQuoteBundle)))
 	mux.Handle("/api/app/regenerate-quote-keywords", s.requireAPIAuth(http.HandlerFunc(s.handleRegenerateQuoteKeywords)))
 	mux.Handle("/api/app/delete-quotes", s.requireAPIAuth(http.HandlerFunc(s.handleDeleteQuotes)))
 	mux.Handle("/api/app/preview-quote-export", s.requireAPIAuth(http.HandlerFunc(s.handlePreviewQuoteExport)))
@@ -278,6 +285,18 @@ func (s *Server) handleAddQuote(w http.ResponseWriter, r *http.Request) {
 	writeAppJSON(w, value, err)
 }
 
+func (s *Server) handleAddQuoteWithImages(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Content string                  `json:"content"`
+		Images  []app.ImageInputPayload `json:"images"`
+	}
+	if !requirePostJSONLimit(w, r, &req, 36<<20) {
+		return
+	}
+	value, err := s.app.AddQuoteWithImages(req.Content, req.Images)
+	writeAppJSON(w, value, err)
+}
+
 func (s *Server) handleSaveRecallAsQuote(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Question string   `json:"question"`
@@ -311,6 +330,69 @@ func (s *Server) handleUpdateQuote(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	value, err := s.app.UpdateQuote(req.ID, req.Content)
+	writeAppJSON(w, value, err)
+}
+
+func (s *Server) handleUpdateQuoteWithImages(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		ID          int64                   `json:"id"`
+		Content     string                  `json:"content"`
+		RetainedIDs []string                `json:"retainedIds"`
+		Images      []app.ImageInputPayload `json:"images"`
+	}
+	if !requirePostJSONLimit(w, r, &req, 36<<20) {
+		return
+	}
+	value, err := s.app.UpdateQuoteWithImages(req.ID, req.Content, req.RetainedIDs, req.Images)
+	writeAppJSON(w, value, err)
+}
+
+func (s *Server) handleGetQuoteAttachment(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, fmt.Errorf("method not allowed"))
+		return
+	}
+	value, err := s.app.GetQuoteAttachmentData(r.URL.Query().Get("id"))
+	writeAppJSON(w, value, err)
+}
+
+func (s *Server) handleQuoteAttachmentContent(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeMethodNotAllowed(w)
+		return
+	}
+	attachment, data, err := s.app.GetQuoteAttachmentContent(r.URL.Query().Get("id"))
+	if err != nil {
+		writeError(w, http.StatusNotFound, err)
+		return
+	}
+	w.Header().Set("Content-Type", attachment.MediaType)
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Cache-Control", "private, max-age=300")
+	w.Header().Set("Content-Disposition", mime.FormatMediaType("inline", map[string]string{"filename": attachment.Filename}))
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(data)
+}
+
+func (s *Server) handleExportQuoteBundle(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		IDs []int64 `json:"ids"`
+	}
+	if !requirePostJSON(w, r, &req) {
+		return
+	}
+	value, err := s.app.ExportQuoteBundle(req.IDs)
+	writeAppJSON(w, value, err)
+}
+
+func (s *Server) handleImportQuoteBundle(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		PayloadBase64 string `json:"payloadBase64"`
+	}
+	if !requirePostJSONLimit(w, r, &req, 140<<20) {
+		return
+	}
+	value, err := s.app.ImportQuoteBundle(req.PayloadBase64)
 	writeAppJSON(w, value, err)
 }
 
@@ -671,11 +753,15 @@ func (s *Server) endSession(w http.ResponseWriter, r *http.Request) {
 }
 
 func requirePostJSON(w http.ResponseWriter, r *http.Request, target any) bool {
+	return requirePostJSONLimit(w, r, target, 1<<20)
+}
+
+func requirePostJSONLimit(w http.ResponseWriter, r *http.Request, target any, limit int64) bool {
 	if r.Method != http.MethodPost {
 		writeMethodNotAllowed(w)
 		return false
 	}
-	if err := decodeJSON(r, target); err != nil {
+	if err := decodeJSONLimit(r, target, limit); err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return false
 	}
@@ -683,8 +769,12 @@ func requirePostJSON(w http.ResponseWriter, r *http.Request, target any) bool {
 }
 
 func decodeJSON(r *http.Request, target any) error {
+	return decodeJSONLimit(r, target, 1<<20)
+}
+
+func decodeJSONLimit(r *http.Request, target any, limit int64) error {
 	defer r.Body.Close()
-	dec := json.NewDecoder(io.LimitReader(r.Body, 1<<20))
+	dec := json.NewDecoder(io.LimitReader(r.Body, limit))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(target); err != nil {
 		return err

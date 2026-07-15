@@ -37,6 +37,10 @@ func OpenRuntime(root string) (*RuntimeState, error) {
 
 	defaults := core.DefaultSettings()
 	engine := core.New(store, defaults)
+	if err := engine.SetAttachmentRoot(filepath.Join(paths.DataDir, "attachments")); err != nil {
+		_ = engine.Close()
+		return nil, fmt.Errorf("configure attachment storage: %w", err)
+	}
 
 	settings, err := engine.LoadSettings(context.Background())
 	if err != nil || settings == nil {

@@ -116,3 +116,35 @@ func TestChatUsesDefaultOutputTokensForGPT5NonStreaming(t *testing.T) {
 		t.Fatalf("max_completion_tokens = %v, want %d", got.MaxCompletionTokens, 4096)
 	}
 }
+
+func TestChatMarshalsMultimodalContentParts(t *testing.T) {
+	t.Parallel()
+	var content []ContentPart
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Messages []struct {
+				Content json.RawMessage `json:"content"`
+			} `json:"messages"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		if err := json.Unmarshal(body.Messages[0].Content, &content); err != nil {
+			t.Fatal(err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"choices": []map[string]any{{"message": map[string]string{"content": "[]"}}}})
+	}))
+	defer srv.Close()
+	client := NewClient(ProviderConfig{Host: srv.Listener.Addr().String(), Model: "vision-model"})
+	_, err := client.Chat(context.Background(), []Message{{Role: "user", Parts: []ContentPart{
+		{Type: "text", Text: "describe"},
+		{Type: "image_url", ImageURL: &ImageURLValue{URL: "data:image/png;base64,AAAA"}},
+	}}}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(content) != 2 || content[1].ImageURL == nil || content[1].ImageURL.URL == "" {
+		t.Fatalf("content parts = %#v", content)
+	}
+}

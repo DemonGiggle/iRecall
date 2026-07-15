@@ -16,7 +16,7 @@ func (a *App) SelectQuoteImportFile() (string, error) {
 	return runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
 		Title: "Import iRecall Quotes",
 		Filters: []runtime.FileFilter{
-			{DisplayName: "iRecall Share Files", Pattern: "*.json"},
+			{DisplayName: "iRecall Share Files", Pattern: "*.irecall;*.json"},
 			{DisplayName: "All Files", Pattern: "*"},
 		},
 	})
@@ -28,7 +28,7 @@ func (a *App) SelectQuoteExportFile() (string, error) {
 	}
 	return runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
 		Title:           "Export iRecall Quotes",
-		DefaultFilename: "irecall-share.json",
+		DefaultFilename: "irecall-share.irecall",
 		DefaultDirectory: func() string {
 			if a.paths.RootDir == "" {
 				return ""
@@ -36,7 +36,7 @@ func (a *App) SelectQuoteExportFile() (string, error) {
 			return filepath.Join(a.paths.RootDir, "exports")
 		}(),
 		Filters: []runtime.FileFilter{
-			{DisplayName: "JSON Files", Pattern: "*.json"},
+			{DisplayName: "iRecall Bundles", Pattern: "*.irecall"},
 			{DisplayName: "All Files", Pattern: "*"},
 		},
 	})

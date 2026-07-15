@@ -31,8 +31,17 @@ The quote model and share envelope currently revolve around these fields:
 - `version`
 - `content`
 - `tags`
+- `attachments`
 - `created_at_utc`
 - `updated_at_utc`
+
+## Image Attachments
+
+Quotes may contain up to five managed PNG, JPEG, WebP, or GIF images. Text remains required. Each attachment records a stable local ID, original filename, detected media type, byte size, dimensions, checksum, and a managed relative storage path. Absolute source paths are never persisted or returned by APIs.
+
+Images are copied under the active iRecall data directory and are supplied with quote text during tag extraction. If the configured model cannot process images, iRecall retains the images, retries tag extraction with text alone, and reports a non-fatal warning.
+
+New shares use a `.irecall` ZIP bundle with schema version `3`. The archive contains `manifest.json` plus checksum-protected files below `attachments/`. Import still accepts legacy schema-v1/v2 JSON shares; image-bearing quotes require the bundle format.
 
 ## Existing Identity and Person Fields
 

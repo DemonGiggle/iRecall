@@ -11,6 +11,7 @@ require (
 	github.com/mark3labs/mcp-go v0.30.1
 	github.com/wailsapp/wails/v2 v2.10.1
 	golang.org/x/crypto v0.33.0
+	golang.org/x/image v0.24.0
 	modernc.org/sqlite v1.34.5
 )
 

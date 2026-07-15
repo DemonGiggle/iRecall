@@ -60,6 +60,9 @@ const webBridgeJS = `
     AddQuote(content) {
       return request("POST", "/api/app/add-quote", { content });
     },
+    AddQuoteWithImages(content, images) {
+      return request("POST", "/api/app/add-quote-with-images", { content, images });
+    },
     SaveRecallAsQuote(question, response, keywords) {
       return request("POST", "/api/app/save-recall-as-quote", { question, response, keywords });
     },
@@ -68,6 +71,18 @@ const webBridgeJS = `
     },
     UpdateQuote(id, content) {
       return request("POST", "/api/app/update-quote", { id, content });
+    },
+    UpdateQuoteWithImages(id, content, retainedIds, images) {
+      return request("POST", "/api/app/update-quote-with-images", { id, content, retainedIds, images });
+    },
+    GetQuoteAttachmentData(id) {
+      return request("GET", "/api/app/get-quote-attachment?id=" + encodeURIComponent(id));
+    },
+    ExportQuoteBundle(ids) {
+      return request("POST", "/api/app/export-quote-bundle", { ids });
+    },
+    ImportQuoteBundle(payloadBase64) {
+      return request("POST", "/api/app/import-quote-bundle", { payloadBase64 });
     },
     RegenerateQuoteKeywords(id, globalId) {
       return request("POST", "/api/app/regenerate-quote-keywords", { id, globalId });
