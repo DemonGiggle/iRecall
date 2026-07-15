@@ -179,10 +179,15 @@ make build-mcp
 make build-web
 make build-release
 make run
-make test
+make test-go
+make test-mcp-e2e
+make test-browser-e2e
+make test-all
 make lint
 make build-all
 ```
+
+`make test` remains an alias for `make test-go`. `make test-browser-e2e` builds the frontend and web binary, installs Chromium when needed, and manages an isolated temporary web server automatically. Use `make test-all` to run the Go suite, the real-process MCP E2E, and the browser E2E in sequence.
 
 Release artifact bundle:
 
