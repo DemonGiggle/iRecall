@@ -2,6 +2,8 @@ package app
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -76,6 +78,17 @@ type QuoteKeywordRegenerationResult struct {
 	Quote       core.Quote `json:"quote"`
 }
 
+type ImageInputPayload struct {
+	Filename   string `json:"filename"`
+	MediaType  string `json:"mediaType"`
+	DataBase64 string `json:"dataBase64"`
+}
+
+type AttachmentDataResult struct {
+	Attachment core.QuoteAttachment `json:"attachment"`
+	DataBase64 string               `json:"dataBase64"`
+}
+
 func NewApp(root string) (*App, error) {
 	return NewAppWithOptions(root, AppOptions{PersistPreferredRoot: true})
 }
@@ -144,6 +157,14 @@ func (a *App) AddQuote(content string) (*core.Quote, error) {
 	return a.engine.AddQuote(a.context(), content)
 }
 
+func (a *App) AddQuoteWithImages(content string, images []ImageInputPayload) (*core.QuoteMutationResult, error) {
+	decoded, err := decodeImagePayloads(images)
+	if err != nil {
+		return nil, err
+	}
+	return a.engine.AddQuoteWithImages(a.context(), content, decoded)
+}
+
 func (a *App) SaveRecallAsQuote(question, response string, keywords []string) (*core.Quote, error) {
 	return a.engine.SaveRecallAsQuote(a.context(), question, response, keywords)
 }
@@ -158,6 +179,38 @@ func (a *App) RefineQuoteDraft(content string) (string, error) {
 
 func (a *App) UpdateQuote(id int64, content string) (*core.Quote, error) {
 	return a.engine.UpdateQuote(a.context(), id, content)
+}
+
+func (a *App) UpdateQuoteWithImages(id int64, content string, retainedIDs []string, images []ImageInputPayload) (*core.QuoteMutationResult, error) {
+	decoded, err := decodeImagePayloads(images)
+	if err != nil {
+		return nil, err
+	}
+	return a.engine.UpdateQuoteWithImages(a.context(), id, content, retainedIDs, decoded)
+}
+
+func (a *App) GetQuoteAttachmentData(id string) (AttachmentDataResult, error) {
+	attachment, data, err := a.engine.GetQuoteAttachmentData(a.context(), id)
+	if err != nil {
+		return AttachmentDataResult{}, err
+	}
+	return AttachmentDataResult{Attachment: attachment, DataBase64: base64.StdEncoding.EncodeToString(data)}, nil
+}
+
+func (a *App) GetQuoteAttachmentContent(id string) (core.QuoteAttachment, []byte, error) {
+	return a.engine.GetQuoteAttachmentData(a.context(), id)
+}
+
+func decodeImagePayloads(payloads []ImageInputPayload) ([]core.ImageInput, error) {
+	images := make([]core.ImageInput, 0, len(payloads))
+	for _, payload := range payloads {
+		data, err := base64.StdEncoding.DecodeString(payload.DataBase64)
+		if err != nil {
+			return nil, fmt.Errorf("decode image %q: %w", payload.Filename, err)
+		}
+		images = append(images, core.ImageInput{Filename: payload.Filename, MediaType: payload.MediaType, Data: data})
+	}
+	return images, nil
 }
 
 func (a *App) RegenerateQuoteKeywords(id int64, globalID string) (QuoteKeywordRegenerationResult, error) {
@@ -208,7 +261,7 @@ func (a *App) ExportQuotesToFile(ids []int64, path string) error {
 	if strings.TrimSpace(path) == "" {
 		return errors.New("export path is empty")
 	}
-	payload, err := a.engine.ExportQuotes(a.context(), ids)
+	payload, err := a.engine.ExportQuoteBundle(a.context(), ids)
 	if err != nil {
 		return err
 	}
@@ -222,11 +275,27 @@ func (a *App) ExportQuotesToFile(ids []int64, path string) error {
 }
 
 func (a *App) PreviewQuoteExport(ids []int64) (string, error) {
-	payload, err := a.engine.ExportQuotes(a.context(), ids)
+	payload, err := a.engine.PreviewQuoteBundle(a.context(), ids)
 	if err != nil {
 		return "", err
 	}
 	return string(payload), nil
+}
+
+func (a *App) ExportQuoteBundle(ids []int64) (string, error) {
+	payload, err := a.engine.ExportQuoteBundle(a.context(), ids)
+	if err != nil {
+		return "", err
+	}
+	return base64.StdEncoding.EncodeToString(payload), nil
+}
+
+func (a *App) ImportQuoteBundle(payloadBase64 string) (core.ImportResult, error) {
+	payload, err := base64.StdEncoding.DecodeString(strings.TrimSpace(payloadBase64))
+	if err != nil {
+		return core.ImportResult{}, fmt.Errorf("decode quote bundle: %w", err)
+	}
+	return a.engine.ImportSharedQuotes(a.context(), payload)
 }
 
 func (a *App) ImportQuotesFromFile(path string) (core.ImportResult, error) {
@@ -244,6 +313,20 @@ func (a *App) ImportQuotesPayload(payload string) (core.ImportResult, error) {
 	payload = strings.TrimSpace(payload)
 	if payload == "" {
 		return core.ImportResult{}, errors.New("import payload is empty")
+	}
+	var env core.SharedQuoteEnvelope
+	if json.Unmarshal([]byte(payload), &env) == nil && env.SchemaVersion == core.BundleSchemaVersion {
+		for _, quote := range env.Quotes {
+			if len(quote.Attachments) > 0 {
+				return core.ImportResult{}, errors.New("image attachments require importing the .irecall bundle")
+			}
+		}
+		env.SchemaVersion = core.ShareSchemaVersion
+		legacyPayload, err := json.Marshal(env)
+		if err != nil {
+			return core.ImportResult{}, err
+		}
+		return a.engine.ImportSharedQuotes(a.context(), legacyPayload)
 	}
 	return a.engine.ImportSharedQuotes(a.context(), []byte(payload))
 }

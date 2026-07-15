@@ -758,3 +758,15 @@ Response:
 ### `GET /bridge.js`
 
 Returns the JavaScript bridge used by the shipped frontend. This is not a public REST endpoint, but it is part of the current web runtime.
+
+## Image attachment endpoints
+
+The authenticated web bridge uses these additional endpoints:
+
+- `POST /api/app/add-quote-with-images` with `content` and up to five `{filename, mediaType, dataBase64}` images.
+- `POST /api/app/update-quote-with-images` with `id`, `content`, `retainedIds`, and new `images`.
+- `GET /api/app/quote-attachment-content?id=...` returns authenticated image bytes with the stored media type.
+- `POST /api/app/export-quote-bundle` returns a base64 `.irecall` ZIP bundle for selected quote IDs.
+- `POST /api/app/import-quote-bundle` accepts a base64 `.irecall` bundle.
+
+Images are limited to 10 MiB each, 25 MiB total per quote, and PNG/JPEG/WebP/GIF content detected from the actual bytes.

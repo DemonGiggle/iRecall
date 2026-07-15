@@ -51,7 +51,7 @@ type QuoteSharePage struct {
 
 func NewQuoteSharePage(engine *core.Engine, width, height int) QuoteSharePage {
 	input := textinput.New()
-	input.Placeholder = "/tmp/irecall-share.json"
+	input.Placeholder = "/tmp/irecall-share.irecall"
 	input.CharLimit = 4096
 	input.Focus()
 
@@ -158,7 +158,7 @@ func (p QuoteSharePage) View() string {
 		"",
 		styles.SectionHeader.Render("Save To"),
 		pathField,
-		styles.Muted.Render("  Export to a JSON file and transfer it manually to the recipient."),
+		styles.Muted.Render("  Export to a portable .irecall bundle and transfer it manually to the recipient."),
 		"",
 		payloadBox,
 		"",
@@ -221,13 +221,14 @@ func (p QuoteSharePage) exportQuotes() tea.Cmd {
 	engine := p.engine
 	ids := quoteIDs(p.quotes)
 	return func() tea.Msg {
-		payload, err := engine.ExportQuotes(context.Background(), ids)
+		payload, err := engine.PreviewQuoteBundle(context.Background(), ids)
 		return QuoteShareLoadedMsg{Payload: string(payload), Err: err}
 	}
 }
 
 func (p QuoteSharePage) savePayload(path string) tea.Cmd {
-	payload := p.payload
+	engine := p.engine
+	ids := quoteIDs(p.quotes)
 	return func() tea.Msg {
 		dir := filepath.Dir(path)
 		if dir != "." && dir != "" {
@@ -235,7 +236,11 @@ func (p QuoteSharePage) savePayload(path string) tea.Cmd {
 				return QuoteShareSavedMsg{Err: fmt.Errorf("create share directory: %w", err)}
 			}
 		}
-		if err := os.WriteFile(path, []byte(payload), 0o600); err != nil {
+		payload, err := engine.ExportQuoteBundle(context.Background(), ids)
+		if err != nil {
+			return QuoteShareSavedMsg{Err: err}
+		}
+		if err := os.WriteFile(path, payload, 0o600); err != nil {
 			return QuoteShareSavedMsg{Err: fmt.Errorf("write share file: %w", err)}
 		}
 		return QuoteShareSavedMsg{Path: path}

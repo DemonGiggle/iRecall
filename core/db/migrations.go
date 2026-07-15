@@ -34,6 +34,11 @@ var migrations = []migration{
 		name:    "recall_history",
 		up:      upRecallHistory,
 	},
+	{
+		version: 5,
+		name:    "quote_image_attachments",
+		up:      upQuoteImageAttachments,
+	},
 }
 
 const initialSchemaSQL = `
@@ -357,4 +362,22 @@ func upRecallHistory(tx *sql.Tx) error {
 		}
 	}
 	return nil
+}
+
+func upQuoteImageAttachments(tx *sql.Tx) error {
+	_, err := tx.Exec(`CREATE TABLE IF NOT EXISTS quote_attachments (
+		id           TEXT PRIMARY KEY,
+		quote_id     INTEGER NOT NULL REFERENCES quotes(id) ON DELETE CASCADE,
+		filename     TEXT NOT NULL,
+		media_type   TEXT NOT NULL,
+		size_bytes   INTEGER NOT NULL,
+		width        INTEGER NOT NULL,
+		height       INTEGER NOT NULL,
+		sha256       TEXT NOT NULL,
+		storage_path TEXT NOT NULL UNIQUE,
+		created_at   INTEGER NOT NULL
+	);
+	CREATE INDEX IF NOT EXISTS idx_quote_attachments_quote_id
+		ON quote_attachments(quote_id, created_at, id);`)
+	return err
 }

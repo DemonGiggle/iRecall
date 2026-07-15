@@ -37,7 +37,7 @@ type QuoteImportPage struct {
 
 func NewQuoteImportPage(engine *core.Engine, width, height int) QuoteImportPage {
 	input := textinput.New()
-	input.Placeholder = "/tmp/irecall-share.json"
+	input.Placeholder = "/tmp/irecall-share.irecall"
 	input.CharLimit = 4096
 	input.Focus()
 	return QuoteImportPage{
@@ -110,7 +110,7 @@ func (p QuoteImportPage) View() string {
 		}
 	}
 
-	summary := styles.QuoteItem.Render("Import a quote share JSON file exported from another iRecall instance.")
+	summary := styles.QuoteItem.Render("Import an .irecall bundle or legacy JSON share file exported from another iRecall instance.")
 	pathField := styles.PanelActive.Width(max(44, p.width-24)).Render(p.pathInput.View())
 
 	var resultBox string
@@ -127,7 +127,7 @@ func (p QuoteImportPage) View() string {
 		"",
 		styles.SectionHeader.Render("Import From"),
 		pathField,
-		styles.Muted.Render("  The file must contain the iRecall share envelope exported by another user."),
+		styles.Muted.Render("  The file must be an iRecall bundle or a legacy JSON share envelope."),
 		"",
 		resultBox,
 		status,

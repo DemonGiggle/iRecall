@@ -18,10 +18,38 @@ interface Quote {
   SourceName: string;
   Content: string;
   Tags: string[];
+  Attachments: QuoteAttachment[];
   Version: number;
   IsOwnedByMe: boolean;
   CreatedAt: string;
   UpdatedAt: string;
+}
+
+interface QuoteAttachment {
+  ID: string;
+  Filename: string;
+  MediaType: string;
+  Size: number;
+  Width: number;
+  Height: number;
+  CreatedAt: string;
+}
+
+interface ImageInputPayload {
+  filename: string;
+  mediaType: string;
+  dataBase64: string;
+}
+
+interface QuoteMutationResult {
+  Quote: Quote;
+  Warnings: string[];
+}
+
+interface StagedImage {
+  payload: ImageInputPayload;
+  previewURL: string;
+  size: number;
 }
 
 interface UserProfile {
@@ -137,9 +165,14 @@ interface DesktopBackend {
   ListQuotesPage(limit: number, offset: number): Promise<Quote[]>;
   ListQuotes(): Promise<Quote[]>;
   AddQuote(content: string): Promise<Quote>;
+  AddQuoteWithImages(content: string, images: ImageInputPayload[]): Promise<QuoteMutationResult>;
   SaveRecallAsQuote(question: string, response: string, keywords: string[]): Promise<Quote>;
   RefineQuoteDraft(content: string): Promise<string>;
   UpdateQuote(id: number, content: string): Promise<Quote>;
+  UpdateQuoteWithImages(id: number, content: string, retainedIds: string[], images: ImageInputPayload[]): Promise<QuoteMutationResult>;
+  GetQuoteAttachmentData(id: string): Promise<{ attachment: QuoteAttachment; dataBase64: string }>;
+  ExportQuoteBundle(ids: number[]): Promise<string>;
+  ImportQuoteBundle(payloadBase64: string): Promise<ImportResult>;
   DeleteQuotes(ids: number[]): Promise<void>;
   PreviewQuoteExport(ids: number[]): Promise<string>;
   ImportQuotesPayload(payload: string): Promise<ImportResult>;
@@ -194,6 +227,8 @@ type OverlayState =
       isError: boolean;
       previewOriginal: string;
       previewRefined: string;
+      retainedAttachments: QuoteAttachment[];
+      newImages: StagedImage[];
     }
   | { type: "deleteQuotes"; context: QuoteContext; ids: number[]; busy: boolean; status: string; isError: boolean }
   | { type: "deleteHistory"; ids: number[]; busy: boolean; status: string; isError: boolean }
@@ -218,6 +253,7 @@ type OverlayState =
       status: string;
       isError: boolean;
       result: ImportResult | null;
+      bundle: boolean;
     }
   | { type: "quoteInspect"; context: QuoteContext; quote: Quote }
   | { type: "apiTokenReveal"; token: string; tokenPrefix: string }
@@ -382,6 +418,8 @@ const state: AppState = {
   overlay: null,
   toast: null,
 };
+
+const attachmentDataURLs = new Map<string, string>();
 
 let rootEl: HTMLElement | null = null;
 let handlersInstalled = false;
@@ -593,9 +631,11 @@ async function loadImportFile(input: HTMLInputElement): Promise<void> {
   if (!file || state.overlay?.type !== "importQuotes") {
     return;
   }
-  const payload = await file.text();
+  const bundle = file.name.toLowerCase().endsWith(".irecall") || file.type === "application/zip";
+  const payload = bundle ? arrayBufferToBase64(await file.arrayBuffer()) : await file.text();
   state.overlay.filename = file.name;
   state.overlay.payload = payload;
+  state.overlay.bundle = bundle;
   state.overlay.path = file.name;
   state.overlay.status = `Loaded ${file.name}`;
   state.overlay.isError = false;
@@ -752,6 +792,22 @@ async function handleClick(event: MouseEvent): Promise<void> {
       return;
     case "quote-editor-reject-refined":
       rejectRefinedDraft();
+      return;
+    case "quote-editor-remove-existing-image":
+      if (state.overlay?.type === "quoteEditor") {
+        const id = actionEl.dataset.id ?? "";
+        state.overlay.retainedAttachments = state.overlay.retainedAttachments.filter((item) => item.ID !== id);
+        render();
+      }
+      return;
+    case "quote-editor-remove-new-image":
+      if (state.overlay?.type === "quoteEditor") {
+        const index = Number(actionEl.dataset.index ?? "-1");
+		const staged = state.overlay.newImages[index];
+		if (staged) URL.revokeObjectURL(staged.previewURL);
+        state.overlay.newImages.splice(index, 1);
+        render();
+      }
       return;
     case "overlay-close":
       closeOverlay();
@@ -962,6 +1018,9 @@ function handleChange(event: Event): void {
         void loadImportFile(target);
       }
       return;
+    case "quote-editor-images":
+      if (target instanceof HTMLInputElement) void loadQuoteEditorImages(target);
+      return;
     default:
       return;
   }
@@ -1166,8 +1225,11 @@ function openQuoteEditor(mode: "add" | "edit", quote?: Quote): void {
     isError: false,
     previewOriginal: "",
     previewRefined: "",
+    retainedAttachments: [...(quote?.Attachments ?? [])],
+    newImages: [],
   };
   render();
+  if (quote) void loadAttachmentPreviews(quote.Attachments ?? []);
 }
 
 function openCurrentQuoteEditor(context: QuoteContext): void {
@@ -1263,6 +1325,7 @@ function openImportOverlay(): void {
     status: "",
     isError: false,
     result: null,
+    bundle: false,
   };
   render();
 }
@@ -1283,6 +1346,29 @@ function openQuoteInspectOverlay(context: QuoteContext, index: number): void {
   }
   state.overlay = { type: "quoteInspect", context, quote };
   render();
+  void loadAttachmentPreviews(quote.Attachments ?? []);
+}
+
+async function loadAttachmentPreviews(attachments: QuoteAttachment[]): Promise<void> {
+	if (isWebRuntime()) {
+		for (const attachment of attachments) {
+			attachmentDataURLs.set(attachment.ID, `/api/app/quote-attachment-content?id=${encodeURIComponent(attachment.ID)}`);
+		}
+		render();
+		return;
+	}
+  let changed = false;
+  await Promise.all(attachments.map(async (attachment) => {
+    if (attachmentDataURLs.has(attachment.ID)) return;
+    try {
+      const result = await backend().GetQuoteAttachmentData(attachment.ID);
+      attachmentDataURLs.set(attachment.ID, `data:${attachment.MediaType};base64,${result.dataBase64}`);
+      changed = true;
+    } catch {
+      // Metadata remains useful when an individual managed file is unavailable.
+    }
+  }));
+  if (changed) render();
 }
 
 async function saveProfileName(): Promise<void> {
@@ -1337,10 +1423,20 @@ async function saveQuoteEditor(): Promise<void> {
   render();
 
   try {
-    const quote =
+    const result =
       state.overlay.mode === "add"
-        ? await backend().AddQuote(content)
-        : await backend().UpdateQuote(state.overlay.quoteId ?? 0, content);
+        ? await backend().AddQuoteWithImages(content, state.overlay.newImages.map((image) => image.payload))
+        : await backend().UpdateQuoteWithImages(
+            state.overlay.quoteId ?? 0,
+            content,
+            state.overlay.retainedAttachments.map((attachment) => attachment.ID),
+            state.overlay.newImages.map((image) => image.payload),
+          );
+    const quote = result.Quote;
+    if (result.Warnings?.length) {
+      showToast(result.Warnings.join(" "), false);
+    }
+    revokeQuoteEditorPreviewURLs(state.overlay);
     state.overlay = null;
     applyQuoteUpdate(quote);
     await loadQuotes();
@@ -1352,6 +1448,45 @@ async function saveQuoteEditor(): Promise<void> {
     }
     render();
   }
+}
+
+async function loadQuoteEditorImages(input: HTMLInputElement): Promise<void> {
+  if (state.overlay?.type !== "quoteEditor") return;
+  const files = Array.from(input.files ?? []);
+  const remaining = 5 - state.overlay.retainedAttachments.length - state.overlay.newImages.length;
+  if (files.length > remaining) {
+    state.overlay.status = "A quote can have at most 5 images.";
+    state.overlay.isError = true;
+    render();
+    return;
+  }
+  try {
+    for (const file of files) {
+      if (file.size > 10 * 1024 * 1024) throw new Error(`${file.name} exceeds the 10 MiB limit.`);
+      const dataBase64 = await fileToBase64(file);
+      state.overlay.newImages.push({
+        payload: { filename: file.name, mediaType: file.type, dataBase64 },
+        previewURL: URL.createObjectURL(file),
+        size: file.size,
+      });
+    }
+    state.overlay.status = "Images staged. They will be copied when you save.";
+    state.overlay.isError = false;
+  } catch (error) {
+    state.overlay.status = getErrorMessage(error);
+    state.overlay.isError = true;
+  }
+  input.value = "";
+  render();
+}
+
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(reader.error ?? new Error("Could not read file."));
+    reader.onload = () => resolve(String(reader.result ?? "").split(",", 2)[1] ?? "");
+    reader.readAsDataURL(file);
+  });
 }
 
 async function refineQuoteEditor(): Promise<void> {
@@ -1464,7 +1599,7 @@ async function chooseSharePath(): Promise<void> {
     return;
   }
   if (isWebRuntime()) {
-    state.overlay.path = "irecall-share.json";
+    state.overlay.path = "irecall-share.irecall";
     render();
     return;
   }
@@ -1488,17 +1623,32 @@ async function saveSharePayload(): Promise<void> {
     return;
   }
   if (isWebRuntime()) {
-    const fileName = state.overlay.path.trim() || "irecall-share.json";
+    const fileName = state.overlay.path.trim() || "irecall-share.irecall";
     if (!state.overlay.payload.trim()) {
       state.overlay.status = "Export payload is not ready yet.";
       state.overlay.isError = true;
       render();
       return;
     }
-    downloadTextFile(fileName, state.overlay.payload);
-    state.overlay.status = `Downloaded ${fileName}`;
-    state.overlay.isError = false;
+    state.overlay.busy = true;
     render();
+    try {
+      const payloadBase64 = await backend().ExportQuoteBundle(state.overlay.ids);
+      downloadBinaryFile(fileName, payloadBase64, "application/zip");
+      if (state.overlay?.type === "shareQuotes") {
+        state.overlay.busy = false;
+        state.overlay.status = `Downloaded ${fileName}`;
+        state.overlay.isError = false;
+        render();
+      }
+    } catch (error) {
+      if (state.overlay?.type === "shareQuotes") {
+        state.overlay.busy = false;
+        state.overlay.status = getErrorMessage(error);
+        state.overlay.isError = true;
+        render();
+      }
+    }
     return;
   }
   const path = state.overlay.path.trim();
@@ -1587,7 +1737,11 @@ async function importQuotes(): Promise<void> {
   render();
 
   try {
-    const result = isWebRuntime() ? await backend().ImportQuotesPayload(payload) : await backend().ImportQuotesFromFile(path);
+    const result = isWebRuntime()
+      ? state.overlay.bundle
+        ? await backend().ImportQuoteBundle(payload)
+        : await backend().ImportQuotesPayload(payload)
+      : await backend().ImportQuotesFromFile(path);
     if (state.overlay?.type !== "importQuotes") {
       return;
     }
@@ -1796,8 +1950,14 @@ function closeOverlay(): void {
   if ("busy" in state.overlay && state.overlay.busy) {
     return;
   }
+  revokeQuoteEditorPreviewURLs(state.overlay);
   state.overlay = null;
   render();
+}
+
+function revokeQuoteEditorPreviewURLs(overlay: OverlayState): void {
+  if (overlay.type !== "quoteEditor") return;
+  for (const image of overlay.newImages) URL.revokeObjectURL(image.previewURL);
 }
 
 function showToast(message: string, isError = false): void {
@@ -2907,6 +3067,17 @@ function renderQuoteDetail(quote: Quote | null, context: QuoteContext): string {
           }
         </div>
       </div>
+      ${quote.Attachments?.length ? `<div class="detail-block">
+        <div class="muted">Images</div>
+        <div class="attachment-grid">${quote.Attachments.map((attachment) => {
+          const src = attachmentDataURLs.get(attachment.ID);
+          return `<a class="attachment-card" ${src ? `href="${escapeAttribute(src)}" target="_blank"` : ""}>
+            ${src ? `<img src="${escapeAttribute(src)}" alt="${escapeAttribute(attachment.Filename)}" />` : `<div class="attachment-placeholder">Loading…</div>`}
+            <div class="attachment-name">${escapeHtml(attachment.Filename)}</div>
+            <div class="muted">${attachment.Width}×${attachment.Height} · ${formatBytes(attachment.Size)}</div>
+          </a>`;
+        }).join("")}</div>
+      </div>` : ""}
       <div class="toolbar toolbar-inline">
         <button class="button" data-action="quote-edit-current" data-context="${context}" type="button">Edit</button>
         <button class="button" data-action="quote-share-current" data-context="${context}" type="button">Share</button>
@@ -2994,6 +3165,14 @@ function renderOverlay(overlay: OverlayState): string {
                     <span>Quote Content</span>
                     <textarea class="text-area" data-bind="quote-editor-content" rows="10" placeholder="Type or paste your note here.">${escapeHtml(overlay.content)}</textarea>
                   </label>
+                  <label class="field">
+                    <span>Images (${overlay.retainedAttachments.length + overlay.newImages.length}/5)</span>
+                    <input class="text-input" data-bind="quote-editor-images" type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple />
+                  </label>
+                  <div class="attachment-grid">
+                    ${overlay.retainedAttachments.map((attachment) => renderEditorAttachment(attachment)).join("")}
+                    ${overlay.newImages.map((image, index) => renderStagedAttachment(image, index)).join("")}
+                  </div>
                 `
             }
             <div class="muted modal-copy">
@@ -3089,10 +3268,10 @@ function renderOverlay(overlay: OverlayState): string {
               <span>${isWebRuntime() ? "Download As" : "Save To"}</span>
               ${
                 isWebRuntime()
-                  ? `<input class="text-input" data-bind="share-path" value="${escapeAttribute(overlay.path || "irecall-share.json")}" placeholder="irecall-share.json" />`
+                  ? `<input class="text-input" data-bind="share-path" value="${escapeAttribute(overlay.path || "irecall-share.irecall")}" placeholder="irecall-share.irecall" />`
                   : `
                     <div class="path-row">
-                      <input class="text-input" data-bind="share-path" value="${escapeAttribute(overlay.path)}" placeholder="/path/to/irecall-share.json" />
+                      <input class="text-input" data-bind="share-path" value="${escapeAttribute(overlay.path)}" placeholder="/path/to/irecall-share.irecall" />
                       <button class="button" data-action="share-browse" type="button" ${overlay.busy ? "disabled" : ""}>Browse</button>
                     </div>
                   `
@@ -3100,8 +3279,8 @@ function renderOverlay(overlay: OverlayState): string {
             </label>
             <div class="muted modal-copy">${
               isWebRuntime()
-                ? "Download the JSON payload locally, then transfer it manually to the recipient."
-                : "Export to a JSON file and transfer it manually to the recipient."
+                ? "Download the portable .irecall bundle locally, then transfer it manually to the recipient."
+                : "Export a portable .irecall bundle and transfer it manually to the recipient."
             }</div>
             <div class="toolbar toolbar-inline">
               <button class="button" data-action="share-toggle-payload" type="button" ${!overlay.payload ? "disabled" : ""}>
@@ -3131,14 +3310,14 @@ function renderOverlay(overlay: OverlayState): string {
                 isWebRuntime()
                   ? `
                     <input class="text-input" data-bind="import-path" value="${escapeAttribute(overlay.path)}" placeholder="Choose a local JSON file" readonly />
-                    <input data-bind="import-file" type="file" accept="application/json,.json" hidden />
+                    <input data-bind="import-file" type="file" accept=".irecall,application/zip,application/json,.json" hidden />
                     <div class="toolbar">
                       <button class="button" data-action="import-browse" type="button" ${overlay.busy ? "disabled" : ""}>Choose File</button>
                     </div>
                   `
                   : `
                     <div class="path-row">
-                      <input class="text-input" data-bind="import-path" value="${escapeAttribute(overlay.path)}" placeholder="/path/to/irecall-share.json" />
+                      <input class="text-input" data-bind="import-path" value="${escapeAttribute(overlay.path)}" placeholder="/path/to/irecall-share.irecall" />
                       <button class="button" data-action="import-browse" type="button" ${overlay.busy ? "disabled" : ""}>Browse</button>
                     </div>
                 `
@@ -3224,6 +3403,25 @@ function renderOverlay(overlay: OverlayState): string {
     case "notice":
       return "";
   }
+}
+
+function renderEditorAttachment(attachment: QuoteAttachment): string {
+  const src = attachmentDataURLs.get(attachment.ID);
+  return `<div class="attachment-card">
+    ${src ? `<img src="${escapeAttribute(src)}" alt="${escapeAttribute(attachment.Filename)}" />` : `<div class="attachment-placeholder">Image</div>`}
+    <div class="attachment-name">${escapeHtml(attachment.Filename)}</div>
+    <div class="muted">${attachment.Width}×${attachment.Height} · ${formatBytes(attachment.Size)}</div>
+    <button class="button button-danger" data-action="quote-editor-remove-existing-image" data-id="${escapeAttribute(attachment.ID)}" type="button">Remove</button>
+  </div>`;
+}
+
+function renderStagedAttachment(image: StagedImage, index: number): string {
+  return `<div class="attachment-card">
+    <img src="${escapeAttribute(image.previewURL)}" alt="${escapeAttribute(image.payload.filename)}" />
+    <div class="attachment-name">${escapeHtml(image.payload.filename)}</div>
+    <div class="muted">Staged · ${formatBytes(image.size)}</div>
+    <button class="button button-danger" data-action="quote-editor-remove-new-image" data-index="${index}" type="button">Remove</button>
+  </div>`;
 }
 
 function selectedQuotesByIds(context: QuoteContext, ids: number[]): Quote[] {
@@ -3500,6 +3698,30 @@ function isWebRuntime(): boolean {
 function downloadTextFile(fileName: string, content: string): void {
   const blob = new Blob([content], { type: "application/json;charset=utf-8" });
   const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
+  }
+  return btoa(binary);
+}
+
+function downloadBinaryFile(fileName: string, payloadBase64: string, mediaType: string): void {
+  const binary = atob(payloadBase64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  const url = URL.createObjectURL(new Blob([bytes], { type: mediaType }));
   const link = document.createElement("a");
   link.href = url;
   link.download = fileName;

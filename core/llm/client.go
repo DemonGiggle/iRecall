@@ -30,8 +30,31 @@ func NewClient(cfg ProviderConfig) *Client {
 
 // Message is a single chat turn.
 type Message struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
+	Role    string        `json:"role"`
+	Content string        `json:"content"`
+	Parts   []ContentPart `json:"-"`
+}
+
+type ContentPart struct {
+	Type     string         `json:"type"`
+	Text     string         `json:"text,omitempty"`
+	ImageURL *ImageURLValue `json:"image_url,omitempty"`
+}
+
+type ImageURLValue struct {
+	URL string `json:"url"`
+}
+
+func (m Message) MarshalJSON() ([]byte, error) {
+	type wireMessage struct {
+		Role    string `json:"role"`
+		Content any    `json:"content"`
+	}
+	content := any(m.Content)
+	if len(m.Parts) > 0 {
+		content = m.Parts
+	}
+	return json.Marshal(wireMessage{Role: m.Role, Content: content})
 }
 
 // ChatOptions controls optional per-request parameters.
@@ -50,7 +73,7 @@ func (c *Client) Chat(ctx context.Context, msgs []Message, tokenCh chan<- string
 
 	slog.Info("llm: chat request", "url", url, "model", c.cfg.Model, "stream", stream, "msg_count", len(msgs))
 	for i, m := range msgs {
-		slog.Debug("llm: chat message", "index", i, "role", m.Role, "content_len", len(m.Content))
+		slog.Debug("llm: chat message", "index", i, "role", m.Role, "content_len", len(m.Content), "part_count", len(m.Parts))
 	}
 
 	policy := policyForModel(c.cfg.Model)

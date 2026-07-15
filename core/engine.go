@@ -3,11 +3,15 @@ package core
 import (
 	"context"
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"math"
+	"net/http"
+	"os"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
@@ -22,11 +26,12 @@ import (
 // Engine is the central orchestrator. It owns the DB store and LLM client
 // and exposes the full recall workflow. No UI types are referenced here.
 type Engine struct {
-	store      *db.Store
-	llm        *llm.Client
-	keywordLLM *llm.Client
-	cfg        *Settings
-	profile    *UserProfile
+	store          *db.Store
+	llm            *llm.Client
+	keywordLLM     *llm.Client
+	cfg            *Settings
+	profile        *UserProfile
+	attachmentRoot string
 }
 
 const maxExtractedTags = 30
@@ -113,6 +118,10 @@ func (e *Engine) AddQuote(ctx context.Context, content string) (*Quote, error) {
 	return e.addQuoteWithSuggestedTags(ctx, content, nil)
 }
 
+func (e *Engine) AddQuoteWithImages(ctx context.Context, content string, images []ImageInput) (*QuoteMutationResult, error) {
+	return e.addQuoteWithImagesAndSuggestedTags(ctx, content, nil, images)
+}
+
 func (e *Engine) SaveRecallAsQuote(ctx context.Context, question, response string, keywords []string) (*Quote, error) {
 	question = strings.TrimSpace(question)
 	response = strings.TrimSpace(response)
@@ -136,9 +145,21 @@ func (e *Engine) SaveRecallAsQuote(ctx context.Context, question, response strin
 }
 
 func (e *Engine) addQuoteWithSuggestedTags(ctx context.Context, content string, suggestedTags []string) (*Quote, error) {
+	result, err := e.addQuoteWithImagesAndSuggestedTags(ctx, content, suggestedTags, nil)
+	if err != nil {
+		return nil, err
+	}
+	return &result.Quote, nil
+}
+
+func (e *Engine) addQuoteWithImagesAndSuggestedTags(ctx context.Context, content string, suggestedTags []string, images []ImageInput) (*QuoteMutationResult, error) {
 	content = strings.TrimSpace(content)
 	if content == "" {
 		return nil, fmt.Errorf("quote content is empty")
+	}
+	prepared, err := prepareImages(images, 0)
+	if err != nil {
+		return nil, err
 	}
 
 	slog.Info("engine: adding quote", "content_len", len(content), "content_preview", truncate(content, 100))
@@ -154,9 +175,33 @@ func (e *Engine) addQuoteWithSuggestedTags(ctx context.Context, content string, 
 		return nil, fmt.Errorf("store quote: %w", err)
 	}
 	slog.Info("engine: quote inserted", "id", id)
+	var storedRows []db.QuoteAttachmentRow
+	for _, image := range prepared {
+		row, writeErr := e.writePreparedImage(id, image)
+		if writeErr != nil {
+			for _, stored := range storedRows {
+				_ = os.Remove(filepath.Join(e.attachmentRoot, stored.StoragePath))
+			}
+			_ = e.store.DeleteQuote(id)
+			return nil, fmt.Errorf("store image: %w", writeErr)
+		}
+		if insertErr := e.store.InsertQuoteAttachment(row); insertErr != nil {
+			_ = os.Remove(filepath.Join(e.attachmentRoot, row.StoragePath))
+			for _, stored := range storedRows {
+				_ = os.Remove(filepath.Join(e.attachmentRoot, stored.StoragePath))
+			}
+			_ = e.store.DeleteQuote(id)
+			return nil, insertErr
+		}
+		storedRows = append(storedRows, row)
+	}
 
 	slog.Info("engine: extracting tags via LLM", "quote_id", id)
-	extractedTags, err := e.ExtractTags(ctx, content)
+	analysisImages := make([]ImageInput, len(prepared))
+	for i := range prepared {
+		analysisImages[i] = prepared[i].input
+	}
+	extractedTags, warnings, err := e.extractTagsWithImageInputs(ctx, content, analysisImages)
 	if err != nil {
 		slog.Error("engine: tag extraction failed, saving without tags", "quote_id", id, "error", err)
 		extractedTags = nil
@@ -182,7 +227,11 @@ func (e *Engine) addQuoteWithSuggestedTags(ctx context.Context, content string, 
 	}
 
 	slog.Info("engine: add quote complete", "id", id, "tag_count", len(tags))
-	return e.loadQuote(id)
+	quote, err := e.loadQuote(id)
+	if err != nil {
+		return nil, err
+	}
+	return &QuoteMutationResult{Quote: *quote, Warnings: warnings}, nil
 }
 
 // ListQuotes returns all quotes, newest first.
@@ -212,6 +261,9 @@ func (e *Engine) ListQuotesPage(ctx context.Context, limit, offset int) ([]Quote
 		return nil, err
 	}
 	quotes := rowsToQuotes(rows, e.localUserID())
+	if err := e.enrichQuoteAttachments(quotes); err != nil {
+		return nil, err
+	}
 	slog.Debug("engine: listed quotes", "count", len(quotes), "limit", limit, "offset", offset)
 	return quotes, nil
 }
@@ -219,7 +271,17 @@ func (e *Engine) ListQuotesPage(ctx context.Context, limit, offset int) ([]Quote
 // DeleteQuote removes a quote by ID.
 func (e *Engine) DeleteQuote(ctx context.Context, id int64) error {
 	slog.Info("engine: deleting quote", "id", id)
-	return e.store.DeleteQuote(id)
+	attachments, err := e.store.ListQuoteAttachments(id)
+	if err != nil {
+		return err
+	}
+	if err := e.store.DeleteQuote(id); err != nil {
+		return err
+	}
+	for _, a := range attachments {
+		_ = os.Remove(filepath.Join(e.attachmentRoot, filepath.Base(a.StoragePath)))
+	}
+	return nil
 }
 
 // DeleteQuotes removes multiple quotes by ID.
@@ -234,20 +296,111 @@ func (e *Engine) DeleteQuotes(ctx context.Context, ids []int64) error {
 
 // UpdateQuote rewrites quote content, regenerates tags, and refreshes FTS.
 func (e *Engine) UpdateQuote(ctx context.Context, id int64, content string) (*Quote, error) {
+	rows, err := e.store.ListQuoteAttachments(id)
+	if err != nil {
+		return nil, err
+	}
+	retained := make([]string, len(rows))
+	for i, row := range rows {
+		retained[i] = row.ID
+	}
+	result, err := e.UpdateQuoteWithImages(ctx, id, content, retained, nil)
+	if err != nil {
+		return nil, err
+	}
+	return &result.Quote, nil
+}
+
+func (e *Engine) UpdateQuoteWithImages(ctx context.Context, id int64, content string, retainedIDs []string, images []ImageInput) (*QuoteMutationResult, error) {
 	content = strings.TrimSpace(content)
 	if content == "" {
 		return nil, fmt.Errorf("quote content is empty")
 	}
 
+	currentQuote, err := e.loadQuote(id)
+	if err != nil {
+		return nil, err
+	}
+	current, err := e.store.ListQuoteAttachments(id)
+	if err != nil {
+		return nil, err
+	}
+	byID := make(map[string]db.QuoteAttachmentRow, len(current))
+	for _, row := range current {
+		byID[row.ID] = row
+	}
+	seen := map[string]bool{}
+	var retained []db.QuoteAttachmentRow
+	for _, attachmentID := range retainedIDs {
+		if seen[attachmentID] {
+			continue
+		}
+		row, ok := byID[attachmentID]
+		if !ok {
+			return nil, fmt.Errorf("attachment %q does not belong to quote %d", attachmentID, id)
+		}
+		seen[attachmentID] = true
+		retained = append(retained, row)
+	}
+	prepared, err := prepareImages(images, len(retained))
+	if err != nil {
+		return nil, err
+	}
+	totalBytes := int64(0)
+	for _, row := range retained {
+		totalBytes += row.Size
+	}
+	for _, image := range images {
+		totalBytes += int64(len(image.Data))
+	}
+	if totalBytes > MaxQuoteImageBytes {
+		return nil, fmt.Errorf("quote images exceed the 25 MiB total limit")
+	}
+	analysisImages := make([]ImageInput, 0, len(retained)+len(images))
+	for _, row := range retained {
+		data, readErr := e.attachmentData(row)
+		if readErr != nil {
+			return nil, readErr
+		}
+		analysisImages = append(analysisImages, ImageInput{Filename: row.Filename, MediaType: row.MediaType, Data: data})
+	}
+	for i := range prepared {
+		analysisImages = append(analysisImages, prepared[i].input)
+	}
+	tags, warnings, tagErr := e.extractTagsWithImageInputs(ctx, content, analysisImages)
+	if tagErr != nil {
+		tags = slices.Clone(currentQuote.Tags)
+		warnings = append(warnings, "Tag generation failed; existing tags were kept. You can regenerate them later.")
+	}
+
+	var storedRows []db.QuoteAttachmentRow
+	cleanupStoredRows := func() {
+		for _, stored := range storedRows {
+			_ = e.store.DeleteQuoteAttachment(stored.ID)
+			_ = os.Remove(filepath.Join(e.attachmentRoot, filepath.Base(stored.StoragePath)))
+		}
+	}
+	keepStoredRows := false
+	defer func() {
+		if !keepStoredRows {
+			cleanupStoredRows()
+		}
+	}()
+	for _, image := range prepared {
+		row, writeErr := e.writePreparedImage(id, image)
+		if writeErr != nil {
+			return nil, fmt.Errorf("store image: %w", writeErr)
+		}
+		if insertErr := e.store.InsertQuoteAttachment(row); insertErr != nil {
+			_ = os.Remove(filepath.Join(e.attachmentRoot, row.StoragePath))
+			return nil, insertErr
+		}
+		storedRows = append(storedRows, row)
+	}
+
 	slog.Info("engine: updating quote", "id", id, "content_len", len(content), "content_preview", truncate(content, 100))
 	if err := e.store.UpdateQuoteContent(id, content); err != nil {
 		return nil, fmt.Errorf("update quote content: %w", err)
-	}
-
-	tags, err := e.ExtractTags(ctx, content)
-	if err != nil {
-		slog.Error("engine: tag extraction failed during update, saving without tags", "quote_id", id, "error", err)
-		tags = []string{}
 	}
 
 	var tagIDs []int64
@@ -265,8 +418,21 @@ func (e *Engine) UpdateQuote(ctx context.Context, id int64, content string) (*Qu
 	if err := e.store.UpdateQuoteFTS(id, tags); err != nil {
 		return nil, fmt.Errorf("update quote fts: %w", err)
 	}
-
-	return e.loadQuote(id)
+	for _, row := range current {
+		if seen[row.ID] {
+			continue
+		}
+		if err := e.store.DeleteQuoteAttachment(row.ID); err != nil {
+			return nil, err
+		}
+		_ = os.Remove(filepath.Join(e.attachmentRoot, filepath.Base(row.StoragePath)))
+	}
+	quote, err := e.loadQuote(id)
+	if err != nil {
+		return nil, err
+	}
+	keepStoredRows = true
+	return &QuoteMutationResult{Quote: *quote, Warnings: warnings}, nil
 }
 
 // RegenerateQuoteKeywords re-runs tag extraction for one stored quote and persists the result.
@@ -279,7 +445,19 @@ func (e *Engine) RegenerateQuoteKeywords(ctx context.Context, id int64, globalID
 	oldKeywords := slices.Clone(quote.Tags)
 	slog.Info("engine: regenerating quote keywords", "id", quote.ID, "global_id", quote.GlobalID, "old_keywords", oldKeywords)
 
-	newKeywords, err := e.ExtractTags(ctx, quote.Content)
+	var images []ImageInput
+	rows, err := e.store.ListQuoteAttachments(quote.ID)
+	if err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		data, readErr := e.attachmentData(row)
+		if readErr != nil {
+			return nil, readErr
+		}
+		images = append(images, ImageInput{Filename: row.Filename, MediaType: row.MediaType, Data: data})
+	}
+	newKeywords, _, err := e.extractTagsWithImageInputs(ctx, quote.Content, images)
 	if err != nil {
 		return nil, fmt.Errorf("extract quote keywords: %w", err)
 	}
@@ -402,6 +580,76 @@ func (e *Engine) ExtractTags(ctx context.Context, text string) ([]string, error)
 	}
 	slog.Info("engine: repaired tags", "tags", repaired)
 	return repaired, nil
+}
+
+func (e *Engine) extractTagsWithImageInputs(ctx context.Context, text string, images []ImageInput) ([]string, []string, error) {
+	if e.isMockLLMEnabled() {
+		tags, _ := normalizeTags(mockSplitKeywords(text))
+		return tags, nil, nil
+	}
+	var combined []string
+	var warnings []string
+	var extractionErrors []error
+	successfulSources := 0
+
+	textTags, textErr := e.ExtractTags(ctx, text)
+	if textErr != nil {
+		warnings = append(warnings, "Text tag generation failed; image tags were still attempted.")
+		extractionErrors = append(extractionErrors, fmt.Errorf("extract text tags: %w", textErr))
+	} else {
+		combined = append(combined, textTags...)
+		successfulSources++
+	}
+
+	for i, image := range images {
+		imageTags, imageErr := e.extractImageTags(ctx, image)
+		if imageErr != nil {
+			label := strings.TrimSpace(image.Filename)
+			if label == "" {
+				label = fmt.Sprintf("image %d", i+1)
+			}
+			warnings = append(warnings, fmt.Sprintf("Tag generation failed for %s; other tags were kept.", label))
+			extractionErrors = append(extractionErrors, fmt.Errorf("extract tags for %s: %w", label, imageErr))
+			continue
+		}
+		combined = append(combined, imageTags...)
+		successfulSources++
+	}
+
+	if successfulSources == 0 {
+		return nil, warnings, errors.Join(extractionErrors...)
+	}
+	tags, _ := normalizeTags(combined)
+	return tags, warnings, nil
+}
+
+func (e *Engine) extractImageTags(ctx context.Context, image ImageInput) ([]string, error) {
+	mediaType := image.MediaType
+	if mediaType == "" && len(image.Data) > 0 {
+		mediaType = http.DetectContentType(image.Data[:min(len(image.Data), 512)])
+	}
+	parts := []llm.ContentPart{
+		{Type: "text", Text: "Extract keyword tags for this image."},
+		{Type: "image_url", ImageURL: &llm.ImageURLValue{
+			URL: "data:" + mediaType + ";base64," + base64.StdEncoding.EncodeToString(image.Data),
+		}},
+	}
+	msgs := []llm.Message{
+		{Role: "system", Content: `You are a JSON keyword extractor. Output ONLY a valid JSON array of short lowercase English keyword strings describing the supplied image. Translate non-English concepts into natural English search terms, while preserving proper nouns, product names, acronyms, and code identifiers. Prefer high-signal visible concepts and return up to 30 tags. No explanation, markdown, or extra text.`},
+		{Role: "user", Parts: parts},
+	}
+	zero := 0.0
+	maxTok := 384
+	raw, err := e.keywordLLM.Chat(ctx, msgs, nil, llm.ChatOptions{Temperature: &zero, MaxTokens: &maxTok})
+	if err != nil {
+		return nil, err
+	}
+	parsed, err := parseJSONStringArray(raw)
+	if err != nil {
+		return nil, err
+	}
+	normalized, _ := normalizeTags(parsed)
+	return normalized, nil
 }
 
 func (e *Engine) repairTags(ctx context.Context, text string, initial []string) ([]string, error) {
@@ -609,6 +857,9 @@ func (e *Engine) SearchQuotes(ctx context.Context, keywords []string) ([]Quote, 
 		return nil, err
 	}
 	quotes := rowsToQuotes(rows, e.localUserID())
+	if err := e.enrichQuoteAttachments(quotes); err != nil {
+		return nil, err
+	}
 	if minRelevance > 0 {
 		filtered := make([]Quote, 0, len(quotes))
 		for _, q := range quotes {
@@ -974,12 +1225,16 @@ func (e *Engine) GetRecallHistory(ctx context.Context, id int64) (*RecallHistory
 	if err != nil {
 		return nil, err
 	}
+	quotes := rowsToQuotes(row.Quotes, e.localUserID())
+	if err := e.enrichQuoteAttachments(quotes); err != nil {
+		return nil, err
+	}
 	return &RecallHistoryEntry{
 		ID:        row.ID,
 		Question:  row.Question,
 		Response:  row.Response,
 		CreatedAt: time.Unix(row.CreatedAt, 0),
-		Quotes:    rowsToQuotes(row.Quotes, e.localUserID()),
+		Quotes:    quotes,
 	}, nil
 }
 
@@ -1027,6 +1282,9 @@ func (e *Engine) loadQuote(id int64) (*Quote, error) {
 		return nil, err
 	}
 	quotes := rowsToQuotes([]db.QuoteRow{row}, e.localUserID())
+	if err := e.enrichQuoteAttachments(quotes); err != nil {
+		return nil, err
+	}
 	return &quotes[0], nil
 }
 

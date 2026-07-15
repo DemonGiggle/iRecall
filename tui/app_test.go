@@ -118,7 +118,7 @@ func TestAppOpensAndClosesQuoteShareOverlay(t *testing.T) {
 	msg := cmd()
 	model, _ = app.Update(msg)
 	app, _ = model.(App)
-	if !containsAllText(app.View(), "Share Quotes", "Export Payload", "\"schema_version\": 2") {
+	if !containsAllText(app.View(), "Share Quotes", "Export Payload", "\"schema_version\": 3") {
 		t.Fatalf("share overlay view missing expected content:\n%s", app.View())
 	}
 

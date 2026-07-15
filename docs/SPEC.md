@@ -346,15 +346,15 @@ func (e *Engine) ChangeWebPassword(ctx context.Context, current, next, confirm s
 
 ### Add / update quote flow
 
-`AddQuote` and `UpdateQuote` both:
+`AddQuote` and `UpdateQuote` preserve their text-only compatibility. The attachment-aware variants accept new image bytes and, for updates, the IDs of retained attachments. They:
 
 1. validate content
-2. persist the row
-3. ask the configured provider for tags
+2. validate and copy up to five supported images into managed storage
+3. ask the configured provider for tags using text and images
 4. upsert tags and associations when tag extraction succeeds
 5. rewrite the FTS row so content and tags stay in sync
 
-If tag extraction fails, the quote still persists.
+If multimodal tag extraction fails, iRecall retries with text alone and returns a warning. The quote and managed images still persist.
 
 ### Recall flow
 

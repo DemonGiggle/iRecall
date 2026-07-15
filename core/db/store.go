@@ -57,6 +57,19 @@ type RecallHistoryRow struct {
 	Quotes    []QuoteRow
 }
 
+type QuoteAttachmentRow struct {
+	ID          string
+	QuoteID     int64
+	Filename    string
+	MediaType   string
+	Size        int64
+	Width       int
+	Height      int
+	SHA256      string
+	StoragePath string
+	CreatedAt   int64
+}
+
 // Open opens (or creates) the SQLite database at path and runs migrations.
 func Open(path string) (*Store, error) {
 	slog.Info("db: opening database", "path", path)
@@ -169,6 +182,110 @@ func (s *Store) DeleteQuote(id int64) error {
 		slog.Error("db: delete quote failed", "id", id, "error", err)
 	}
 	return err
+}
+
+func (s *Store) InsertQuoteAttachment(a QuoteAttachmentRow) error {
+	_, err := s.db.Exec(`INSERT INTO quote_attachments(
+		id, quote_id, filename, media_type, size_bytes, width, height, sha256, storage_path, created_at
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		a.ID, a.QuoteID, a.Filename, a.MediaType, a.Size, a.Width, a.Height, a.SHA256, a.StoragePath, a.CreatedAt)
+	if err != nil {
+		return fmt.Errorf("insert quote attachment: %w", err)
+	}
+	return nil
+}
+
+func (s *Store) ListQuoteAttachments(quoteID int64) ([]QuoteAttachmentRow, error) {
+	rows, err := s.db.Query(`SELECT id, quote_id, filename, media_type, size_bytes, width, height, sha256, storage_path, created_at
+		FROM quote_attachments WHERE quote_id = ? ORDER BY created_at, id`, quoteID)
+	if err != nil {
+		return nil, fmt.Errorf("list quote attachments: %w", err)
+	}
+	defer rows.Close()
+	var out []QuoteAttachmentRow
+	for rows.Next() {
+		var a QuoteAttachmentRow
+		if err := rows.Scan(&a.ID, &a.QuoteID, &a.Filename, &a.MediaType, &a.Size, &a.Width, &a.Height, &a.SHA256, &a.StoragePath, &a.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, a)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) ListQuoteAttachmentsForQuotes(quoteIDs []int64) (map[int64][]QuoteAttachmentRow, error) {
+	out := make(map[int64][]QuoteAttachmentRow, len(quoteIDs))
+	const queryBatchSize = 900
+	for start := 0; start < len(quoteIDs); start += queryBatchSize {
+		end := min(start+queryBatchSize, len(quoteIDs))
+		batch := quoteIDs[start:end]
+		placeholders := strings.TrimSuffix(strings.Repeat("?,", len(batch)), ",")
+		args := make([]any, len(batch))
+		for i, id := range batch {
+			args[i] = id
+		}
+		rows, err := s.db.Query(`SELECT id, quote_id, filename, media_type, size_bytes, width, height, sha256, storage_path, created_at
+			FROM quote_attachments WHERE quote_id IN (`+placeholders+`) ORDER BY quote_id, created_at, id`, args...)
+		if err != nil {
+			return nil, fmt.Errorf("list quote attachments for quotes: %w", err)
+		}
+		for rows.Next() {
+			var a QuoteAttachmentRow
+			if err := rows.Scan(&a.ID, &a.QuoteID, &a.Filename, &a.MediaType, &a.Size, &a.Width, &a.Height, &a.SHA256, &a.StoragePath, &a.CreatedAt); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			out[a.QuoteID] = append(out[a.QuoteID], a)
+		}
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		rows.Close()
+	}
+	return out, nil
+}
+
+func (s *Store) GetQuoteAttachment(id string) (QuoteAttachmentRow, error) {
+	var a QuoteAttachmentRow
+	err := s.db.QueryRow(`SELECT id, quote_id, filename, media_type, size_bytes, width, height, sha256, storage_path, created_at
+		FROM quote_attachments WHERE id = ?`, id).Scan(
+		&a.ID, &a.QuoteID, &a.Filename, &a.MediaType, &a.Size, &a.Width, &a.Height, &a.SHA256, &a.StoragePath, &a.CreatedAt)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return QuoteAttachmentRow{}, fmt.Errorf("attachment %q not found", id)
+		}
+		return QuoteAttachmentRow{}, err
+	}
+	return a, nil
+}
+
+func (s *Store) DeleteQuoteAttachment(id string) error {
+	res, err := s.db.Exec(`DELETE FROM quote_attachments WHERE id = ?`, id)
+	if err != nil {
+		return fmt.Errorf("delete quote attachment: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return fmt.Errorf("attachment %q not found", id)
+	}
+	return nil
+}
+
+func (s *Store) ListAttachmentStoragePaths() (map[string]bool, error) {
+	rows, err := s.db.Query(`SELECT storage_path FROM quote_attachments`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]bool{}
+	for rows.Next() {
+		var path string
+		if err := rows.Scan(&path); err != nil {
+			return nil, err
+		}
+		out[path] = true
+	}
+	return out, rows.Err()
 }
 
 // UpdateQuoteContent rewrites quote content and bumps updated_at.
