@@ -213,6 +213,39 @@ func (s *Store) ListQuoteAttachments(quoteID int64) ([]QuoteAttachmentRow, error
 	return out, rows.Err()
 }
 
+func (s *Store) ListQuoteAttachmentsForQuotes(quoteIDs []int64) (map[int64][]QuoteAttachmentRow, error) {
+	out := make(map[int64][]QuoteAttachmentRow, len(quoteIDs))
+	const queryBatchSize = 900
+	for start := 0; start < len(quoteIDs); start += queryBatchSize {
+		end := min(start+queryBatchSize, len(quoteIDs))
+		batch := quoteIDs[start:end]
+		placeholders := strings.TrimSuffix(strings.Repeat("?,", len(batch)), ",")
+		args := make([]any, len(batch))
+		for i, id := range batch {
+			args[i] = id
+		}
+		rows, err := s.db.Query(`SELECT id, quote_id, filename, media_type, size_bytes, width, height, sha256, storage_path, created_at
+			FROM quote_attachments WHERE quote_id IN (`+placeholders+`) ORDER BY quote_id, created_at, id`, args...)
+		if err != nil {
+			return nil, fmt.Errorf("list quote attachments for quotes: %w", err)
+		}
+		for rows.Next() {
+			var a QuoteAttachmentRow
+			if err := rows.Scan(&a.ID, &a.QuoteID, &a.Filename, &a.MediaType, &a.Size, &a.Width, &a.Height, &a.SHA256, &a.StoragePath, &a.CreatedAt); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			out[a.QuoteID] = append(out[a.QuoteID], a)
+		}
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		rows.Close()
+	}
+	return out, nil
+}
+
 func (s *Store) GetQuoteAttachment(id string) (QuoteAttachmentRow, error) {
 	var a QuoteAttachmentRow
 	err := s.db.QueryRow(`SELECT id, quote_id, filename, media_type, size_bytes, width, height, sha256, storage_path, created_at

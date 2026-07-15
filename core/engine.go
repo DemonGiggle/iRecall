@@ -197,7 +197,11 @@ func (e *Engine) addQuoteWithImagesAndSuggestedTags(ctx context.Context, content
 	}
 
 	slog.Info("engine: extracting tags via LLM", "quote_id", id)
-	extractedTags, warnings, err := e.extractTagsWithImageInputs(ctx, content, images)
+	analysisImages := make([]ImageInput, len(prepared))
+	for i := range prepared {
+		analysisImages[i] = prepared[i].input
+	}
+	extractedTags, warnings, err := e.extractTagsWithImageInputs(ctx, content, analysisImages)
 	if err != nil {
 		slog.Error("engine: tag extraction failed, saving without tags", "quote_id", id, "error", err)
 		extractedTags = nil
@@ -313,6 +317,10 @@ func (e *Engine) UpdateQuoteWithImages(ctx context.Context, id int64, content st
 		return nil, fmt.Errorf("quote content is empty")
 	}
 
+	currentQuote, err := e.loadQuote(id)
+	if err != nil {
+		return nil, err
+	}
 	current, err := e.store.ListQuoteAttachments(id)
 	if err != nil {
 		return nil, err
@@ -356,12 +364,28 @@ func (e *Engine) UpdateQuoteWithImages(ctx context.Context, id int64, content st
 		}
 		analysisImages = append(analysisImages, ImageInput{Filename: row.Filename, MediaType: row.MediaType, Data: data})
 	}
-	analysisImages = append(analysisImages, images...)
+	for i := range prepared {
+		analysisImages = append(analysisImages, prepared[i].input)
+	}
 	tags, warnings, tagErr := e.extractTagsWithImageInputs(ctx, content, analysisImages)
 	if tagErr != nil {
-		tags = []string{}
+		tags = slices.Clone(currentQuote.Tags)
+		warnings = append(warnings, "Tag generation failed; existing tags were kept. You can regenerate them later.")
 	}
 
+	var storedRows []db.QuoteAttachmentRow
+	cleanupStoredRows := func() {
+		for _, stored := range storedRows {
+			_ = e.store.DeleteQuoteAttachment(stored.ID)
+			_ = os.Remove(filepath.Join(e.attachmentRoot, filepath.Base(stored.StoragePath)))
+		}
+	}
+	keepStoredRows := false
+	defer func() {
+		if !keepStoredRows {
+			cleanupStoredRows()
+		}
+	}()
 	for _, image := range prepared {
 		row, writeErr := e.writePreparedImage(id, image)
 		if writeErr != nil {
@@ -371,6 +395,7 @@ func (e *Engine) UpdateQuoteWithImages(ctx context.Context, id int64, content st
 			_ = os.Remove(filepath.Join(e.attachmentRoot, row.StoragePath))
 			return nil, insertErr
 		}
+		storedRows = append(storedRows, row)
 	}
 
 	slog.Info("engine: updating quote", "id", id, "content_len", len(content), "content_preview", truncate(content, 100))
@@ -406,6 +431,7 @@ func (e *Engine) UpdateQuoteWithImages(ctx context.Context, id int64, content st
 	if err != nil {
 		return nil, err
 	}
+	keepStoredRows = true
 	return &QuoteMutationResult{Quote: *quote, Warnings: warnings}, nil
 }
 

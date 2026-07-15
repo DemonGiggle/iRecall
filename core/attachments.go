@@ -182,11 +182,16 @@ func (e *Engine) GetQuoteAttachmentData(ctx context.Context, id string) (QuoteAt
 }
 
 func (e *Engine) enrichQuoteAttachments(quotes []Quote) error {
+	quoteIDs := make([]int64, len(quotes))
 	for i := range quotes {
-		rows, err := e.store.ListQuoteAttachments(quotes[i].ID)
-		if err != nil {
-			return err
-		}
+		quoteIDs[i] = quotes[i].ID
+	}
+	attachmentsByQuote, err := e.store.ListQuoteAttachmentsForQuotes(quoteIDs)
+	if err != nil {
+		return err
+	}
+	for i := range quotes {
+		rows := attachmentsByQuote[quotes[i].ID]
 		quotes[i].Attachments = make([]QuoteAttachment, len(rows))
 		for j, row := range rows {
 			quotes[i].Attachments[j] = attachmentFromRow(row)

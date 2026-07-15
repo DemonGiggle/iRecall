@@ -1436,6 +1436,7 @@ async function saveQuoteEditor(): Promise<void> {
     if (result.Warnings?.length) {
       showToast(result.Warnings.join(" "), false);
     }
+    revokeQuoteEditorPreviewURLs(state.overlay);
     state.overlay = null;
     applyQuoteUpdate(quote);
     await loadQuotes();
@@ -1949,8 +1950,14 @@ function closeOverlay(): void {
   if ("busy" in state.overlay && state.overlay.busy) {
     return;
   }
+  revokeQuoteEditorPreviewURLs(state.overlay);
   state.overlay = null;
   render();
+}
+
+function revokeQuoteEditorPreviewURLs(overlay: OverlayState): void {
+  if (overlay.type !== "quoteEditor") return;
+  for (const image of overlay.newImages) URL.revokeObjectURL(image.previewURL);
 }
 
 function showToast(message: string, isError = false): void {
