@@ -1,4 +1,4 @@
-name: E2E Modal Test
+name: E2E Browser Test
 
 on:
   pull_request:
@@ -41,7 +41,8 @@ jobs:
 
       - name: Start backend
         run: |
-          nohup go run ./web --port 9528 --unsafe-no-password-check > /tmp/irecall-e2e.log 2>&1 &
+          rm -rf /tmp/irecall-e2e-data
+          nohup go run ./web --data-path /tmp/irecall-e2e-data --port 9528 --unsafe-no-password-check > /tmp/irecall-e2e.log 2>&1 &
           # wait for server
           for i in {1..30}; do
             if curl -sSf http://127.0.0.1:9528/ >/dev/null 2>&1; then
