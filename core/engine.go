@@ -587,47 +587,69 @@ func (e *Engine) extractTagsWithImageInputs(ctx context.Context, text string, im
 		tags, _ := normalizeTags(mockSplitKeywords(text))
 		return tags, nil, nil
 	}
-	if len(images) == 0 {
-		tags, err := e.ExtractTags(ctx, text)
-		return tags, nil, err
+	var combined []string
+	var warnings []string
+	var extractionErrors []error
+	successfulSources := 0
+
+	textTags, textErr := e.ExtractTags(ctx, text)
+	if textErr != nil {
+		warnings = append(warnings, "Text tag generation failed; image tags were still attempted.")
+		extractionErrors = append(extractionErrors, fmt.Errorf("extract text tags: %w", textErr))
+	} else {
+		combined = append(combined, textTags...)
+		successfulSources++
 	}
-	parts := []llm.ContentPart{{Type: "text", Text: "Extract keyword tags for this text and its attached images:\n" + text}}
-	for _, image := range images {
-		mediaType := image.MediaType
-		if mediaType == "" && len(image.Data) > 0 {
-			mediaType = http.DetectContentType(image.Data[:min(len(image.Data), 512)])
+
+	for i, image := range images {
+		imageTags, imageErr := e.extractImageTags(ctx, image)
+		if imageErr != nil {
+			label := strings.TrimSpace(image.Filename)
+			if label == "" {
+				label = fmt.Sprintf("image %d", i+1)
+			}
+			warnings = append(warnings, fmt.Sprintf("Tag generation failed for %s; other tags were kept.", label))
+			extractionErrors = append(extractionErrors, fmt.Errorf("extract tags for %s: %w", label, imageErr))
+			continue
 		}
-		parts = append(parts, llm.ContentPart{Type: "image_url", ImageURL: &llm.ImageURLValue{
+		combined = append(combined, imageTags...)
+		successfulSources++
+	}
+
+	if successfulSources == 0 {
+		return nil, warnings, errors.Join(extractionErrors...)
+	}
+	tags, _ := normalizeTags(combined)
+	return tags, warnings, nil
+}
+
+func (e *Engine) extractImageTags(ctx context.Context, image ImageInput) ([]string, error) {
+	mediaType := image.MediaType
+	if mediaType == "" && len(image.Data) > 0 {
+		mediaType = http.DetectContentType(image.Data[:min(len(image.Data), 512)])
+	}
+	parts := []llm.ContentPart{
+		{Type: "text", Text: "Extract keyword tags for this image."},
+		{Type: "image_url", ImageURL: &llm.ImageURLValue{
 			URL: "data:" + mediaType + ";base64," + base64.StdEncoding.EncodeToString(image.Data),
-		}})
+		}},
 	}
 	msgs := []llm.Message{
-		{Role: "system", Content: `You are a JSON keyword extractor. Output ONLY a valid JSON array of short lowercase English keyword strings. Consider both the supplied note text and every attached image. Translate non-English concepts into natural English search terms, while preserving proper nouns, product names, acronyms, and code identifiers. Prefer high-signal concepts and return up to 30 tags. No explanation, markdown, or extra text.`},
+		{Role: "system", Content: `You are a JSON keyword extractor. Output ONLY a valid JSON array of short lowercase English keyword strings describing the supplied image. Translate non-English concepts into natural English search terms, while preserving proper nouns, product names, acronyms, and code identifiers. Prefer high-signal visible concepts and return up to 30 tags. No explanation, markdown, or extra text.`},
 		{Role: "user", Parts: parts},
 	}
 	zero := 0.0
 	maxTok := 384
 	raw, err := e.keywordLLM.Chat(ctx, msgs, nil, llm.ChatOptions{Temperature: &zero, MaxTokens: &maxTok})
-	if err == nil {
-		var parsed []string
-		parsed, err = parseJSONStringArray(raw)
-		if err == nil {
-			normalized, stats := normalizeTags(parsed)
-			if shouldRepairTags(normalized, stats, text) {
-				if repaired, repairErr := e.repairTags(ctx, text, normalized); repairErr == nil {
-					normalized = repaired
-				}
-			}
-			return normalized, nil, nil
-		}
+	if err != nil {
+		return nil, err
 	}
-	slog.Warn("engine: image tag extraction failed; retrying text only", "error", err)
-	tags, fallbackErr := e.ExtractTags(ctx, text)
-	warning := "The configured model could not analyze the attached images; tags were generated from quote text only."
-	if fallbackErr != nil {
-		return nil, []string{warning}, fallbackErr
+	parsed, err := parseJSONStringArray(raw)
+	if err != nil {
+		return nil, err
 	}
-	return tags, []string{warning}, nil
+	normalized, _ := normalizeTags(parsed)
+	return normalized, nil
 }
 
 func (e *Engine) repairTags(ctx context.Context, text string, initial []string) ([]string, error) {

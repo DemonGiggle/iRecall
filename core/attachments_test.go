@@ -3,11 +3,16 @@ package core
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"image"
 	"image/color"
 	"image/png"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"testing"
 
 	"github.com/gigol/irecall/core/db"
@@ -88,6 +93,53 @@ func TestQuoteImagesValidateTypeAndCount(t *testing.T) {
 	}
 	if _, err := engine.AddQuoteWithImages(context.Background(), "too many", images); err == nil {
 		t.Fatal("too many images should fail")
+	}
+}
+
+func TestTagExtractionKeepsTextAndSuccessfulImagesWhenOneImageFails(t *testing.T) {
+	requests := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		var body struct {
+			Messages []struct {
+				Content json.RawMessage `json:"content"`
+			} `json:"messages"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		content := body.Messages[len(body.Messages)-1].Content
+		if bytes.Contains(content, []byte("YmFk")) {
+			http.Error(w, "vision failed", http.StatusBadRequest)
+			return
+		}
+		result := `["text-tag"]`
+		if bytes.Contains(content, []byte("image_url")) {
+			result = `["image-tag"]`
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"choices": []map[string]any{{"message": map[string]string{"content": result}}},
+		})
+	}))
+	defer srv.Close()
+
+	engine := newTestEngine(t, srv.Listener.Addr().String())
+	tags, warnings, err := engine.extractTagsWithImageInputs(context.Background(), "short text", []ImageInput{
+		{Filename: "good.png", MediaType: "image/png", Data: []byte("good")},
+		{Filename: "bad.png", MediaType: "image/png", Data: []byte("bad")},
+	})
+	if err != nil {
+		t.Fatalf("extractTagsWithImageInputs() error = %v", err)
+	}
+	if !slices.Contains(tags, "text-tag") || !slices.Contains(tags, "image-tag") {
+		t.Fatalf("tags = %#v, want text and successful image tags", tags)
+	}
+	if len(warnings) != 1 || !strings.Contains(warnings[0], "bad.png") {
+		t.Fatalf("warnings = %#v, want one warning for bad.png", warnings)
+	}
+	if requests != 3 {
+		t.Fatalf("requests = %d, want one text and two image requests", requests)
 	}
 }
 
